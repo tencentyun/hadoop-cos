@@ -83,8 +83,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             throw new IOException("config fs.cosn.userinfo.secretKey miss!");
         }
         String region = conf.get("fs.cosn.userinfo.region");
-        if (region == null) {
-            throw new IOException("config fs.cosn.userinfo.region miss!");
+        String endpoint_suffix = conf.get("fs.cosn.userinfo.endpoint_suffix");
+        if (null == region && null == endpoint_suffix) {
+            throw new IOException("config fs.cosn.userinfo.region and fs.cosn.userinfo.endpoint_suffix specify at least one");
         }
 
         COSCredentials cosCred = null;
@@ -96,10 +97,17 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         boolean useHttps = conf.getBoolean("fs.cosn.userinfo.usehttps", false);
 
-        ClientConfig config = new ClientConfig(new Region(region));
+        ClientConfig config = null;
+        if (null == region) {
+            config = new ClientConfig(new Region(""));
+        } else {
+            config = new ClientConfig(new Region(region));
+        }
         if (useHttps) {
             config.setHttpProtocol(HttpProtocol.https);
         }
+        config.setEndPointSuffix(endpoint_suffix);
+
         config.setUserAgent("cos-hadoop-plugin-v5.1");
         this.cosClient = new COSClient(cosCred, config);
     }
@@ -272,7 +280,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     /**
-     *
      * @param key The key is the object name that is being retrieved from the cos bucket
      * @return This method returns null if the key is not found
      * @throws IOException
@@ -307,7 +314,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public PartialListing list(String prefix, int maxListingLength, String priorLastKey,
-            boolean recurse) throws IOException {
+                               boolean recurse) throws IOException {
 
         return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey);
     }
@@ -315,16 +322,16 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     /**
      * list objects
      *
-     * @param prefix prefix
-     * @param delimiter delimiter
+     * @param prefix           prefix
+     * @param delimiter        delimiter
      * @param maxListingLength max no. of entries
-     * @param priorLastKey last key in any previous search
+     * @param priorLastKey     last key in any previous search
      * @return a list of matches
      * @throws IOException on any reported failure
      */
 
     private PartialListing list(String prefix, String delimiter, int maxListingLength,
-            String priorLastKey) throws IOException {
+                                String priorLastKey) throws IOException {
         LOG.debug("list prefix:" + prefix);
         if (!prefix.startsWith(PATH_DELIMITER)) {
             prefix += PATH_DELIMITER;
@@ -458,8 +465,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public boolean retrieveBlock(String key, long byteRangeStart, long blockSize,
-            String localBlockPath) throws IOException {
-        long fileSize = getFileLength(key);;
+                                 String localBlockPath) throws IOException {
+        long fileSize = getFileLength(key);
+        ;
         long byteRangeEnd = 0;
         try {
             GetObjectRequest request = new GetObjectRequest(this.bucketName, key);
