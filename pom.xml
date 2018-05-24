@@ -111,7 +111,7 @@
 		<dependency>
 			<groupId>myjdk_jar</groupId>
 			<artifactId>cos_hadoop_sdk</artifactId>
-			<version>5.4.2</version>
+			<version>5.2.5</version>
 			<scope>system</scope>
 			<systemPath>${basedir}/src/main/resources/cos_hadoop_api-5.2.5.jar</systemPath>
 		</dependency>
