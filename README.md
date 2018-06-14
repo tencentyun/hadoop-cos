@@ -25,7 +25,7 @@ sudo apt-get install maven
 ### 获取 cos-java-sdk
 下载地址：[cos-java-sdk](https://github.com/tencentyun/cos-java-sdk-v5-hadoop)
 
-进入存放路径，运行以下命令进行编译，获取 target 目录下的 cos_hadoop_api-5.2.5.jar：
+进入存放路径，运行以下命令进行编译，获取 target 目录下的cos_hadoop_api-5.2.5.jar：
 ```
 mvn clean package -Dmaven.test.skip=true
 ```
@@ -79,7 +79,7 @@ done
         <value>org.apache.hadoop.fs.cosnative.NativeCosFileSystem</value>
     </property>
     <property>
-        <name>fs.cos.buffer.dir</name>
+        <name>fs.cosn.buffer.dir</name>
         <value>/data/rabbitliu/work/hadoop/hadoop_test/cos_buf</value>
     </property>
     <property>
@@ -93,7 +93,7 @@ done
 配置文件中含有 COS 的几个属性：
 - fs.cosn.userinfo.secretId/secretKey 属性：填写您账户的API 密钥信息。可通过 [云 API 密钥 控制台](https://console.cloud.tencent.com/capi) 查看。
 - fs.cosn.impl 为 cosn 的实现类，固定为 org.apache.hadoop.fs.cosnative.NativeCosFileSystem。
-- fs.cos.buffer.dir 请设置一个实际存在的目录，运行过程中产生的临时文件会暂时放于此处。
+- fs.cosn.buffer.dir 请设置一个实际存在的目录，运行过程中产生的临时文件会暂时放于此处。
 - fs.cosn.userinfo.region 请填写您的地域信息，枚举值为 [历史版本地域列表](https://cloud.tencent.com/document/product/436/7777) 中的地域简称，如 sh, gz, sgp 等。
 
 ### 使用软件（以 Linux 为例）
