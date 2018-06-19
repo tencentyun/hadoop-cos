@@ -26,13 +26,30 @@ import org.apache.hadoop.fs.CommonConfigurationKeys;
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
-    public static final String COS_NATIVE_BLOCK_SIZE_KEY = "cosnative.blocksize";
-    public static final long COS_NATIVE_BLOCK_SIZE_DEFAULT = 64 * 1024 * 1024;
-    public static final String COS_NATIVE_REPLICATION_KEY = "cosnative.replication";
+
+    public static final String COS_APPID_KEY = "fs.cosn.userinfo.appid";
+    public static final String COS_SECRET_ID_KEY = "fs.cosn.userinfo.secretId";
+    public static final String COS_SECRET_KEY_KEY = "fs.cosn.userinfo.secretKey";
+    public static final String COS_REGION_KEY = "fs.cosn.userinfo.region";
+    public static final String COS_ENDPOINT_SUFFIX_KEY ="fs.cosn.userinfo.endpoint_suffix";
+    public static final String COS_USE_HTTPS_KEY = "fs.cosn.userinfo.usehttps";
+    public static final boolean DEFAULT_USE_HTTPS = false;
+
+    public static final String COS_BUFFER_DIR_KEY = "fs.cosn.buffer.dir";
+    public static final String DEFAULT_BUFFER_DIR = "/tmp";
+
+    public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.userinfo.upload_thread_pool";
+    public static final int DEFAULT_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;          // 默认使用CPU核心数目 * 3
+
+    public static final String COS_LOCAL_BLOCK_SIZE_KEY = "fs.cosn.local.block.size";
+    public static final long DEFAULT_COS_LOCAL_BLOCK_SIZE = 1 * 1024 * 1024;
+    public static final String COS_NATIVE_BLOCK_SIZE_KEY = "cos.native.block.size";
+    public static final long COS_NATIVE_BLOCK_SIZE_DEFAULT = 64 * 1024 * 1024;                                 // 默认的blockSize是64MB
+    public static final String COS_NATIVE_REPLICATION_KEY = "cos.native.replication";
     public static final short COS_NATIVE_REPLICATION_DEFAULT = 1;
-    public static final String COS_NATIVE_STREAM_BUFFER_SIZE_KEY = "cosnative.stream-buffer-size";
+    public static final String COS_NATIVE_STREAM_BUFFER_SIZE_KEY = "cos.native.stream.buffer.size";
     public static final int COS_NATIVE_STREAM_BUFFER_SIZE_DEFAULT = 4096;
-    public static final String COS_NATIVE_BYTES_PER_CHECKSUM_KEY = "cosnative.bytes-per-checksum";
+    public static final String COS_NATIVE_BYTES_PER_CHECKSUM_KEY = "cos.native.bytes-per-checksum";
     public static final int COS_NATIVE_BYTES_PER_CHECKSUM_DEFAULT = 512;
     public static final String COS_NATIVE_CLIENT_WRITE_PACKET_SIZE_KEY =
             "cosnative.client-write-packet-size";

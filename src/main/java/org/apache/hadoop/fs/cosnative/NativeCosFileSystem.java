@@ -4,9 +4,9 @@
  * copyright ownership. The ASF licenses this file to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
  * or implied. See the License for the specific language governing permissions and limitations under
@@ -18,26 +18,25 @@ package org.apache.hadoop.fs.cosnative;
 import java.io.BufferedOutputStream;
 import java.io.EOFException;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.net.URI;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.qcloud.cos.model.PartETag;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -75,8 +74,7 @@ public class NativeCosFileSystem extends FileSystem {
     static final String PATH_DELIMITER = Path.SEPARATOR;
     private static final int COS_MAX_LISTING_LENGTH = 199;
 
-    static class NativeCosFsInputStream extends FSInputStream {
-
+    static class InputStream extends FSInputStream {
         private NativeFileSystemStore store;
         private Statistics statistics;
         private RandomAccessFile in;
@@ -87,7 +85,7 @@ public class NativeCosFileSystem extends FileSystem {
         private long blockSize;
         private File localTempBlockFile = null;
 
-        public NativeCosFsInputStream(NativeFileSystemStore store, Statistics statistics, String key, long fileSize, RandomAccessFile in, File localBlockFile, long blockSize) {
+        public InputStream(NativeFileSystemStore store, Statistics statistics, String key, long fileSize, RandomAccessFile in, File localBlockFile, long blockSize) {
             Preconditions.checkNotNull(in, "Null input stream");
             this.store = store;
             this.statistics = statistics;
@@ -107,22 +105,22 @@ public class NativeCosFileSystem extends FileSystem {
 
             // 空文件处理
             if (this.fileSize == 0) {
-            	return -1;
+                return -1;
             }
-            
+
             if (pos >= this.fileSize) {
                 return -1;
             }
-            
-            
+
+
             // 如果读到某个中间块的结束
             if (pos < this.currentBlockStart || pos >= this.currentBlockStart + localTempBlockFile.length()) {
                 reopen(pos);
             }
-            
+
             in.seek(pos - this.currentBlockStart);
-            
-            
+
+
             int result;
             try {
                 result = in.read();
@@ -153,27 +151,28 @@ public class NativeCosFileSystem extends FileSystem {
             if (in == null) {
                 throw new EOFException("Cannot read closed stream");
             }
-            
+
             // 空文件处理
             if (this.fileSize == 0) {
-            	return -1;
+                return -1;
             }
-            
+
             if (pos >= this.fileSize) {
                 return -1;
             }
-            
+
             if (pos < this.currentBlockStart || pos >= this.currentBlockStart + localTempBlockFile.length()) {
                 reopen(pos);
             }
-            
+
             in.seek(pos - this.currentBlockStart);
-            
+
             int result = -1;
             try {
                 result = in.read(b, off, len);
-                LOG.debug("read byte arr, off:" + off + ", len:" + len + ", read infact:" + result);
+                LOG.debug("read byte arr, off:" + off + ", len:" + len + ", read in fact:" + result);
             } catch (EOFException eof) {
+                LOG.error("read EOF of file", eof);
                 throw eof;
             } catch (IOException e) {
                 LOG.info("Received IOException while reading '{}'," + " attempting to reopen.",
@@ -195,12 +194,12 @@ public class NativeCosFileSystem extends FileSystem {
             if (in == null) {
                 return;
             }
-        	try {
-        		in.close();
-        	} catch (IOException e) {
-        		LOG.info("delete file failure, raise IOException when close NativeCosFsInputStream, Exception: " + e 
-        				+ ", path: " + this.localTempBlockFile.getAbsolutePath());
-        	}
+            try {
+                in.close();
+            } catch (IOException e) {
+                LOG.info("delete file failure, raise IOException when close InputStream, Exception: " + e
+                        + ", path: " + this.localTempBlockFile.getAbsolutePath());
+            }
             this.localTempBlockFile.delete();
             closeInnerStream();
         }
@@ -238,9 +237,9 @@ public class NativeCosFileSystem extends FileSystem {
         /**
          * Update inner stream with a new stream and position
          *
-         * @param newStream new stream -must not be null
-         * @param newpos new position
-         * @throws IOException IO exception on a failure to close the existing stream.
+         * @param raf
+         * @param newpos
+         * @throws IOException
          */
         private synchronized void updateInnerStream(RandomAccessFile raf, long newpos)
                 throws IOException {
@@ -276,79 +275,178 @@ public class NativeCosFileSystem extends FileSystem {
     private class NativeCosFsOutputStream extends OutputStream {
 
         private Configuration conf;
+        private NativeFileSystemStore store;
         private String key;
-        private File backupFile;
-        private OutputStream backupStream;
-        private MessageDigest digest;
-        private boolean closed;
-        private LocalDirAllocator lDirAlloc;
+        private AtomicInteger blockId = new AtomicInteger(0);
+        private long blockSize = 0;
+        private File blockCacheFile = null;
+        private MessageDigest digest = null;
+        private Set<File> blockCacheFileSet = new LinkedHashSet<>();
+        private OutputStream blockOutputStream = null;
+        private String uploadId = null;
+        private ListeningExecutorService executorService = null;
+        private List<ListenableFuture<PartETag>> partEtagList = new LinkedList<ListenableFuture<PartETag>>();
+        private int blockWritten = 0;
+        private boolean closed = false;
+        private LocalDirAllocator lDirAlloc = null;
 
-        public NativeCosFsOutputStream(Configuration conf, NativeFileSystemStore store, String key,
-                Progressable progress, int bufferSize) throws IOException {
+        public NativeCosFsOutputStream(Configuration conf, NativeFileSystemStore store, String key, int blockSize) throws IOException {
             this.conf = conf;
+            this.store = store;
             this.key = key;
-            this.backupFile = newBackupFile();
-            LOG.info("OutputStream for key '" + key + "' writing to tempfile '" + this.backupFile
-                    + "'");
+            this.blockSize = blockSize;
+            if (this.blockSize < Constants.MIN_PART_SIZE) {
+                LOG.info(String.format("The minimum size of a single block is limited to %d", Constants.MIN_PART_SIZE));
+                this.blockSize = Constants.MIN_PART_SIZE;
+            }
+            if (this.blockSize > Constants.MAX_PART_SIZE) {
+                LOG.warn(String.format("The maximum size of a single block is limited to %d", Constants.MAX_PART_SIZE));
+                this.blockSize = Constants.MAX_PART_SIZE;
+            }
+            this.blockCacheFile = this.newBlockFile();
+            LOG.info("block cache file " + this.blockCacheFile.getAbsolutePath() + " len: " + this.blockCacheFile.length() + "isExist: " + this.blockCacheFile.exists());
             try {
                 this.digest = MessageDigest.getInstance("MD5");
-                this.backupStream = new BufferedOutputStream(
-                        new DigestOutputStream(new FileOutputStream(backupFile), this.digest));
+                this.blockOutputStream = new BufferedOutputStream(new DigestOutputStream(new FileOutputStream(this.blockCacheFile), this.digest));
             } catch (NoSuchAlgorithmException e) {
-                LOG.warn("Cannot load MD5 digest algorithm," + "skipping message integrity check.",
-                        e);
-                this.backupStream = new BufferedOutputStream(new FileOutputStream(backupFile));
+                this.digest = null;
+                this.blockOutputStream = new BufferedOutputStream(new FileOutputStream(this.blockCacheFile));
             }
+
+            this.executorService = MoreExecutors.listeningDecorator(
+                    Executors.newFixedThreadPool(
+                            conf.getInt(CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE)
+                    )
+            );
         }
 
-        private File newBackupFile() throws IOException {
+        private File newBlockFile() throws IOException {
             if (lDirAlloc == null) {
-                lDirAlloc = new LocalDirAllocator("fs.cosn.buffer.dir");
+                lDirAlloc = new LocalDirAllocator(CosNativeFileSystemConfigKeys.COS_BUFFER_DIR_KEY);
             }
-            File result = lDirAlloc.createTmpFileForWrite("output-", LocalDirAllocator.SIZE_UNKNOWN,
+            File result = lDirAlloc.createTmpFileForWrite(Constants.BLOCK_TMP_FILE_PREFIX + this.blockId + "-", this.blockSize,
                     conf);
-            result.deleteOnExit();
+//            result.deleteOnExit();
             return result;
         }
 
         @Override
         public void flush() throws IOException {
-            backupStream.flush();
+            this.blockOutputStream.flush();
         }
 
         @Override
         public synchronized void close() throws IOException {
-            if (closed) {
+            if (this.closed) {
                 return;
             }
 
-            backupStream.close();
-            LOG.info("OutputStream for key '{}' closed. Now beginning upload", key);
-
-            try {
-                byte[] md5Hash = digest == null ? null : digest.digest();
-                store.storeFile(key, backupFile, md5Hash);
-            } finally {
-                if (!backupFile.delete()) {
-                    LOG.warn("Could not delete temporary cosn file: " + backupFile);
-                }
-                super.close();
-                closed = true;
+            this.blockOutputStream.flush();
+            this.blockOutputStream.close();
+            LOG.info("output stream has been close. begin to upload last block: " + String.valueOf(this.blockId.get()));
+            // 加到块列表中去
+            if (!this.blockCacheFileSet.contains(this.blockCacheFile)) {
+                this.blockCacheFileSet.add(this.blockCacheFile);
             }
-            LOG.info("OutputStream for key '{}' upload complete", key);
+            if (this.blockCacheFileSet.size() == 1) {
+                // 单个文件就可以上传完成
+                byte[] md5Hash = this.digest == null ? null : this.digest.digest();
+                store.storeFile(this.key, this.blockCacheFile, md5Hash);
+            } else {
+                if (this.blockWritten > 0) {
+                    ListenableFuture<PartETag> partETagListenableFuture = this.executorService.submit(new Callable<PartETag>() {
+                        @Override
+                        public PartETag call() throws Exception {
+                            if (store instanceof CosNativeFileSystemStore) {
+                                PartETag partETag = ((CosNativeFileSystemStore) store).uploadPart(blockCacheFile, key, uploadId, blockId.get() + 1);
+                                return partETag;
+                            }
+                            return null;
+                        }
+                    });
+                    final List<PartETag> partETagList = this.waitForFinishPartUploads();
+                    if (store instanceof CosNativeFileSystemStore) {
+                        ((CosNativeFileSystemStore) store).completeMultipartUpload(this.key, this.uploadId, partETagList);
+                    }
+                }
+                LOG.info("OutputStream for key '{}' upload complete", key);
+            }
+
+            this.closed = true;
+        }
+
+        private List<PartETag> waitForFinishPartUploads() throws IOException {
+            try {
+                return Futures.allAsList(this.partEtagList).get();
+            } catch (InterruptedException e) {
+                LOG.error("Interrupt the part upload", e);
+                return null;
+            } catch (ExecutionException e) {
+                LOG.debug("cancelling futures");
+                for (ListenableFuture<PartETag> future : this.partEtagList) {
+                    future.cancel(true);
+                }
+                ((CosNativeFileSystemStore) store).abortMultipartUpload(this.key, this.uploadId);
+                throw new IOException("Multipart upload with id: " + this.uploadId + " to " + this.key, e);
+            }
+        }
+
+        private void uploadPart() throws IOException {
+            this.blockCacheFileSet.add(this.blockCacheFile);
+            this.blockOutputStream.flush();
+            this.blockOutputStream.close();
+            ;
+            if (this.blockId.get() == 0) {
+                if(store instanceof CosNativeFileSystemStore){
+                    uploadId = ((CosNativeFileSystemStore) store).getUploadId(key);
+                }
+            }
+            ListenableFuture<PartETag> partETagListenableFuture = this.executorService.submit(new Callable<PartETag>() {
+                @Override
+                public PartETag call() throws Exception {
+                    if (store instanceof CosNativeFileSystemStore) {
+                        PartETag partETag = ((CosNativeFileSystemStore) store).uploadPart(blockCacheFile, key, uploadId, blockId.get() + 1);
+                        return partETag;
+                    }
+                    return null;
+                }
+            });
+            partEtagList.add(partETagListenableFuture);
+            this.blockCacheFile = newBlockFile();
+            blockId.addAndGet(1);
+            if (null != this.digest) {
+                this.digest.reset();
+                this.blockOutputStream = new BufferedOutputStream(new DigestOutputStream(new FileOutputStream(this.blockCacheFile), this.digest));
+            } else {
+                this.blockOutputStream = new BufferedOutputStream(new FileOutputStream(this.blockCacheFile));
+            }
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            this.write(b, 0, 1);
         }
 
         @Override
         public void write(int b) throws IOException {
-            LOG.debug("write single byte:" + b);
-            backupStream.write(b);
+            byte[] singleBytes = new byte[1];
+            singleBytes[0] = (byte) b;
+            this.write(singleBytes, 0, 1);
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
-            LOG.debug("write byte arry: off:" + off + ", len:" + len);
-            backupStream.write(b, off, len);
+            if (this.closed) {
+                throw new IOException("block stream has been closed.");
+            }
+            this.blockOutputStream.write(b, off, len);
+            this.blockWritten += len;
+            if (this.blockWritten >= this.blockSize) {
+                this.uploadPart();
+                this.blockWritten = 0;
+            }
         }
+
     }
 
     private URI uri;
@@ -439,11 +537,11 @@ public class NativeCosFileSystem extends FileSystem {
             child.waitFor();
 
             // Get the input stream and read from it
-            InputStream in = child.getInputStream();
+            java.io.InputStream in = child.getInputStream();
             StringBuffer strBuffer = new StringBuffer();
             int c;
             while ((c = in.read()) != -1) {
-                strBuffer.append((char)c);
+                strBuffer.append((char) c);
             }
             in.close();
             ownerInfoId = strBuffer.toString();
@@ -485,7 +583,9 @@ public class NativeCosFileSystem extends FileSystem {
         return new Path(workingDir, path);
     }
 
-    /** This optional operation is not yet supported. */
+    /**
+     * This optional operation is not yet supported.
+     */
     @Override
     public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
             throws IOException {
@@ -494,8 +594,8 @@ public class NativeCosFileSystem extends FileSystem {
 
     @Override
     public FSDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
-            int bufferSize, short replication, long blockSize, Progressable progress)
-                    throws IOException {
+                                     int bufferSize, short replication, long blockSize, Progressable progress)
+            throws IOException {
 
         if (exists(f) && !overwrite) {
             throw new FileAlreadyExistsException("File already exists: " + f);
@@ -507,7 +607,7 @@ public class NativeCosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataOutputStream(
-                new NativeCosFsOutputStream(getConf(), store, key, progress, bufferSize),
+                new NativeCosFsOutputStream(getConf(), store, key, bufferSize),
                 statistics);
     }
 
@@ -642,7 +742,7 @@ public class NativeCosFileSystem extends FileSystem {
             }
             */
             if (meta != null && meta.isFile()) {
-                return new FileStatus[] {newFile(meta, absolutePath)};
+                return new FileStatus[]{newFile(meta, absolutePath)};
             }
         }
 
@@ -689,14 +789,14 @@ public class NativeCosFileSystem extends FileSystem {
         return new FileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()));
     }
-    
+
     private FileStatus newDirectory(FileMetadata meta, Path path) {
-    	if (meta == null) {
-    		return newDirectory(path);
-    	}
-    	FileStatus status = new FileStatus(0, true, 1, 0, meta.getLastModified(), 0, null, this.owner, this.group,
+        if (meta == null) {
+            return newDirectory(path);
+        }
+        FileStatus status = new FileStatus(0, true, 1, 0, meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()));
-    	LOG.debug("status: " + status.toString());
+        LOG.debug("status: " + status.toString());
         return status;
     }
 
@@ -743,7 +843,7 @@ public class NativeCosFileSystem extends FileSystem {
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
         FileStatus fs = getFileStatus(f); // will throw if the file doesn't
-                                          // exist
+        // exist
         if (fs.isDirectory()) {
             throw new FileNotFoundException("'" + f + "' is a directory");
         }
@@ -751,14 +851,14 @@ public class NativeCosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         long fileSize = store.getFileLength(key);
-        String localtempDirPath = this.getConf().get("fs.cosn.buffer.dir", "/tmp");
-        File localTempDir = new File(localtempDirPath);
-        File localTempBlockFile = File.createTempFile("cos", "local_block_cache", localTempDir);
-        long blockSize = this.getConf().getLong("fs.cosn.local_block_size", 1024 * 1024); // 默认 1MB block
+        String localTempDirPath = this.getConf().get(CosNativeFileSystemConfigKeys.COS_BUFFER_DIR_KEY, CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR);
+        File localTempDir = new File(localTempDirPath);
+        File localTempBlockFile = File.createTempFile(Constants.BLOCK_TMP_FILE_PREFIX, Constants.BLOCK_TMP_FILE_SUFFIX, localTempDir);
+        long blockSize = this.getConf().getLong(CosNativeFileSystemConfigKeys.COS_LOCAL_BLOCK_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_COS_LOCAL_BLOCK_SIZE); // 默认 1MB block
         store.retrieveBlock(key, 0, blockSize, localTempBlockFile.getAbsolutePath());
         RandomAccessFile raf = new RandomAccessFile(localTempBlockFile, "r");
         return new FSDataInputStream(new BufferedFSInputStream(
-                new NativeCosFsInputStream(store, statistics, key, fileSize, raf, localTempBlockFile, blockSize),
+                new InputStream(store, statistics, key, fileSize, raf, localTempBlockFile, blockSize),
                 bufferSize));
     }
 
