@@ -161,7 +161,6 @@ public class CosFsInputStream extends FSInputStream {
         }
 
         int maxLen = this.maxReadPartNumber - currentBufferQueueSize;
-        LOG.info("max len: " + maxLen + " current queue size: " + currentBufferQueueSize);
         for (int i = 0; i < maxLen && i < (currentBufferQueueSize + 1) * 2; i++) {
             if (this.lastByteStart + partSize * (i + 1) > this.fileSize) {
                 break;
@@ -186,21 +185,15 @@ public class CosFsInputStream extends FSInputStream {
             }
         }
 
-        LOG.info("poll a buffer.");
         ReadBuffer readBuffer = this.readBufferQueue.poll();
-        LOG.info("finish poll a buffer");
         readBuffer.lock();
         try {
-            LOG.info("waiting....");
             readBuffer.await(ReadBuffer.INIT);
             if (readBuffer.getStatus() == ReadBuffer.ERROR) {
-                LOG.info("error");
                 this.buffer = null;
             } else {
-                LOG.info("ok");
                 this.buffer = readBuffer.getBuffer();
             }
-            LOG.info("waiting finish....");
         } catch (InterruptedException e) {
             LOG.warn("interrupted exception occurs when wait a read buffer.");
         } finally {

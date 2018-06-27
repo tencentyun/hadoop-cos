@@ -172,12 +172,10 @@ public class CosFsDataOutputStream extends OutputStream {
         } else {
             if (this.blockWritten > 0) {
                 // 上传最后一片
-                LOG.info("remaining: "+ currentBlockBuffer.remaining());
                 PartETag partETag = store.uploadPart(new ByteBufferInputStream(currentBlockBuffer), key, uploadId, currentBlockId + 1,currentBlockBuffer.remaining());
             }
             this.executorService.shutdown();
             final List<PartETag> partETagList = this.waitForFinishPartUploads();
-            LOG.info("part list: " + partETagList.toString());
             store.completeMultipartUpload(this.key, this.uploadId, partETagList);
         }
         LOG.info("OutputStream for key '{}' upload complete", key);
@@ -213,8 +211,6 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.currentBlockId == 0) {
             uploadId = (store).getUploadId(key);
         }
-
-        LOG.info("submit the key:" + this.key + " upload id: " + this.uploadId + " block id: " + this.currentBlockId + " part number: " + String.valueOf(this.currentBlockId + 1));
 
         ListenableFuture<PartETag> partETagListenableFuture = this.executorService.submit(new Callable<PartETag>() {
             private final ByteBuffer buf = currentBlockBuffer;
