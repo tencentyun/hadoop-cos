@@ -36,16 +36,21 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final boolean DEFAULT_USE_HTTPS = false;
 
     public static final String COS_BUFFER_DIR_KEY = "fs.cosn.buffer.dir";
-    public static final String DEFAULT_BUFFER_DIR = "/tmp";
+    public static final String DEFAULT_BUFFER_DIR = "/tmp/hadoop_cos";
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.userinfo.upload_thread_pool";
     public static final int DEFAULT_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;          // 默认使用CPU核心数目 * 3
 
     public static final String COS_LOCAL_BLOCK_SIZE_KEY = "fs.cosn.local.block.size";
     public static final long DEFAULT_COS_LOCAL_BLOCK_SIZE = 1 * 1024 * 1024;
-    public static final String COS_NATIVE_BLOCK_SIZE_KEY = "cos.native.block.size";
-    public static final long COS_NATIVE_BLOCK_SIZE_DEFAULT = 64 * 1024 * 1024;                                 // 默认的blockSize是64MB
-    public static final String COS_NATIVE_REPLICATION_KEY = "cos.native.replication";
+
+    public static final String READ_AHEAD_BLOCK_SIZE_KEY = "fs.cosn.read.ahead.block.size";
+    public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 64 * 1024 * 1024;                                  // 预取缓存块的大小
+
+    public static final String READ_AHEAD_QUEUE_SIZE = "fs.cosn.read.ahead.queue.size";                       // 预取队列的大小
+    public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 10;                                                 // 预取队列的默认大小
+
+    public static final String COS_NATIVE_REPLICATION_KEY = "fs.cosn.native.replication";
     public static final short COS_NATIVE_REPLICATION_DEFAULT = 1;
     public static final String COS_NATIVE_STREAM_BUFFER_SIZE_KEY = "cos.native.stream.buffer.size";
     public static final int COS_NATIVE_STREAM_BUFFER_SIZE_DEFAULT = 4096;

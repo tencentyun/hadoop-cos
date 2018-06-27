@@ -22,7 +22,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.util.List;
 
+import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.model.UploadPartResult;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -42,13 +44,27 @@ interface NativeFileSystemStore {
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
+    void storeFile(String key, InputStream inputStream, byte[]md5Hash) throws IOException;
+
     void storeEmptyFile(String key) throws IOException;
+
+    CompleteMultipartUploadResult completeMultipartUpload(String key, String uploadId, List<PartETag> partETagList);
+
+    void abortMultipartUpload(String key, String uploadId);
+
+    String getUploadId(String key);
+
+    PartETag uploadPart(File file, String key, String uploadId, int partNum) throws IOException;
+
+    PartETag uploadPart(InputStream inputStream, String key, String uploadId, int partNum, long partSize) throws IOException;
 
     FileMetadata retrieveMetadata(String key) throws IOException;
 
     InputStream retrieve(String key) throws IOException;
 
     InputStream retrieve(String key, long byteRangeStart) throws IOException;
+
+    InputStream retrieveBlock(String key, long byteRangeStart, long byteRangeEnd) throws IOException;
 
     boolean retrieveBlock(String key, long byteRangeStart, long blockSize, String localBlockPath) throws IOException;
 
