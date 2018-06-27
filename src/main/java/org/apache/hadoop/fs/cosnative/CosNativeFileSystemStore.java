@@ -169,6 +169,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void storeFile(String key, InputStream inputStream, byte[] md5Hash) throws IOException {
         LOG.info("store key: " + key);
+        storeFileWithRetry(key, inputStream, md5Hash);
     }
 
     // for cos, storeEmptyFile means create a directory
@@ -350,14 +351,24 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     public InputStream retrieveBlock(String key, long byteRangeStart, long byteRangeEnd) throws IOException {
         try {
             GetObjectRequest request = new GetObjectRequest(this.bucketName, key);
+            LOG.info("range start: " + String.valueOf(byteRangeStart) + " range end: " + String.valueOf(byteRangeEnd));
             request.setRange(byteRangeStart, byteRangeEnd);
             COSObject cosObject = (COSObject) this.callCOSClientWithRetry(request);
+            LOG.info("cosObject meta: " + cosObject.getObjectMetadata());
             return cosObject.getObjectContent();
         } catch (CosServiceException e) {
-            LOG.error("retrieve key: " + key + "'s block, start: " + String.valueOf(byteRangeStart) + " end: " + String.valueOf(byteRangeEnd), e);
+            String errMsg =
+                    String.format("retrive key %s with byteRangeStart %d occur a exception: %s",
+                            key, byteRangeStart, e.toString());
+            LOG.error(errMsg);
+            handleException(new Exception(errMsg), key);
             return null;
         } catch (CosClientException e) {
+            String errMsg =
+                    String.format("retrive key %s with byteRangeStart %d occur a exception: %s",
+                            key, byteRangeStart, e.toString());
             LOG.error("retrieve key: " + key + "'s block, start: " + String.valueOf(byteRangeStart) + " end: " + String.valueOf(byteRangeEnd), e);
+            handleException(new Exception(errMsg), key);
             return null;
         }
     }

@@ -83,9 +83,9 @@ public class CosFsInputStream extends FSInputStream {
     private final Configuration conf;
     private final NativeFileSystemStore store;
     private final String key;
-    private long pos = 0;
+    private long position = 0;
     private long nextPos = 0;
-    private long lastByteStart = 0;
+    private long lastByteStart = -1;
     private long fileSize;
     private long partRemaining;
     private final long PreReadPartSize;
@@ -111,8 +111,12 @@ public class CosFsInputStream extends FSInputStream {
         this.PreReadPartSize = conf.getLong(CosNativeFileSystemConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
         this.maxReadPartNumber = conf.getInt(CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE, CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
         this.closed = false;
-
-        this.readAheadExecutorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(conf.getInt(CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE)));
+        this.readAheadExecutorService = MoreExecutors.listeningDecorator(
+                Executors.newFixedThreadPool(
+                        conf.getInt(CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE
+                        )
+                )
+        );
         this.readBufferQueue = new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
     }
 
@@ -157,6 +161,7 @@ public class CosFsInputStream extends FSInputStream {
         }
 
         int maxLen = this.maxReadPartNumber - currentBufferQueueSize;
+        LOG.info("max len: " + maxLen + " current queue size: " + currentBufferQueueSize);
         for (int i = 0; i < maxLen && i < (currentBufferQueueSize + 1) * 2; i++) {
             if (this.lastByteStart + partSize * (i + 1) > this.fileSize) {
                 break;
@@ -181,15 +186,21 @@ public class CosFsInputStream extends FSInputStream {
             }
         }
 
+        LOG.info("poll a buffer.");
         ReadBuffer readBuffer = this.readBufferQueue.poll();
+        LOG.info("finish poll a buffer");
         readBuffer.lock();
         try {
+            LOG.info("waiting....");
             readBuffer.await(ReadBuffer.INIT);
             if (readBuffer.getStatus() == ReadBuffer.ERROR) {
+                LOG.info("error");
                 this.buffer = null;
             } else {
+                LOG.info("ok");
                 this.buffer = readBuffer.getBuffer();
             }
+            LOG.info("waiting finish....");
         } catch (InterruptedException e) {
             LOG.warn("interrupted exception occurs when wait a read buffer.");
         } finally {
@@ -200,7 +211,7 @@ public class CosFsInputStream extends FSInputStream {
             throw new IOException("Null IO stream");
         }
 
-        this.pos = pos;
+        this.position = pos;
         this.partRemaining = partSize;
     }
 
@@ -213,12 +224,12 @@ public class CosFsInputStream extends FSInputStream {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
         }
 
-        this.pos = pos;                      // Next reading position
+        this.position = pos;                      // Next reading position
     }
 
     @Override
     public long getPos() throws IOException {
-        return this.pos;
+        return this.position;
     }
 
     @Override
@@ -232,16 +243,16 @@ public class CosFsInputStream extends FSInputStream {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
 
-        if (this.partRemaining <= 0 && this.pos < this.fileSize) {
-            this.reopen(this.pos);
+        if (this.partRemaining <= 0 && this.position < this.fileSize) {
+            this.reopen(this.position);
         }
 
         int byteRead = -1;
         if (this.partRemaining != 0) {
             byteRead = this.buffer[(int) (this.buffer.length - this.partRemaining)] & 0xff;
         }
-        if (byteRead > 0) {
-            this.pos++;
+        if (byteRead >= 0) {
+            this.position++;
             this.partRemaining--;
             if (null != this.statistics) {
                 this.statistics.incrementBytesRead(byteRead);

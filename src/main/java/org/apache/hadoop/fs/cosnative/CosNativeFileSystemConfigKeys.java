@@ -45,7 +45,7 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_COS_LOCAL_BLOCK_SIZE = 1 * 1024 * 1024;
 
     public static final String READ_AHEAD_BLOCK_SIZE_KEY = "fs.cosn.read.ahead.block.size";
-    public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 64 * 1024 * 1024;                                  // 预取缓存块的大小
+    public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 512 * 1024;                                  // 预取缓存块的大小
 
     public static final String READ_AHEAD_QUEUE_SIZE = "fs.cosn.read.ahead.queue.size";                       // 预取队列的大小
     public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 10;                                                 // 预取队列的默认大小

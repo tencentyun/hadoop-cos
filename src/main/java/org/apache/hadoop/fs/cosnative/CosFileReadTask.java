@@ -24,16 +24,20 @@ public class CosFileReadTask implements Runnable {
     public void run() {
         this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.ERROR);
         try {
-            this.readBuffer.lock();
-            InputStream inputStream = this.store.retrieveBlock(this.key, this.readBuffer.getStart(), this.readBuffer.getEnd());
-            IOUtils.readFully(inputStream, this.readBuffer.getBuffer(), (int) this.readBuffer.getStart(), this.readBuffer.getBuffer().length);
-            this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.SUCCESS);
-        } catch (IOException e) {
-            this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.ERROR);
-            LOG.error("Exception occurs when retrieve the block range start: " + String.valueOf(this.readBuffer.getStart()) + " end: " + this.readBuffer.getEnd());
-        } finally {
+            try {
+                this.readBuffer.lock();
+                InputStream inputStream = this.store.retrieveBlock(this.key, this.readBuffer.getStart(), this.readBuffer.getEnd());
+                IOUtils.readFully(inputStream, this.readBuffer.getBuffer(), 0, (int) (this.readBuffer.getEnd() - this.readBuffer.getStart() + 1));
+                inputStream.close();
+                this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.SUCCESS);
+                this.readBuffer.signalAll();
+            } catch (IOException e) {
+                this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.ERROR);
+                LOG.error("Exception occurs when retrieve the block range start: " + String.valueOf(this.readBuffer.getStart()) + " end: " + this.readBuffer.getEnd());
+            }
+            this.readBuffer.signalAll();
+        }finally {
             this.readBuffer.unLock();
         }
-        this.readBuffer.signalAll();
     }
 }
