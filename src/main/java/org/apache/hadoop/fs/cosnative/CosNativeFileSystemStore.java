@@ -25,7 +25,6 @@ import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.model.*;
 import com.qcloud.cos.region.Region;
 import com.qcloud.cos.transfer.TransferManager;
-import com.qcloud.cos.transfer.Upload;
 import com.qcloud.cos.utils.Base64;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -122,54 +121,37 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
-    private void storeFileWithRetry(String key, InputStream inputStream, byte[] md5Hash) throws IOException {
-        int retryIndex = 1;
-        while (true) {
-            try {
-                ObjectMetadata objectMetadata = new ObjectMetadata();
-                objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
-                PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName, key, inputStream, objectMetadata);
-                Upload upload = transferManager.upload(putObjectRequest);
-                UploadResult uploadResult = upload.waitForUploadResult();
-                return;
-            } catch (CosServiceException cse) {
-                String errMsg = String.format(
-                        "store file by transfermanger failed, retryIndex: [%d / %d],  exception: %s",
-                        retryIndex, MAX_RETRY_TIME, cse.toString());
-                // 对5xx错误进行重试
-                int statusCode = cse.getStatusCode();
-                if (statusCode / 100 == 5 && retryIndex <= MAX_RETRY_TIME) {
-                    LOG.info(errMsg);
-                    long sleepLeast = retryIndex * 300L;
-                    long sleepBound = retryIndex * 500L;
-                    try {
-                        Thread.sleep(ThreadLocalRandom.current().nextLong(sleepLeast, sleepBound));
-                    } catch (InterruptedException e) {
-                        throw new IOException(e.toString());
-                    }
-                } else {
-                    LOG.error(errMsg);
-                    throw new IOException(errMsg);
-                }
-            } catch (Exception e) {
-                String errMsg = String.format("store file by transfermanger failed, exception: %s",
-                        e.toString());
-                LOG.error(errMsg);
-                throw new IOException(errMsg);
-            }
+    private void storeFileWithRetry(String key, InputStream inputStream, byte[] md5Hash, long length) throws IOException {
+        try {
+            ObjectMetadata objectMetadata = new ObjectMetadata();
+            objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
+            LOG.info("md5: "+ utils.bytesToHexString(md5Hash) + " content_length: " + length);
+            objectMetadata.setContentLength(length);
+            PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName, key, inputStream, objectMetadata);
+
+            PutObjectResult putObjectResult =
+                    (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
+            String debugMsg = String.format("store empty file success, cos key: %s, etag: %s", key,
+                    putObjectResult.getETag());
+            LOG.debug(debugMsg);
+        } catch (Exception e) {
+            String errMsg =
+                    String.format("store empty file faild, cos key: %s, exception: %s",
+                            key, e.toString());
+            LOG.error(errMsg);
+            handleException(new Exception(errMsg), key);
         }
     }
 
     @Override
     public void storeFile(String key, File file, byte[] md5Hash) throws IOException {
         LOG.info("store file:, localPath:" + file.getCanonicalPath() + ", len:" + file.length());
-        storeFileWithRetry(key, new BufferedInputStream(new FileInputStream(file)), md5Hash);
+        storeFileWithRetry(key, new BufferedInputStream(new FileInputStream(file)), md5Hash, file.length());
     }
 
     @Override
-    public void storeFile(String key, InputStream inputStream, byte[] md5Hash) throws IOException {
-        LOG.info("store key: " + key);
-        storeFileWithRetry(key, inputStream, md5Hash);
+    public void storeFile(String key, InputStream inputStream, byte[] md5Hash, long contentLength) throws IOException {
+        storeFileWithRetry(key, inputStream, md5Hash, contentLength);
     }
 
     // for cos, storeEmptyFile means create a directory
@@ -351,10 +333,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     public InputStream retrieveBlock(String key, long byteRangeStart, long byteRangeEnd) throws IOException {
         try {
             GetObjectRequest request = new GetObjectRequest(this.bucketName, key);
-            LOG.info("range start: " + String.valueOf(byteRangeStart) + " range end: " + String.valueOf(byteRangeEnd));
             request.setRange(byteRangeStart, byteRangeEnd);
             COSObject cosObject = (COSObject) this.callCOSClientWithRetry(request);
-            LOG.info("cosObject meta: " + cosObject.getObjectMetadata());
             return cosObject.getObjectContent();
         } catch (CosServiceException e) {
             String errMsg =

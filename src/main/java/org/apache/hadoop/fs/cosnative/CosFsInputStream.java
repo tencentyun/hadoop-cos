@@ -38,6 +38,7 @@ public class CosFsInputStream extends FSInputStream {
             this.start = start;
             this.end = end;
             this.buffer = new byte[(int) (this.end - this.start) + 1];
+            this.status = INIT;
         }
 
         public void lock() {
@@ -217,7 +218,16 @@ public class CosFsInputStream extends FSInputStream {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
         }
 
-        this.position = pos;                      // Next reading position
+        if (this.position == pos) {
+            return;
+        }
+        if (pos > position && pos < this.position + partRemaining) {
+            long len = pos - this.position;
+            this.position = pos;
+            this.partRemaining -= len;
+        } else {
+            this.reopen(pos);
+        }
     }
 
     @Override

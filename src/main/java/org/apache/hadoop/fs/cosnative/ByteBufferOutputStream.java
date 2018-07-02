@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
 public class ByteBufferOutputStream extends OutputStream {
-    static Logger LOG = LoggerFactory.getLogger(ByteBuffer.class);
     private final ByteBuffer byteBuffer;
 
     public ByteBufferOutputStream(ByteBuffer byteBuffer) throws IOException {

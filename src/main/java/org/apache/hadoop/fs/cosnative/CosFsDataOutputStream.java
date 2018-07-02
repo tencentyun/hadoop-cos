@@ -25,7 +25,7 @@ import java.util.Set;
 import java.util.concurrent.*;
 
 public class CosFsDataOutputStream extends OutputStream {
-    static final Logger LOG = LoggerFactory.getLogger(CosFsInputStream.class);
+    static final Logger LOG = LoggerFactory.getLogger(CosFsDataOutputStream.class);
     private final Configuration conf;
     private final NativeFileSystemStore store;
     private MessageDigest digest;
@@ -65,10 +65,10 @@ public class CosFsDataOutputStream extends OutputStream {
         this.currentBlockBuffer = this.getBuffer();
         try {
             this.digest = MessageDigest.getInstance("MD5");
-            this.currentBlockOutputStream = new BufferedOutputStream(new DigestOutputStream(new ByteBufferOutputStream(this.currentBlockBuffer), this.digest));
+            this.currentBlockOutputStream = new DigestOutputStream(new ByteBufferOutputStream(this.currentBlockBuffer), this.digest);
         } catch (NoSuchAlgorithmException e) {
             this.digest = null;
-            this.currentBlockOutputStream = new BufferedOutputStream(new ByteBufferOutputStream(this.currentBlockBuffer));
+            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockBuffer);
         }
     }
 
@@ -96,7 +96,6 @@ public class CosFsDataOutputStream extends OutputStream {
             MappedByteBuffer buffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, this.blockSize);
             bufferPool.add(buffer);
         }
-
         return bufferPool;
     }
 
@@ -158,7 +157,7 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.closed) {
             return;
         }
-
+        this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
         LOG.info("output stream has been close. begin to upload last block: " + String.valueOf(this.currentBlockId));
         if (!this.blockCacheBuffers.contains(this.currentBlockBuffer)) {
@@ -168,11 +167,11 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.blockCacheBuffers.size() == 1) {
             // 单个文件就可以上传完成
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-            store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockBuffer), md5Hash);
+            store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockBuffer), md5Hash, this.currentBlockBuffer.remaining());
         } else {
             if (this.blockWritten > 0) {
                 // 上传最后一片
-                PartETag partETag = store.uploadPart(new ByteBufferInputStream(currentBlockBuffer), key, uploadId, currentBlockId + 1,currentBlockBuffer.remaining());
+                PartETag partETag = store.uploadPart(new ByteBufferInputStream(currentBlockBuffer), key, uploadId, currentBlockId + 1, currentBlockBuffer.remaining());
             }
             this.executorService.shutdown();
             final List<PartETag> partETagList = this.waitForFinishPartUploads();
@@ -230,6 +229,7 @@ public class CosFsDataOutputStream extends OutputStream {
         this.currentBlockId++;
         if (null != this.digest) {
             this.digest.reset();
+            LOG.info("");
             this.currentBlockOutputStream = new DigestOutputStream(new ByteBufferOutputStream(this.currentBlockBuffer), this.digest);
         } else {
             this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockBuffer);

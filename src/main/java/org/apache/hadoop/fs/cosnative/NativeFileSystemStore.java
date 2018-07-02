@@ -44,7 +44,7 @@ interface NativeFileSystemStore {
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
-    void storeFile(String key, InputStream inputStream, byte[]md5Hash) throws IOException;
+    void storeFile(String key, InputStream inputStream, byte[]md5Hash, long contentLength) throws IOException;
 
     void storeEmptyFile(String key) throws IOException;
 
