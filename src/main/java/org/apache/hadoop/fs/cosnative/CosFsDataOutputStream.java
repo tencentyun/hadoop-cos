@@ -167,6 +167,7 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.blockCacheBuffers.size() == 1) {
             // 单个文件就可以上传完成
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
+            LOG.info("store single file ... inputstream: " + System.identityHashCode(this));
             store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockBuffer), md5Hash, this.currentBlockBuffer.remaining());
         } else {
             if (this.blockWritten > 0) {
@@ -229,7 +230,6 @@ public class CosFsDataOutputStream extends OutputStream {
         this.currentBlockId++;
         if (null != this.digest) {
             this.digest.reset();
-            LOG.info("");
             this.currentBlockOutputStream = new DigestOutputStream(new ByteBufferOutputStream(this.currentBlockBuffer), this.digest);
         } else {
             this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockBuffer);
@@ -243,18 +243,14 @@ public class CosFsDataOutputStream extends OutputStream {
 
     @Override
     public void write(int b) throws IOException {
-        byte[] singleBytes = new byte[1];
-        singleBytes[0] = (byte) b;
-        this.write(singleBytes, 0, 1);
-    }
-
-    @Override
-    public synchronized void write(byte[] b, int off, int len) throws IOException {
-        if (this.closed) {
+        if(this.closed){
             throw new IOException("block stream has been closed.");
         }
-        this.currentBlockOutputStream.write(b, off, len);
-        this.blockWritten += len;
+
+        byte[] singleBytes = new byte[1];
+        singleBytes[0] = (byte) b;
+        this.currentBlockOutputStream.write(singleBytes, 0, 1);
+        this.blockWritten += 1;
         if (this.blockWritten >= this.blockSize) {
             this.uploadPart();
             this.blockWritten = 0;

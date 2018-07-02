@@ -136,7 +136,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.debug(debugMsg);
         } catch (Exception e) {
             String errMsg =
-                    String.format("store empty file faild, cos key: %s, exception: %s",
+                    String.format("store empty file failed, cos key: %s, exception: %s",
                             key, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
@@ -151,6 +151,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void storeFile(String key, InputStream inputStream, byte[] md5Hash, long contentLength) throws IOException {
+        LOG.info("store file input stream md5 hash content length");
         storeFileWithRetry(key, inputStream, md5Hash, contentLength);
     }
 
