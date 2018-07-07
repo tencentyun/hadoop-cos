@@ -13,10 +13,11 @@
  * the License.
  */
 
-package org.apache.hadoop.fs.cosnative;
+package org.apache.hadoop.fs;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.InputStream;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,17 +25,7 @@ import java.util.concurrent.*;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.BufferedFSInputStream;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FSExceptionMessages;
-import org.apache.hadoop.fs.FSInputStream;
-import org.apache.hadoop.fs.FileAlreadyExistsException;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.retry.RetryPolicies;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.io.retry.RetryProxy;
@@ -45,18 +36,17 @@ import org.slf4j.LoggerFactory;
 /**
  * A {@link FileSystem} for reading and writing files stored on
  * <a href="https://www.qcloud.com/product/cos.html">Tencent Qcloud Cos</a>. Unlike
- * {@link org.apache.hadoop.fs.cosnative.CosFileSystem} this implementation stores files on COS in their
+ * {@link CosFileSystem} this implementation stores files on COS in their
  * native form so they can be read by other cos tools.
  */
-@InterfaceAudience.Public
+@InterfaceAudience.Private
 @InterfaceStability.Stable
 public class CosFileSystem extends FileSystem {
-
     static final Logger LOG = LoggerFactory.getLogger(CosFileSystem.class);
 
     static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
-    static final int COS_MAX_LISTING_LENGTH = 199;
+    static final int COS_MAX_LISTING_LENGTH = 999;
 
     private URI uri;
     private NativeFileSystemStore store;
@@ -65,7 +55,6 @@ public class CosFileSystem extends FileSystem {
     private String group = "Unknown";
 
     public CosFileSystem() {
-        // set store in initialize()
     }
 
     public CosFileSystem(NativeFileSystemStore store) {
@@ -84,35 +73,33 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
-        LOG.debug("cos natvie filesystem");
-        LOG.debug("uri:" + uri);
         super.initialize(uri, conf);
-        if (store == null) {
-            store = createDefaultStore(conf);
+        if (this.store == null) {
+            this.store = createDefaultStore(conf);
         }
-        LOG.debug("createDefaultStrore over");
-        store.initialize(uri, conf);
-        LOG.debug("store initialize uri conf over");
+        this.store.initialize(uri, conf);
         setConf(conf);
         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
         this.workingDir = new Path("/user", System.getProperty("user.name")).makeQualified(this.uri,
                 this.getWorkingDirectory());
-        LOG.debug("workingDir:" + this.workingDir);
         this.owner = getOwnerId();
         this.group = getGroupId();
         LOG.debug("owner:" + owner + ", group:" + group);
+        BufferPool.getInstance().initialize(getConf());
     }
 
     private static NativeFileSystemStore createDefaultStore(Configuration conf) {
         NativeFileSystemStore store = new CosNativeFileSystemStore();
-
         RetryPolicy basePolicy = RetryPolicies.retryUpToMaximumCountWithFixedSleep(
-                conf.getInt("fs.cosn.maxRetries", 4), conf.getLong("fs.cosn.sleepTimeSeconds", 10),
+                conf.getInt(CosNativeFileSystemConfigKeys.COS_MAX_RETRIES,
+                        CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES),
+                conf.getLong(CosNativeFileSystemConfigKeys.COS_RETRY_INTERVAL,
+                        CosNativeFileSystemConfigKeys.DEFAULT_RETRY_INTERVAL),
                 TimeUnit.SECONDS);
         Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap =
                 new HashMap<Class<? extends Exception>, RetryPolicy>();
-        exceptionToPolicyMap.put(IOException.class, basePolicy);
 
+        exceptionToPolicyMap.put(IOException.class, basePolicy);
         RetryPolicy methodPolicy = RetryPolicies.retryByException(RetryPolicies.TRY_ONCE_THEN_FAIL,
                 exceptionToPolicyMap);
         Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String, RetryPolicy>();
@@ -123,17 +110,14 @@ public class CosFileSystem extends FileSystem {
                 methodNameToPolicyMap);
     }
 
-    // 获取ownerID
     private String getOwnerId() {
         return System.getProperty("user.name");
     }
 
-    // 获取groupID
     private String getGroupId() {
         return System.getProperty("user.name");
     }
 
-    // 获取Owner, getOwnerId为true, 则获取ownerID, 否则groupId
     private String getOwnerInfo(boolean getOwnerId) {
         String ownerInfoId = "";
         try {
@@ -146,7 +130,7 @@ public class CosFileSystem extends FileSystem {
             child.waitFor();
 
             // Get the input stream and read from it
-            java.io.InputStream in = child.getInputStream();
+            InputStream in = child.getInputStream();
             StringBuffer strBuffer = new StringBuffer();
             int c;
             while ((c = in.read()) != -1) {
@@ -161,7 +145,6 @@ public class CosFileSystem extends FileSystem {
     }
 
     private static String pathToKey(Path path) {
-
         if (path.toUri().getScheme() != null && path.toUri().getPath().isEmpty()) {
             // allow uris without trailing slash after bucket to refer to root,
             // like cosn://mybucket
@@ -215,7 +198,9 @@ public class CosFileSystem extends FileSystem {
         }
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        return new FSDataOutputStream(new CosFsDataOutputStream(getConf(), store, key, blockSize), statistics);
+        return new FSDataOutputStream(
+                new CosFsDataOutputStream(getConf(), store, key, blockSize),
+                statistics);
     }
 
     @Override
@@ -600,8 +585,7 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public long getDefaultBlockSize() {
-        LOG.debug("getDefaultBlockSize");
-        return getConf().getLong("fs.cosn.block.size", 64 * 1024 * 1024);
+        return getConf().getLong(CosNativeFileSystemConfigKeys.COS_BLOCK_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_BLOCK_SIZE);
     }
 
     /**
@@ -621,5 +605,11 @@ public class CosFileSystem extends FileSystem {
     public String getCanonicalServiceName() {
         // Does not support Token
         return null;
+    }
+
+    @Override
+    public void close() throws IOException {
+        super.close();
+
     }
 }

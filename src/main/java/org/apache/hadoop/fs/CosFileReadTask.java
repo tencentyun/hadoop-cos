@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs.cosnative;
+package org.apache.hadoop.fs;
 
 import org.apache.hadoop.io.IOUtils;
 import org.slf4j.Logger;

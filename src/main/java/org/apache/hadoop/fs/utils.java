@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs.cosnative;
+package org.apache.hadoop.fs;
 
 public class utils {
     public static final String bytesToHexString(byte[] bArray) {

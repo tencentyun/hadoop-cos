@@ -1,12 +1,8 @@
-package org.apache.hadoop.fs.cosnative;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+package org.apache.hadoop.fs;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 
 public class ByteBufferOutputStream extends OutputStream {
     private final ByteBuffer byteBuffer;
@@ -30,12 +26,6 @@ public class ByteBufferOutputStream extends OutputStream {
         this.byteBuffer.put(singleBytes, 0, 1);
     }
 
-    @Override
-    public void flush() throws IOException {
-        if (this.byteBuffer instanceof MappedByteBuffer) {
-            ((MappedByteBuffer) this.byteBuffer).force();
-        }
-    }
 
     @Override
     public void close() throws IOException {

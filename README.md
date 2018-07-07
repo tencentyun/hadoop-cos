@@ -55,20 +55,20 @@ done
 ```
 <configuration>
     <property>
-        <name>hadoop.tmp.dir</name>
-        <value>/data/rabbitliu/work/hadoop/hadoop_test</value>
+        <name>fs.defaultFS</name>
+        <value>cosn://<bucket-appid></value>
     </property>
     <property>
-        <name>fs.defaultFS</name>
-        <value>hdfs://localhost:9000</value>
+        <name>hadoop.tmp.dir</name>
+        <value>${HADOOP_PATH}/tmp</value>
     </property>
     <property> 
         <name>dfs.name.dir</name>           
-        <value>/data/rabbitliu/work/hadoop/hadoop_test/name</value> 
+        <value>${HADOOP_PATH}/name</value>
     </property>
     <property> 
         <name>fs.cosn.userinfo.secretId</name>           
-        <value>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</value> 
+        <value>xxxxxxxxxxxxxxxxxxxxxxxxx</value>
     </property>
     <property> 
         <name>fs.cosn.userinfo.secretKey</name>           
@@ -76,11 +76,15 @@ done
     </property>
     <property>
         <name>fs.cosn.impl</name>
-        <value>org.apache.hadoop.fs.cosnative.CosFileSystem</value>
+        <value>org.apache.hadoop.fs.CosFileSystem</value>
+    </property>
+    <property>
+        <name>fs.AbstractFileSystem.cosn.impl</name>
+        <value>org.apache.hadoop.fs.CosN</value>
     </property>
     <property>
         <name>fs.cosn.buffer.dir</name>
-        <value>/data/rabbitliu/work/hadoop/hadoop_test/cos_buf</value>
+        <value>${HADOOP_PATH}/cos_buf</value>
     </property>
     <property>
         <name>fs.cosn.userinfo.region</name>
@@ -92,7 +96,7 @@ done
 > <font color="#0000cc">**注意：** </font>
 配置文件中含有 COS 的几个属性：
 - fs.cosn.userinfo.secretId/secretKey 属性：填写您账户的API 密钥信息。可通过 [云 API 密钥 控制台](https://console.cloud.tencent.com/capi) 查看。
-- fs.cosn.impl 为 cosn 的实现类，固定为 org.apache.hadoop.fs.cosnative.CosFileSystem。
+- fs.cosn.impl 为 cosn 的实现类，固定为 CosFileSystem。
 - fs.cosn.buffer.dir 请设置一个实际存在的目录，运行过程中产生的临时文件会暂时放于此处。
 - fs.cosn.userinfo.region 请填写您的地域信息，枚举值为 [历史版本地域列表](https://cloud.tencent.com/document/product/436/7777) 中的地域简称，如 sh, gz, sgp 等。
 

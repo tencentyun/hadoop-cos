@@ -1,10 +1,7 @@
-package org.apache.hadoop.fs.cosnative;
+package org.apache.hadoop.fs;
 
 import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSExceptionMessages;
-import org.apache.hadoop.fs.FSInputStream;
-import org.apache.hadoop.fs.FileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,12 +106,18 @@ public class CosFsInputStream extends FSInputStream {
         this.statistics = statistics;
         this.key = key;
         this.fileSize = fileSize;
-        this.PreReadPartSize = conf.getLong(CosNativeFileSystemConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
-        this.maxReadPartNumber = conf.getInt(CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE, CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
+        this.PreReadPartSize = conf.getLong(
+                CosNativeFileSystemConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
+        this.maxReadPartNumber = conf.getInt(
+                CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
+                CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
         this.closed = false;
         this.readAheadExecutorService = MoreExecutors.listeningDecorator(
                 Executors.newFixedThreadPool(
-                        conf.getInt(CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE
+                        conf.getInt(
+                                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
+                                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE
                         )
                 )
         );

@@ -1,7 +1,4 @@
-package org.apache.hadoop.fs.cosnative;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+package org.apache.hadoop.fs;
 
 import java.io.IOException;
 import java.io.InputStream;
