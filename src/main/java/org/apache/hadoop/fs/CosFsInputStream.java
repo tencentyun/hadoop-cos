@@ -180,7 +180,7 @@ public class CosFsInputStream extends FSInputStream {
             if (readBuffer.getBuffer().length == 0) {
                 readBuffer.setStatus(ReadBuffer.SUCCESS);
             } else {
-                this.readAheadExecutorService.execute(new CosFileReadTask(this.key, this.store, readBuffer));
+                this.readAheadExecutorService.execute(new CosFileReadTask(this.conf, this.key, this.store, readBuffer));
             }
 
             this.readBufferQueue.add(readBuffer);
