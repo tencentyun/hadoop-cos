@@ -46,13 +46,10 @@ import static org.apache.hadoop.fs.CosFileSystem.PATH_DELIMITER;
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 class CosNativeFileSystemStore implements NativeFileSystemStore {
-
-    public static final String USER_AGENT = "cos-hadoop-plugin-v5.2";
-
     private COSClient cosClient;
     private TransferManager transferManager;
     private String bucketName;
-    final private int MAX_RETRY_TIME = 5;
+    private int maxRetryTimes;
 
     public static final Logger LOG = LoggerFactory.getLogger(CosNativeFileSystemStore.class);
 
@@ -79,7 +76,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             cosCred = new BasicCOSCredentials(appidStr, secretId, secretKey);
         }
 
-        boolean useHttps = conf.getBoolean(CosNativeFileSystemConfigKeys.COS_USE_HTTPS_KEY, CosNativeFileSystemConfigKeys.DEFAULT_USE_HTTPS);
+        boolean useHttps = conf.getBoolean(
+                CosNativeFileSystemConfigKeys.COS_USE_HTTPS_KEY, CosNativeFileSystemConfigKeys.DEFAULT_USE_HTTPS);
 
         ClientConfig config = null;
         if (null == region) {
@@ -92,14 +90,23 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
         config.setEndPointSuffix(endpoint_suffix);
 
-        config.setUserAgent(USER_AGENT);
+        config.setUserAgent(conf.get(
+                CosNativeFileSystemConfigKeys.USER_AGENT,
+                CosNativeFileSystemConfigKeys.DEFAULT_USER_AGENT));
+
+        this.maxRetryTimes = conf.getInt(
+                CosNativeFileSystemConfigKeys.COS_MAX_RETRIES_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES);
+
         this.cosClient = new COSClient(cosCred, config);
     }
 
     private void initTransferManager(Configuration conf) throws IOException {
         int threadCount = 0;
         try {
-            threadCount = conf.getInt(CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY, CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE);
+            threadCount = conf.getInt(
+                    CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
+                    CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE);
         } catch (NumberFormatException e) {
             throw new IOException("fs.cosn.userinfo.upload_thread_pool value is invalid number");
         }
@@ -125,7 +132,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
             objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
-            LOG.info("md5: "+ utils.bytesToHexString(md5Hash) + " content_length: " + length);
             objectMetadata.setContentLength(length);
             PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName, key, inputStream, objectMetadata);
 
@@ -588,12 +594,12 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 }
             } catch (CosServiceException cse) {
                 String errMsg = String.format(
-                        "------------------------call cos sdk failed, retryIndex: [%d / %d], call method: %s, exception: %s",
-                        retryIndex, MAX_RETRY_TIME, sdkMethod, cse.toString());
+                        "-----------call cos sdk failed, retryIndex: [%d / %d], call method: %s, exception: %s",
+                        retryIndex, this.maxRetryTimes, sdkMethod, cse.toString());
                 int stattusCode = cse.getStatusCode();
                 // 对5xx错误进行重试
                 if (stattusCode / 100 == 5) {
-                    if (retryIndex <= MAX_RETRY_TIME) {
+                    if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;

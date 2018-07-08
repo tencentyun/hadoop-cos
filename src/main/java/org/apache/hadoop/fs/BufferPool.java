@@ -45,11 +45,11 @@ public class BufferPool {
                 CosNativeFileSystemConfigKeys.COS_BLOCK_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_BLOCK_SIZE);
         this.memorySizeLimit = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MEMORY_BUFFER_SIZE,
+                CosNativeFileSystemConfigKeys.COS_MEMORY_BUFFER_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_MEMORY_BUFFER_SIZE);
 
         this.mappedSizeLimit = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MAPPED_BUFFER_SIZE,
+                CosNativeFileSystemConfigKeys.COS_MAPPED_BUFFER_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_MAPPED_BUFFER_SIZE);
         if (this.mappedSizeLimit < 0 || this.mappedSizeLimit == Integer.MAX_VALUE) {
             LOG.warn("The size of the mapped buffer is limited as 1MB to 2GB (not include).");
@@ -61,11 +61,11 @@ public class BufferPool {
                 CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR);
 
         int memoryBufferNumber = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MEMORY_BUFFER_POOL_SIZE,
+                CosNativeFileSystemConfigKeys.COS_MEMORY_BUFFER_POOL_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_MEMORY_BUFFER_POOL_SIZE
         );
         int mappedBufferNumber = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MAPPED_BUFFER_POOL_SIZE,
+                CosNativeFileSystemConfigKeys.COS_MAPPED_BUFFER_POOL_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_MAPPED_BUFFER_POOL_SIZE
         );
         this.ByteBufferPool = new LinkedBlockingQueue<>(memoryBufferNumber);

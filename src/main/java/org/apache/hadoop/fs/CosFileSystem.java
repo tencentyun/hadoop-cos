@@ -91,9 +91,9 @@ public class CosFileSystem extends FileSystem {
     private static NativeFileSystemStore createDefaultStore(Configuration conf) {
         NativeFileSystemStore store = new CosNativeFileSystemStore();
         RetryPolicy basePolicy = RetryPolicies.retryUpToMaximumCountWithFixedSleep(
-                conf.getInt(CosNativeFileSystemConfigKeys.COS_MAX_RETRIES,
+                conf.getInt(CosNativeFileSystemConfigKeys.COS_MAX_RETRIES_KEY,
                         CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES),
-                conf.getLong(CosNativeFileSystemConfigKeys.COS_RETRY_INTERVAL,
+                conf.getLong(CosNativeFileSystemConfigKeys.COS_RETRY_INTERVAL_KEY,
                         CosNativeFileSystemConfigKeys.DEFAULT_RETRY_INTERVAL),
                 TimeUnit.SECONDS);
         Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap =
