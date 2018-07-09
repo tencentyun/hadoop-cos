@@ -111,7 +111,11 @@ public class CosFsDataOutputStream extends OutputStream {
             }
             store.completeMultipartUpload(this.key, this.uploadId, partETagList);
         }
-        BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
+        try {
+            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
+        } catch (InterruptedException e) {
+            LOG.error("Returning the buffer to BufferPool occurs an exception.", e);
+        }
         LOG.info("OutputStream for key '{}' upload complete", key);
         this.blockWritten = 0;
         this.closed = true;
@@ -143,7 +147,7 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.currentBlockId == 0) {
             uploadId = (store).getUploadId(key);
         }
-        LOG.info("upload part: " + (this.currentBlockId + 1) + " writtenSize: " + this.blockWritten);
+
         ListenableFuture<PartETag> partETagListenableFuture = this.executorService.submit(new Callable<PartETag>() {
             private final ByteBuffer buf = currentBlockBuffer;
             private final String localKey = key;

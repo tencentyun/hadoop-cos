@@ -26,12 +26,25 @@ public class BufferPool {
         return ourInstance;
     }
 
-    private BlockingQueue<ByteBuffer> ByteBufferPool = null;
-    private BlockingQueue<ByteBuffer> mappedBufferPool = null;
+    enum BufferType {
+        MEMORY("Memory"), DISK("Disk");
+
+        private final String str;
+
+        BufferType(String str) {
+            this.str = str;
+        }
+
+        public String getStr() {
+            return str;
+        }
+    }
+
+    private BlockingQueue<ByteBuffer> bufferPool = null;
+    private BufferType type = null;
+    private int singleBufferSize = 0;
     private String diskBufferDir = null;
 
-    private int memorySizeLimit = 0;
-    private int mappedSizeLimit = 0;
     private AtomicBoolean isInitialize = new AtomicBoolean(false);
 
     private BufferPool() {
@@ -41,56 +54,55 @@ public class BufferPool {
         if (this.isInitialize.get()) {
             return;
         }
-        int blockSize = conf.getInt(
+        this.singleBufferSize = conf.getInt(
                 CosNativeFileSystemConfigKeys.COS_BLOCK_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_BLOCK_SIZE);
-        this.memorySizeLimit = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MEMORY_BUFFER_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_MEMORY_BUFFER_SIZE);
 
-        this.mappedSizeLimit = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MAPPED_BUFFER_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_MAPPED_BUFFER_SIZE);
-        if (this.mappedSizeLimit < 0 || this.mappedSizeLimit == Integer.MAX_VALUE) {
-            LOG.warn("The size of the mapped buffer is limited as 1MB to 2GB (not include).");
-            this.mappedSizeLimit = CosNativeFileSystemConfigKeys.DEFAULT_MAPPED_BUFFER_SIZE;
+        String strBufferType = conf.get(
+                CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_TYPE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE);
+        if (strBufferType.toLowerCase().compareTo(BufferType.MEMORY.getStr().toLowerCase()) == 0) {
+            this.type = BufferType.MEMORY;
+        }
+        if (strBufferType.toLowerCase().compareTo(BufferType.DISK.getStr().toLowerCase()) == 0) {
+            this.type = BufferType.DISK;
+        }
+        if (null == this.type) {
+            throw new IOException("The BufferType option specified in the configuration file is invalid. "
+                    + "Valid values are: " + "memory" + " or " + "disk");
         }
 
+        int bufferSizeLimit = conf.getInt(
+                CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_SIZE);
         this.diskBufferDir = conf.get(
                 CosNativeFileSystemConfigKeys.COS_BUFFER_DIR_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR);
 
-        int memoryBufferNumber = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MEMORY_BUFFER_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_MEMORY_BUFFER_POOL_SIZE
-        );
-        int mappedBufferNumber = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_MAPPED_BUFFER_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_MAPPED_BUFFER_POOL_SIZE
-        );
-        this.ByteBufferPool = new LinkedBlockingQueue<>(memoryBufferNumber);
-        for (int i = 0; i < memoryBufferNumber; i++) {
-            this.ByteBufferPool.add(ByteBuffer.allocate(this.memorySizeLimit));
+        int bufferPoolSize = bufferSizeLimit / this.singleBufferSize;
+        if (0 == bufferPoolSize) {
+            throw new IOException("The size of the buffer pool is 0." +
+                    "please consider increase the buffer size or decrease the block size.");
         }
-        this.mappedBufferPool = new LinkedBlockingQueue<>(mappedBufferNumber);
-        for (int i = 0; i < mappedBufferNumber; i++) {
-            File tmpFile = File.createTempFile(
-                    Constants.BLOCK_TMP_FILE_PREFIX,
-                    Constants.BLOCK_TMP_FILE_SUFFIX,
-                    new File(this.diskBufferDir)
-            );
-            tmpFile.deleteOnExit();
-            RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
-            raf.setLength(this.mappedSizeLimit);
-            MappedByteBuffer buf = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, this.mappedSizeLimit);
-            this.mappedBufferPool.add(buf);
+        this.bufferPool = new LinkedBlockingQueue<>(bufferPoolSize);
+        for (int i = 0; i < bufferPoolSize; i++) {
+            if (this.type == BufferType.MEMORY) {
+                this.bufferPool.add(ByteBuffer.allocateDirect(this.singleBufferSize));
+            } else {
+                File tmpFile = File.createTempFile(
+                        Constants.BLOCK_TMP_FILE_PREFIX,
+                        Constants.BLOCK_TMP_FILE_SUFFIX,
+                        new File(this.diskBufferDir)
+                );
+                tmpFile.deleteOnExit();
+                RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
+                raf.setLength(this.singleBufferSize);
+                MappedByteBuffer buf = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, this.singleBufferSize);
+                this.bufferPool.add(buf);
+            }
         }
+
         this.isInitialize.set(true);
-        LOG.info(" memory size limit: " + this.memorySizeLimit
-                + " mapped size limit: " + this.mappedSizeLimit
-                + " disk buffer dir: " + this.diskBufferDir
-                + " memory buffer number: " + memoryBufferNumber
-                + " mapped buffer number: " + mappedBufferNumber);
     }
 
     void checkInitialize() throws IOException {
@@ -101,49 +113,45 @@ public class BufferPool {
 
     public ByteBuffer getBuffer(int bufferSize) throws IOException, InterruptedException {
         this.checkInitialize();
-        if (bufferSize > 0 && bufferSize <= this.memorySizeLimit) {
-            return this.getByteBuffer();
-        } else if (bufferSize > this.memorySizeLimit && bufferSize <= this.mappedSizeLimit) {
-            return this.getMappedBuffer();
+        if (bufferSize > 0 && bufferSize <= this.singleBufferSize) {
+            if (this.type == BufferType.MEMORY) {
+                return this.getByteBuffer();
+            } else {
+                return this.getMappedBuffer();
+            }
         } else {
-            throw new IOException("Parameter buffer size out of range " + this.memorySizeLimit + " to "
-                    + this.mappedSizeLimit);
+            throw new IOException("Parameter buffer size out of range: 1MB " + " to "
+                    + this.singleBufferSize);
         }
     }
 
     ByteBuffer getByteBuffer() throws IOException, InterruptedException {
         this.checkInitialize();
-        return this.ByteBufferPool.poll(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        return this.bufferPool.poll(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
     }
 
     ByteBuffer getMappedBuffer() throws IOException, InterruptedException {
         this.checkInitialize();
-        return this.mappedBufferPool.poll(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        return this.bufferPool.poll(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
     }
 
-    public void returnBuffer(ByteBuffer buffer) {
+    public void returnBuffer(ByteBuffer buffer) throws InterruptedException {
         buffer.clear();
-        if (buffer instanceof MappedByteBuffer) {
-            if (null == this.mappedBufferPool) {
-                return;
-            }
-            this.mappedBufferPool.add(buffer);
+        if (null == this.bufferPool) {
+            return;
+        }
+        if (buffer instanceof ByteBuffer) {
+            this.bufferPool.put(buffer);
         } else {
-            if (null == this.ByteBufferPool) {
-                return;
-            }
-            this.ByteBufferPool.add(buffer);
+            this.bufferPool.put(buffer);
         }
     }
 
     @Override
     protected void finalize() throws Throwable {
         super.finalize();
-        if (null != this.ByteBufferPool) {
-            this.ByteBufferPool.clear();
-        }
-        if (null != this.mappedBufferPool) {
-            for (ByteBuffer buffer : this.mappedBufferPool) {
+        if (this.type == BufferType.DISK) {
+            for (ByteBuffer buffer : this.bufferPool) {
                 if (buffer instanceof MappedByteBuffer) {
                     Method getCleanerMethod = null;
                     try {
@@ -161,5 +169,6 @@ public class BufferPool {
                 }
             }
         }
+        this.bufferPool.clear();
     }
 }

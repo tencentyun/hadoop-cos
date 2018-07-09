@@ -26,7 +26,6 @@ public class ByteBufferOutputStream extends OutputStream {
         this.byteBuffer.put(singleBytes, 0, 1);
     }
 
-
     @Override
     public void close() throws IOException {
         this.flush();

@@ -40,17 +40,14 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String COS_BUFFER_DIR_KEY = "fs.cosn.buffer.dir";
     public static final String DEFAULT_BUFFER_DIR = "/tmp/hadoop_cos";
 
-    public static final String COS_MEMORY_BUFFER_SIZE_KEY = "fs.cosn.buffer.memory.size";
-    public static final int DEFAULT_MEMORY_BUFFER_SIZE = 64 * Unit.MB;
-    public static final String COS_MEMORY_BUFFER_POOL_SIZE_KEY = "fs.cosn.memory.buffer.pool.size";
-    public static final int DEFAULT_MEMORY_BUFFER_POOL_SIZE = 2;
-    public static final String COS_MAPPED_BUFFER_SIZE_KEY = "fs.cosn.buffer.mapped.size";
-    public static final int DEFAULT_MAPPED_BUFFER_SIZE = 1 * Unit.GB;
-    public static final String COS_MAPPED_BUFFER_POOL_SIZE_KEY = "fs.cosn.mapped.buffer.pool.size";
-    public static final int DEFAULT_MAPPED_BUFFER_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;
+
+    public static final String COS_UPLOAD_BUFFER_TYPE_KEY = "fs.cosn.upload.buffer";
+    public static final String DEFAULT_UPLOAD_BUFFER_TYPE = "memory";
+    public static final String COS_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
+    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 128 * Unit.MB;
 
     public static final String COS_BLOCK_SIZE_KEY = "fs.cosn.block.size";
-    public static final int DEFAULT_BLOCK_SIZE = 64 * Unit.MB;
+    public static final int DEFAULT_BLOCK_SIZE = 8 * Unit.MB;
 
     public static final String COS_MAX_RETRIES_KEY = "fs.cosn.maxRetries";
     public static final int DEFAULT_MAX_RETRIES = 3;
