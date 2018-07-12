@@ -61,15 +61,15 @@ public class BufferPool {
         String strBufferType = conf.get(
                 CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_TYPE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE);
-        if (strBufferType.toLowerCase().compareTo(BufferType.MEMORY.getStr().toLowerCase()) == 0) {
+        if (strBufferType.equalsIgnoreCase(BufferType.MEMORY.getStr())) {
             this.type = BufferType.MEMORY;
         }
-        if (strBufferType.toLowerCase().compareTo(BufferType.DISK.getStr().toLowerCase()) == 0) {
+        if (strBufferType.equalsIgnoreCase(BufferType.DISK.getStr())) {
             this.type = BufferType.DISK;
         }
         if (null == this.type) {
             throw new IOException("The BufferType option specified in the configuration file is invalid. "
-                    + "Valid values are: " + "memory" + " or " + "disk");
+                    + "Valid values are: memory or disk");
         }
 
         int bufferSizeLimit = conf.getInt(
@@ -81,8 +81,10 @@ public class BufferPool {
 
         int bufferPoolSize = bufferSizeLimit / this.singleBufferSize;
         if (0 == bufferPoolSize) {
-            throw new IOException("The size of the buffer pool is 0." +
-                    "please consider increase the buffer size or decrease the block size.");
+            throw new IOException(
+                    String.format("The total size of the buffer[%d] is smaller than a single block [%d]."
+                                    + "please consider increase the buffer size or decrease the block size",
+                            bufferSizeLimit, this.singleBufferSize));
         }
         this.bufferPool = new LinkedBlockingQueue<>(bufferPoolSize);
         for (int i = 0; i < bufferPoolSize; i++) {

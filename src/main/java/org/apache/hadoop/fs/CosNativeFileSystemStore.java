@@ -66,7 +66,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         String region = conf.get(CosNativeFileSystemConfigKeys.COS_REGION_KEY);
         String endpoint_suffix = conf.get(CosNativeFileSystemConfigKeys.COS_ENDPOINT_SUFFIX_KEY);
         if (null == region && null == endpoint_suffix) {
-            throw new IOException("config fs.cosn.userinfo.region and fs.cosn.userinfo.endpoint_suffix specify at least one");
+            throw new IOException("config fs.cosn.userinfo.region "
+                    + "and fs.cosn.userinfo.endpoint_suffix specify at least one");
         }
 
         COSCredentials cosCred = null;
@@ -137,12 +138,12 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
             PutObjectResult putObjectResult =
                     (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
-            String debugMsg = String.format("store empty file success, cos key: %s, etag: %s", key,
+            String debugMsg = String.format("store file success, cos key: %s, etag: %s", key,
                     putObjectResult.getETag());
             LOG.debug(debugMsg);
         } catch (Exception e) {
             String errMsg =
-                    String.format("store empty file failed, cos key: %s, exception: %s",
+                    String.format("store file failed, cos key: %s, exception: %s",
                             key, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
@@ -193,7 +194,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     @Override
-    public PartETag uploadPart(InputStream inputStream, String key, String uploadId, int partNum, long partSize) throws IOException {
+    public PartETag uploadPart(
+            InputStream inputStream,
+            String key, String uploadId, int partNum, long partSize) throws IOException {
         UploadPartRequest uploadPartRequest = new UploadPartRequest();
         uploadPartRequest.setBucketName(this.bucketName);
         uploadPartRequest.setUploadId(uploadId);
@@ -206,7 +209,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             UploadPartResult uploadPartResult = (UploadPartResult) callCOSClientWithRetry(uploadPartRequest);
             return uploadPartResult.getPartETag();
         } catch (Exception e) {
-            String errMsg = String.format("current thread:%d, cos key: %s, upload id: %s, part num: %d, exception: %s", Thread.currentThread().getId(), key, uploadId, partNum, e.toString());
+            String errMsg = String.format("current thread:%d, "
+                            + "cos key: %s, upload id: %s, part num: %d, exception: %s",
+                    Thread.currentThread().getId(), key, uploadId, partNum, e.toString());
             handleException(new Exception(errMsg), key);
         }
 
@@ -225,19 +230,23 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             return "";
         }
 
-        InitiateMultipartUploadRequest initiateMultipartUploadRequest = new InitiateMultipartUploadRequest(bucketName, key);
-        InitiateMultipartUploadResult initiateMultipartUploadResult = cosClient.initiateMultipartUpload(initiateMultipartUploadRequest);           // This code does not need to support retry
+        InitiateMultipartUploadRequest initiateMultipartUploadRequest =
+                new InitiateMultipartUploadRequest(bucketName, key);
+        InitiateMultipartUploadResult initiateMultipartUploadResult =
+                cosClient.initiateMultipartUpload(initiateMultipartUploadRequest);           // This code does not need to support retry
         return initiateMultipartUploadResult.getUploadId();
     }
 
-    public CompleteMultipartUploadResult completeMultipartUpload(String key, String uploadId, List<PartETag> partETagList) {
+    public CompleteMultipartUploadResult completeMultipartUpload(
+            String key, String uploadId, List<PartETag> partETagList) {
         Collections.sort(partETagList, new Comparator<PartETag>() {
             @Override
             public int compare(PartETag o1, PartETag o2) {
                 return o1.getPartNumber() - o2.getPartNumber();
             }
         });
-        CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest(bucketName, key, uploadId, partETagList);
+        CompleteMultipartUploadRequest completeMultipartUploadRequest =
+                new CompleteMultipartUploadRequest(bucketName, key, uploadId, partETagList);
         return cosClient.completeMultipartUpload(completeMultipartUploadRequest);
     }
 
@@ -567,6 +576,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     return this.cosClient.putObject((PutObjectRequest) request);
                 } else if (request instanceof UploadPartRequest) {
                     sdkMethod = "uploadPart";
+                    if(((UploadPartRequest) request).getInputStream() instanceof ByteBufferInputStream){
+                        ((UploadPartRequest)request).getInputStream().mark((int) ((UploadPartRequest) request).getPartSize());
+                    }
                     return this.cosClient.uploadPart((UploadPartRequest) request);
                 } else if (request instanceof GetObjectMetadataRequest) {
                     sdkMethod = "queryObjectMeta";
@@ -604,6 +616,12 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
+                            if(request instanceof UploadPartRequest){
+                                LOG.info("upload part request input stream retry reset.....");
+                                if(((UploadPartRequest) request).getInputStream() instanceof ByteBufferInputStream){
+                                    ((UploadPartRequest) request).getInputStream().reset();
+                                }
+                            }
                             Thread.sleep(
                                     ThreadLocalRandom.current().nextLong(sleepLeast, sleepBound));
                             ++retryIndex;

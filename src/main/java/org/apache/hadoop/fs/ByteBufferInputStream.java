@@ -3,15 +3,18 @@ package org.apache.hadoop.fs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.InvalidMarkException;
 
 public class ByteBufferInputStream extends InputStream {
-    private final ByteBuffer byteBuffer;
+    private ByteBuffer byteBuffer;
+    private boolean isClosed = true;
 
     public ByteBufferInputStream(ByteBuffer byteBuffer) throws IOException {
         if (null == byteBuffer) {
             throw new IOException("byte buffer is null");
         }
         this.byteBuffer = byteBuffer;
+        this.isClosed = false;
     }
 
     public ByteBufferInputStream(byte[] buffer) throws IOException {
@@ -29,8 +32,42 @@ public class ByteBufferInputStream extends InputStream {
         return this.byteBuffer.get() & 0xFF;
     }
 
+
+    @Override
+    public synchronized void mark(int readLimit) {
+        if (!this.markSupported()) {
+            return;
+        }
+        this.byteBuffer.mark();
+        // Parameter readLimit is ignored
+    }
+
+    @Override
+    public boolean markSupported() {
+        return true;
+    }
+
+    @Override
+    public synchronized void reset() throws IOException {
+        if (this.isClosed) {
+            throw new IOException("Closed in InputStream");
+        }
+        try {
+            this.byteBuffer.reset();
+        } catch (InvalidMarkException e) {
+            throw new IOException("Invalid mark");
+        }
+    }
+
+    @Override
+    public int available() throws IOException {
+        return this.byteBuffer.remaining();
+    }
+
     @Override
     public void close() throws IOException {
-        this.byteBuffer.rewind();               // 可重复读取的流
+        this.byteBuffer.rewind();
+        this.byteBuffer = null;
+        this.isClosed = true;
     }
 }

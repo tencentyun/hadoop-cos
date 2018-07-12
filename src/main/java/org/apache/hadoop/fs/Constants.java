@@ -9,4 +9,5 @@ public final class Constants {
     public static final int MAX_PART_NUM = 10000;                                   // Maximum number of blocks uploaded in chunks
     public static final long MAX_PART_SIZE = 5 * Unit.GB;                           // The maximum size of a single block
     public static final long MIN_PART_SIZE = 1 * Unit.MB;                           // The minimum size of a single block
+    public static final int MAX_BUFFER_SIZE = Integer.MAX_VALUE - 8;
 }

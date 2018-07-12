@@ -94,7 +94,6 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.blockCacheBuffers.size() == 1) {
             // 单个文件就可以上传完成
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-            LOG.info("store single file ... input stream: " + System.identityHashCode(this));
             store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockBuffer), md5Hash, this.currentBlockBuffer.remaining());
         } else {
             PartETag partETag = null;
