@@ -79,6 +79,7 @@ public class CosFileReadTask implements Runnable {
                                 String.valueOf(this.readBuffer.getStart()),
                                 String.valueOf(this.readBuffer.getEnd()));
                         LOG.error(errMsg, e1);
+                        break;
                     }
                 }
             } while (null != retryAction && retryAction.action == RetryPolicy.RetryAction.RetryDecision.RETRY);
