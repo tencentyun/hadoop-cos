@@ -1,5 +1,5 @@
 ## 功能说明
-Hadoop cosn 插件实现了以腾讯云 COS 作为底层存储文件系统运行上层计算任务的功能，使用 Hadoop 大数据处理引擎，如 MapReduce，Hive、Spark、Tez 等，可以处理存储在腾讯云对象存储 COS 上的数据。  
+Hadoop cosn 插件实现了以腾讯云 COS 作为底层存储文件系统运行上层计算任务的功能，使用 Hadoop 大数据处理引擎，如 MapReduce，Hive、Spark、Tez 等，可以处理存储在腾讯云对象存储 COS 上的数据。
 
 ## 使用限制
 只适用于 COS V5 版本
@@ -9,37 +9,17 @@ Hadoop cosn 插件实现了以腾讯云 COS 作为底层存储文件系统运行
 Linux 或 Windows 系统
 
 ### 软件依赖
-Hadoop-2.7.2 及以上版本
-#### 安装及配置
-具体 Hadoop 安装与配置 请参考 [Hadoop 安装与测试](/doc/product/436/10867)。
-## 使用方法
-### 安装 Maven
-- **Linux ：**
-```
-sudo apt-get install maven
-```
-- **Windows：**
-下载链接：[Maven](http://maven.apache.org/download.html)
-安装与配置请参考：[Windows 环境下 Maven 安装与环境变量配置](http://www.cnblogs.com/liuhongfeng/p/5057827.html) 
+Hadoop-2.7.2及以上版本
 
-### 获取 cos-java-sdk
-下载地址：[cos-java-sdk](https://github.com/tencentyun/cos-java-sdk-v5-hadoop)
-
-进入存放路径，运行以下命令进行编译，获取 target 目录下的cos_hadoop_api-5.2.5.jar：
-```
-mvn clean package -Dmaven.test.skip=true
-```
 ### 获取 hadoop-cos 插件
 下载地址：[hadoop-cos 插件](https://github.com/tencentyun/hadoop-cosn-v5)
 
-因为 cosn 依赖 SDK，请将上一步编译的 cos_hadoop_api-5.2.5.jar 拷贝到 `src/main/resources` 下，然后运行以下命令进行编译，获取 target 目录下的 hadoop-cos-2.7.2.jar：
-```
-mvn clean package -Dmaven.test.skip=true
-```
+
 ### 插件安装方法
 #### 修改 hadoop_env.sh
 在 `$HADOOP_HOME/etc/hadoop`目录下，进入 hadoop_env.sh，增加如下内容，将 cosn 相关 jar 包加入 Hadoop 环境变量：
-```
+
+```shell
 for f in $HADOOP_HOME/share/hadoop/tools/lib/*.jar; do
   if [ "$HADOOP_CLASSPATH" ]; then
     export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:$f
@@ -48,53 +28,118 @@ for f in $HADOOP_HOME/share/hadoop/tools/lib/*.jar; do
   fi
 done
 ```
-将获取的 cos_hadoop_api-5.2.5.jar 和 hadoop-cos-2.7.2.jar 拷贝到 `$HADOOP_HOME/share/hadoop/tools/lib`下。
+将dep目录下的cos_hadoop_api-5.2.5.jar 和 hadoop-cos-2.7.2.jar 拷贝到 `$HADOOP_HOME/share/hadoop/tools/lib`下。
 
 #### 修改配置文件使用插件
 修改 $HADOOP_HOME/etc/hadoop/core-site.xml，增加 COS 相关用户和实现类信息，例如：
-```
+
+```xml
 <configuration>
-    <property>
-        <name>hadoop.tmp.dir</name>
-        <value>/data/rabbitliu/work/hadoop/hadoop_test</value>
-    </property>
+
     <property>
         <name>fs.defaultFS</name>
-        <value>hdfs://localhost:9000</value>
+        <value>cosn://<bucket-appid></value>
     </property>
-    <property> 
-        <name>dfs.name.dir</name>           
-        <value>/data/rabbitliu/work/hadoop/hadoop_test/name</value> 
-    </property>
-    <property> 
-        <name>fs.cosn.userinfo.secretId</name>           
-        <value>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</value> 
-    </property>
-    <property> 
-        <name>fs.cosn.userinfo.secretKey</name>           
-        <value>xxxxxxxxxxxxxxxxxxxxxxxx</value> 
-    </property>
+
     <property>
-        <name>fs.cosn.impl</name>
-        <value>org.apache.hadoop.fs.cosnative.NativeCosFileSystem</value>
+        <name>hadoop.tmp.dir</name>
+        <value>${HADOOP_PATH}/tmp</value>
     </property>
+
     <property>
-        <name>fs.cosn.buffer.dir</name>
-        <value>/data/rabbitliu/work/hadoop/hadoop_test/cos_buf</value>
+        <name>dfs.name.dir</name>
+        <value>${HADOOP_PATH}/name</value>
     </property>
+
+    <property>
+        <name>fs.cosn.userinfo.secretId</name>
+        <value>xxxxxxxxxxxxxxxxxxxxxxxxx</value>
+        <description>Tencent COS Secret Id </description>
+    </property>
+
+    <property>
+        <name>fs.cosn.userinfo.secretKey</name>
+        <value>xxxxxxxxxxxxxxxxxxxxxxxx</value>
+        <description>Tencent COS Secret Key</description>
+    </property>
+
     <property>
         <name>fs.cosn.userinfo.region</name>
         <value>ap-guangzhou</value>
+        <description>The region where the bucket is located</description>
     </property>
+
+    <property>
+        <name>fs.cosn.impl</name>
+        <value>org.apache.hadoop.fs.CosFileSystem</value>
+        <description>The implementation class of the CosN Filesystem</description>
+    </property>
+
+    <property>
+        <name>fs.AbstractFileSystem.cosn.impl</name>
+        <value>org.apache.hadoop.fs.CosN</value>
+        <description>The implementation class of the CosN AbstractFileSystem.</description>
+    </property>
+
+    <property>
+        <name>fs.cosn.buffer.dir</name>
+        <value>${hadoop.tmp.dir}/cos</value>
+        <description>The local path where the cosn filesystem should store files before write to cos.</description>
+    </property>
+
+    <property>
+    	<name>fs.cosn.upload.buffer</name>
+        <value>disk</value>
+        <description>
+        	There are two options to choose from:
+            "disk": Use some temporary files as buffer pool, and use the memory mapping technology to obtain a memory access speed for buffer IO approximately.
+            "memory": Use some direct byte buffers as buffer pool, and obtain a memory access speed for buffer IO.
+            Default is disk mode.
+        </description>
+    </property>
+
+    <property>
+    	<name>fs.cosn.upload.buffer.size</name>
+        <value>134217728</value>
+        <description>The total size of the buffer pool</description>
+    </property>
+
+    <property>
+    	<name>fs.cosn.block.size</name>
+        <value>8388608</value>
+        <description>Block size to use cosn filesysten, which is the part size for MultipartUpload. Considering the COS supports up to 10000 blocks, user should estimate the maximum size of a single file. for example, 8MB part size can allow  writing a 78GB single file.</description>
+    </property>
+
+    <property>
+    	<name>fs.cosn.maxRetries</name>
+        <value>3</value>
+        <description>The maximum number of retries for reading or writing files to
+    COS, before we signal failure to the application.</description>
+    </property>
+
+    <property>
+    	<name>fs.cosn.retry.interval.seconds</name>
+        <value>10</value>
+        <description>The number of seconds to sleep between each COS retry.</description>
+    </property>
+
 </configuration>
+
 ```
 
-> <font color="#0000cc">**注意：** </font>
-配置文件中含有 COS 的几个属性：
-- fs.cosn.userinfo.secretId/secretKey 属性：填写您账户的API 密钥信息。可通过 [云 API 密钥 控制台](https://console.cloud.tencent.com/capi) 查看。
-- fs.cosn.impl 为 cosn 的实现类，固定为 org.apache.hadoop.fs.cosnative.NativeCosFileSystem。
-- fs.cosn.buffer.dir 请设置一个实际存在的目录，运行过程中产生的临时文件会暂时放于此处。
-- fs.cosn.userinfo.region 请填写您的地域信息，枚举值为 [历史版本地域列表](https://cloud.tencent.com/document/product/436/7777) 中的地域简称，如 sh, gz, sgp 等。
+**配置项说明**：
+
+- fs.cosn.userinfo.secretId/secretKey 属性：填写您账户的API 密钥信息。可通过 [云 API 密钥 控制台](https://console.cloud.tencent.com/capi) 查看；
+- fs.cosn.impl 为 cosn 的实现类，固定为 org.apache.hadoop.fs.CosFileSystem；
+- fs.AbstractFileSystem.cosn.impl为CosN对AbstractFileSystem的实现类，固定为org.apache.hadoop.fs.CosN；
+- fs.cosn.userinfo.region 请填写您的地域信息，枚举值为 [可用地域](https://cloud.tencent.com/document/product/436/6224) 中的地域简称，如	ap-beijing、ap-guangzhou 等。
+- fs.cosn.buffer.dir 请设置一个实际存在的目录，运行过程中产生的临时文件会暂时放于此处；
+- fs.cosn.upload.buffer为流式上传时，使用的缓冲区类型。当前支持两种缓冲区类型：disk和memory，其中disk将会在fs.cosn.buffer.dir选项指定的文件系统目录中生成若干个文件临时文件，并使用内存映射技术将其包装为上传缓冲池。请根据机器的磁盘和内存大小，合理选择缓冲池的形式；
+- fs.cosn.upload.buffer.size 向COS上传文件时，本地使用的缓冲区的总大小；
+- fs.cosn.block.size CosN文件系统每个block的大小，也是分块上传的每个part size的大小。由于COS的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，block size为8MB时，最大能够支持78GB的单文件上传。 block size最大可以支持到2GB，即单文件最大可支持19TB；
+- fs.cosn.upload_thread_pool 文件流式上传到COS时，并发上传的线程数目；
+- fs.cosn.maxRetries 访问COS出现错误时，最多重试的次数；
+- fs.cosn.retry.interval.seconds 每次重试的时间间隔
 
 ### 使用软件（以 Linux 为例）
 #### 使用 hadoop fs 常用命令
@@ -114,7 +159,7 @@ drwxrwxrwx   - root root          0 1970-01-01 00:00 cosn://hdfs-test-1252681929
 > <font color="#0000cc">**注意：** </font>
 以下命令中 hadoop-mapreduce-examples-2.7.2.jar 是以 2.7.2 版本为例，如版本不同，请修改成对应的版本号。
 
-```
+```shell
 bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.7.2.jar wordcount cosn://example/mr/input cosn://example/mr/output3
 ```
 执行成功会返回统计信息，示例如下：
