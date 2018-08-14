@@ -43,11 +43,27 @@ public class BufferPool {
     private BlockingQueue<ByteBuffer> bufferPool = null;
     private BufferType type = null;
     private int singleBufferSize = 0;
-    private String diskBufferDir = null;
+    private File diskBufferDir = null;
 
     private AtomicBoolean isInitialize = new AtomicBoolean(false);
 
     private BufferPool() {
+    }
+
+    private File createDir(String dirPath) throws IOException {
+        File dir = new File(dirPath);
+        if (!dir.exists()) {
+            LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
+            if (dir.mkdirs()) {
+                LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
+            } else {
+                throw new IOException("buffer dir:" + dir.getAbsolutePath() + " is created failure");
+            }
+        } else {
+            LOG.debug("buffer dir: " + dirPath + " Directory already exists.");
+        }
+
+        return dir;
     }
 
     public synchronized void initialize(Configuration conf) throws IOException {
@@ -75,9 +91,9 @@ public class BufferPool {
         int bufferSizeLimit = conf.getInt(
                 CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_SIZE);
-        this.diskBufferDir = conf.get(
+        this.diskBufferDir = this.createDir(conf.get(
                 CosNativeFileSystemConfigKeys.COS_BUFFER_DIR_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR);
+                CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR));
 
         int bufferPoolSize = bufferSizeLimit / this.singleBufferSize;
         if (0 == bufferPoolSize) {
@@ -94,7 +110,7 @@ public class BufferPool {
                 File tmpFile = File.createTempFile(
                         Constants.BLOCK_TMP_FILE_PREFIX,
                         Constants.BLOCK_TMP_FILE_SUFFIX,
-                        new File(this.diskBufferDir)
+                        this.diskBufferDir
                 );
                 tmpFile.deleteOnExit();
                 RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
