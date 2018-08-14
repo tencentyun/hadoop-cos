@@ -140,6 +140,7 @@ done
 
 | 属性键                             | 说明                | 默认值 | 必填项 |
 |:-----------------------------------:|:--------------------:|:-----:|:---:|
+|fs.defaultFS                       |配置hadoop默认使用的底层文件系统，如果想使用cos作为hadoop默认文件系统，则此项应设置为cosn://bucket-appid，此时可以通过文件路径访问cos对象，如/hadoop/inputdata/test.dat。若不想把cos作为hadoop默认文件系统，则不需要修改此项，当需要访问cos上的对象时，则指定完整的uri即可，如cosn://testbucket-1252681927/hadoop/inputdata/test.dat来访问。
 |fs.cosn.userinfo.secretId/secretKey| 填写您账户的API 密钥信息。可通过 [云 API 密钥 控制台](https://console.cloud.tencent.com/capi) 查看 | 无  | 是|
 |fs.cosn.impl                      | cosn对FileSystem的实现类，固定为 org.apache.hadoop.fs.CosFileSystem| 无|是|
 |fs.AbstractFileSystem.cosn.impl   | cosn对AbstractFileSystem的实现类，固定为org.apache.hadoop.fs.CosN | 无 |是|
@@ -151,7 +152,6 @@ done
 |fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | CPU核心数*3 | 否|
 |fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 3 | 否 |
 |fs.cosn.retry.interval.seconds    | 每次重试的时间间隔 | 3 | 否 |
-
 
 ### 开始使用
 
