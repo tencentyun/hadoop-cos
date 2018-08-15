@@ -40,7 +40,6 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String COS_BUFFER_DIR_KEY = "fs.cosn.buffer.dir";
     public static final String DEFAULT_BUFFER_DIR = "/tmp/hadoop_cos";
 
-
     public static final String COS_UPLOAD_BUFFER_TYPE_KEY = "fs.cosn.upload.buffer";
     public static final String DEFAULT_UPLOAD_BUFFER_TYPE = "disk";
     public static final String COS_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";

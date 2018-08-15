@@ -55,6 +55,11 @@ public class BufferPool {
         if (!dir.exists()) {
             LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
             if (dir.mkdirs()) {
+                dir.setWritable(true);
+                dir.setReadable(true);
+                dir.setExecutable(true);
+                String cmd = "chmod 777 " + dir.getAbsolutePath();
+                Runtime.getRuntime().exec(cmd);
                 LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
             } else {
                 throw new IOException("buffer dir:" + dir.getAbsolutePath() + " is created failure");
