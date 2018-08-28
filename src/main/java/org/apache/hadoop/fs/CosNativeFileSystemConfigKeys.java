@@ -54,7 +54,7 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_RETRY_INTERVAL = 3;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
-    public static final int DEFAULT_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;
+    public static final int DEFAULT_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 5;
 
     public static final String READ_AHEAD_BLOCK_SIZE_KEY = "fs.cosn.read.ahead.block.size";
     public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 512 * Unit.KB;

@@ -199,6 +199,7 @@ public class CosFsDataOutputStream extends OutputStream {
                 this.blockWritten = 0;
             }
             len -= writeBytes;
+            off += writeBytes;
         }
     }
 
