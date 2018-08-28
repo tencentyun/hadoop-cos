@@ -179,6 +179,30 @@ public class CosFsDataOutputStream extends OutputStream {
     }
 
     @Override
+    public void write(byte[] b, int off, int len) throws IOException {
+        if (this.closed) {
+            throw new IOException("block stream has been closed.");
+        }
+
+        while (len > 0) {
+            long writeBytes = 0;
+            if (this.blockWritten + len > this.blockSize) {
+                writeBytes = this.blockSize - this.blockWritten;
+            } else {
+                writeBytes = len;
+            }
+
+            this.currentBlockOutputStream.write(b, off, (int) writeBytes);
+            this.blockWritten += writeBytes;
+            if (this.blockWritten >= this.blockSize) {
+                this.uploadPart();
+                this.blockWritten = 0;
+            }
+            len -= writeBytes;
+        }
+    }
+
+    @Override
     public void write(byte[] b) throws IOException {
         this.write(b, 0, b.length);
     }
