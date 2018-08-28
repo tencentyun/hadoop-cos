@@ -52,20 +52,28 @@ public class BufferPool {
 
     private File createDir(String dirPath) throws IOException {
         File dir = new File(dirPath);
-        if (!dir.exists()) {
-            LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
-            if (dir.mkdirs()) {
-                dir.setWritable(true);
-                dir.setReadable(true);
-                dir.setExecutable(true);
-                String cmd = "chmod 777 " + dir.getAbsolutePath();
-                Runtime.getRuntime().exec(cmd);
-                LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
+        if (null != dir) {
+            if (!dir.exists()) {
+                LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
+                if (dir.mkdirs()) {
+                    dir.setWritable(true);
+                    dir.setReadable(true);
+                    dir.setExecutable(true);
+                    String cmd = "chmod 777 " + dir.getAbsolutePath();
+                    Runtime.getRuntime().exec(cmd);
+                    LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
+                } else {
+                    // Once again, check if it has been created successfully.
+                    // Prevent problems created by multiple processes at the same time
+                    if (!dir.exists()) {
+                        throw new IOException("buffer dir:" + dir.getAbsolutePath() + " is created failure");
+                    }
+                }
             } else {
-                throw new IOException("buffer dir:" + dir.getAbsolutePath() + " is created failure");
+                LOG.debug("buffer dir: " + dirPath + " already exists.");
             }
         } else {
-            LOG.debug("buffer dir: " + dirPath + " Directory already exists.");
+            throw new IOException("creating buffer dir: " + dir.getAbsolutePath() + "failed.");
         }
 
         return dir;
