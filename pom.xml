@@ -5,10 +5,10 @@
     <parent>
         <groupId>org.apache.hadoop</groupId>
         <artifactId>hadoop-project</artifactId>
-        <version>2.7.6</version>
+        <version>2.7.3</version>
     </parent>
     <artifactId>hadoop-cos</artifactId>
-    <version>2.7.6</version>
+    <version>2.7.3</version>
     <name>Apache Hadoop Tencent Qcloud COS Support</name>
     <description>
         This module contains code to support integration with Tencent Qcloud COS.
@@ -25,7 +25,7 @@
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
@@ -35,14 +35,10 @@
             <type>test-jar</type>
         </dependency>
 
-        <!-- see ../../hadoop-project/pom.xml for versions -->
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.7.6</version>
         </dependency>
 
         <dependency>
@@ -52,36 +48,13 @@
         </dependency>
 
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
-            <version>4.3.6</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpcore</artifactId>
-            <version>4.2.5</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.6</version>
-        </dependency>
-        <dependency>
-            <groupId>joda-time</groupId>
-            <artifactId>joda-time</artifactId>
-            <version>2.9.9</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.9.7</version>
-        </dependency>
-        <dependency>
             <groupId>cos_api_jar</groupId>
             <artifactId>cos_hadoop_sdk</artifactId>
             <version>5.2.6</version>
             <scope>system</scope>
             <systemPath>${basedir}/src/main/resources/cos_hadoop_api-5.2.5.jar</systemPath>
         </dependency>
+
+
     </dependencies>
 </project>

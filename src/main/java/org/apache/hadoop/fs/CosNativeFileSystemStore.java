@@ -181,7 +181,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.debug(debugMsg);
         } catch (Exception e) {
             String errMsg =
-                    String.format("store empty file faild, cos key: %s, exception: %s",
+                    String.format("store empty file failed, cos key: %s, exception: %s",
                             key, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
