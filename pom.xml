@@ -55,6 +55,5 @@
             <systemPath>${basedir}/src/main/resources/cos_hadoop_api-5.2.6.jar</systemPath>
         </dependency>
 
-
     </dependencies>
 </project>
