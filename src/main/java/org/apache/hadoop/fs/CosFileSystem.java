@@ -398,15 +398,36 @@ public class CosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         List<Path> paths = new ArrayList<Path>();
         do {
-            paths.add(0, absolutePath);
+            paths.add(absolutePath);
             absolutePath = absolutePath.getParent();
         } while (absolutePath != null);
 
-        boolean result = true;
         for (Path path : paths) {
-            result &= mkdir(path);
+            if (path.equals(CosFileSystem.PATH_DELIMITER)) {
+                break;
+            }
+            try {
+                FileStatus fileStatus = getFileStatus(path);
+                if (fileStatus.isFile()) {
+                    throw new FileAlreadyExistsException(
+                            String.format("Can't make directory for path '%s' since it is a file.", f));
+                }
+                if (fileStatus.isDirectory()) {
+                    break;
+                }
+            } catch (FileNotFoundException e) {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Making dir '" + f + "' in COS");
+                }
+                // 创建目录
+                String folderPath = pathToKey(makeAbsolute(f));
+                if (!folderPath.endsWith(PATH_DELIMITER)) {
+                    folderPath += PATH_DELIMITER;
+                }
+                store.storeEmptyFile(folderPath);
+            }
         }
-        return result;
+        return true;
     }
 
     private boolean mkdir(Path f) throws IOException {
