@@ -29,6 +29,7 @@ import com.qcloud.cos.utils.Base64;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.auth.COSCredentialProviderList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,14 +56,15 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private void initCOSClient(Configuration conf) throws IOException {
         String appidStr = conf.get(CosNativeFileSystemConfigKeys.COS_APPID_KEY);
-        String secretId = conf.get(CosNativeFileSystemConfigKeys.COS_SECRET_ID_KEY);
-        if (secretId == null) {
-            throw new IOException("config fs.cosn.userinfo.secretId miss!");
-        }
-        String secretKey = conf.get(CosNativeFileSystemConfigKeys.COS_SECRET_KEY_KEY);
-        if (secretKey == null) {
-            throw new IOException("config fs.cosn.userinfo.secretKey miss!");
-        }
+//        String secretId = conf.get(CosNativeFileSystemConfigKeys.COS_SECRET_ID_KEY);
+//        if (secretId == null) {
+//            throw new IOException("config fs.cosn.userinfo.secretId miss!");
+//        }
+//        String secretKey = conf.get(CosNativeFileSystemConfigKeys.COS_SECRET_KEY_KEY);
+//        if (secretKey == null) {
+//            throw new IOException("config fs.cosn.userinfo.secretKey miss!");
+//        }
+        COSCredentialProviderList credentialProviderList = CosNUtils.createCosCredentialsProviderSet(conf);
         String region = conf.get(CosNativeFileSystemConfigKeys.COS_REGION_KEY);
         String endpoint_suffix = conf.get(CosNativeFileSystemConfigKeys.COS_ENDPOINT_SUFFIX_KEY);
         if (null == region && null == endpoint_suffix) {
@@ -72,9 +74,14 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         COSCredentials cosCred = null;
         if (appidStr == null) {
-            cosCred = new BasicCOSCredentials(secretId, secretKey);
+            cosCred = new BasicCOSCredentials(
+                    credentialProviderList.getCredentials().getCOSAccessKeyId(),
+                    credentialProviderList.getCredentials().getCOSSecretKey());
         } else {
-            cosCred = new BasicCOSCredentials(appidStr, secretId, secretKey);
+            cosCred = new BasicCOSCredentials(
+                    appidStr,
+                    credentialProviderList.getCredentials().getCOSAccessKeyId(),
+                    credentialProviderList.getCredentials().getCOSSecretKey());
         }
 
         boolean useHttps = conf.getBoolean(
@@ -576,8 +583,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     return this.cosClient.putObject((PutObjectRequest) request);
                 } else if (request instanceof UploadPartRequest) {
                     sdkMethod = "uploadPart";
-                    if(((UploadPartRequest) request).getInputStream() instanceof ByteBufferInputStream){
-                        ((UploadPartRequest)request).getInputStream().mark((int) ((UploadPartRequest) request).getPartSize());
+                    if (((UploadPartRequest) request).getInputStream() instanceof ByteBufferInputStream) {
+                        ((UploadPartRequest) request).getInputStream().mark((int) ((UploadPartRequest) request).getPartSize());
                     }
                     return this.cosClient.uploadPart((UploadPartRequest) request);
                 } else if (request instanceof GetObjectMetadataRequest) {
@@ -616,9 +623,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
-                            if(request instanceof UploadPartRequest){
+                            if (request instanceof UploadPartRequest) {
                                 LOG.info("upload part request input stream retry reset.....");
-                                if(((UploadPartRequest) request).getInputStream() instanceof ByteBufferInputStream){
+                                if (((UploadPartRequest) request).getInputStream() instanceof ByteBufferInputStream) {
                                     ((UploadPartRequest) request).getInputStream().reset();
                                 }
                             }

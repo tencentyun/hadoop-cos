@@ -28,6 +28,7 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
     public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.2";
 
+    public static final String COS_CREDENTIALS_PROVIDER = "fs.cosn.credentials.provider";
     public static final String COS_APPID_KEY = "fs.cosn.userinfo.appid";
     public static final String COS_SECRET_ID_KEY = "fs.cosn.userinfo.secretId";
     public static final String COS_SECRET_KEY_KEY = "fs.cosn.userinfo.secretKey";
