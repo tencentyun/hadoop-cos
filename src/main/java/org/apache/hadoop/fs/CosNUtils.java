@@ -33,7 +33,6 @@ public final class CosNUtils {
                 conf,
                 CosNativeFileSystemConfigKeys.COS_CREDENTIALS_PROVIDER);
         if (0 == cosClasses.length) {
-            LOG.info("class length: " + cosClasses.length);
             credentialProviderList.add(new SimpleCredentialProvider(conf));
             credentialProviderList.add(new EnvironmentVariableCredentialProvider());
         } else {
