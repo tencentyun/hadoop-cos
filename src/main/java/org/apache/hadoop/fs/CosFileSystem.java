@@ -49,6 +49,7 @@ public class CosFileSystem extends FileSystem {
     static final int COS_MAX_LISTING_LENGTH = 999;
 
     private URI uri;
+    String bucket;
     private NativeFileSystemStore store;
     private Path workingDir;
     private String owner = "Unknown";
@@ -74,6 +75,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
         super.initialize(uri, conf);
+        this.bucket = uri.getHost();
         if (this.store == null) {
             this.store = createDefaultStore(conf);
         }
@@ -203,9 +205,20 @@ public class CosFileSystem extends FileSystem {
                 statistics);
     }
 
+    private boolean rejectRootDirectoryDelete(boolean isEmptyDir, boolean recursive) throws PathIOException {
+        if (isEmptyDir) {
+            return true;
+        }
+        if (recursive) {
+            return false;
+        } else {
+            throw new PathIOException(this.bucket, "Can not delete root path");
+        }
+    }
+
     @Override
-    public boolean delete(Path f, boolean recurse) throws IOException {
-        LOG.debug("ready to delete path:" + f + ", recurse:" + recurse);
+    public boolean delete(Path f, boolean recursive) throws IOException {
+        LOG.debug("ready to delete path:" + f + ", recursive:" + recursive);
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -218,11 +231,16 @@ public class CosFileSystem extends FileSystem {
         }
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
+        if (key.compareToIgnoreCase("/") == 0) {
+            FileStatus[] fileStatuses = listStatus(f);
+            return this.rejectRootDirectoryDelete(fileStatuses.length == 0, recursive);
+        }
+
         if (status.isDirectory()) {
             if (!key.endsWith(PATH_DELIMITER)) {
                 key += PATH_DELIMITER;
             }
-            if (!recurse && listStatus(f).length > 0) {
+            if (!recursive && listStatus(f).length > 0) {
                 throw new IOException("Can not delete " + f
                         + " as is a not empty directory and recurse option is false");
             }
