@@ -55,11 +55,23 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_RETRY_INTERVAL = 3;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
-    public static final int DEFAULT_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 5;
+    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 5;
+
+    public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
+    public static final int DEFAULT_COPY_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;
+
+    public static final String DOWNLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.download_thread_pool";
+    public static final int DEFAULT_DOWNLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 5;
+
+    public static final String THREAD_KEEP_ALIVE_TIME_KEY = "fs.cosn.threads.keep_alive_time";
+    public static final long DEFAULT_THREAD_KEEP_ALIVE_TIME = 60L;
 
     public static final String READ_AHEAD_BLOCK_SIZE_KEY = "fs.cosn.read.ahead.block.size";
     public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 512 * Unit.KB;
     public static final String READ_AHEAD_QUEUE_SIZE = "fs.cosn.read.ahead.queue.size";
     public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 10;
+
+    public static final String MAX_CONNECTION_NUM = "fs.cosn.max.connection.num";
+    public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 }
 

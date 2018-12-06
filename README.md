@@ -181,9 +181,12 @@ done
 |fs.cosn.upload.buffer             | 流式上传时，使用的缓冲区类型。当前支持两种缓冲区类型：disk和memory，其中disk将会在fs.cosn.buffer.dir选项指定的文件系统目录中生成若干个文件临时文件，并使用内存映射技术将其包装为上传缓冲池。内存较大机器建议可以使用memory类型的缓冲区，同时缓冲区的大小至少保证大于等于一个block的大小。| disk | 否|
 |fs.cosn.upload.buffer.size        | 向COS流式上传文件时，本地使用的缓冲区的大小。要求至少大于等于一个block的大小|134217728（128MB）|否|
 |fs.cosn.block.size                | CosN文件系统每个block的大小，也是分块上传的每个part size的大小。由于COS的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，block size为8MB时，最大能够支持78GB的单文件上传。 block size最大可以支持到2GB，即单文件最大可支持19TB| 8388608（8MB） | 否 |
-|fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | CPU核心数*3 | 否|
+|fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | CPU核心数*5 | 否|
+|fs.cosn.download_thread_pool 	   | 文件读取时，可用于预读的并发线程数目 | CPU核心数*5 | 否 |
+|fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | CPU核心数目*3 | 否 |
 |fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 3 | 否 |
 |fs.cosn.retry.interval.seconds    | 每次重试的时间间隔 | 3 | 否 |
+|fs.cosn.max.connection.num | 配置COS连接池中维持的最大连接数目，这个数目与单机读写COS的并发有关，建议至少大于或等于单机读写COS的并发数| 1024 | 否|
 
 ### 开始使用
 

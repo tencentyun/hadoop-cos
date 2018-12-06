@@ -55,6 +55,10 @@ public class CosFileSystem extends FileSystem {
     private String owner = "Unknown";
     private String group = "Unknown";
 
+    private ExecutorService boundedUploadThreadPool;
+    private ExecutorService boundedDownloadThreadPool;
+    private ExecutorService boundedCopyThreadPool;
+
     public CosFileSystem() {
     }
 
@@ -88,6 +92,76 @@ public class CosFileSystem extends FileSystem {
         this.group = getGroupId();
         LOG.debug("owner:" + owner + ", group:" + group);
         BufferPool.getInstance().initialize(getConf());
+
+        long threadKeepAliveTime = conf.getLong(
+                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
+
+        int uploadThreadPoolSize = conf.getInt(
+                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE
+        );
+        this.boundedUploadThreadPool = new ThreadPoolExecutor(uploadThreadPoolSize, uploadThreadPoolSize,
+                threadKeepAliveTime, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(2 * uploadThreadPoolSize),
+                new RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a task into the download thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                });
+
+        int downloadThreadPoolSize = conf.getInt(
+                CosNativeFileSystemConfigKeys.DOWNLOAD_THREAD_POOL_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_DOWNLOAD_THREAD_POOL_SIZE
+        );
+        this.boundedDownloadThreadPool = new
+
+                ThreadPoolExecutor(downloadThreadPoolSize, downloadThreadPoolSize,
+                threadKeepAliveTime, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(2 * downloadThreadPoolSize), new
+
+                RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a task into the download thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                });
+
+        int copyThreadPoolSize = conf.getInt(
+                CosNativeFileSystemConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
+        );
+        this.boundedCopyThreadPool = new
+
+                ThreadPoolExecutor(copyThreadPoolSize, copyThreadPoolSize,
+                threadKeepAliveTime, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(2 * copyThreadPoolSize), new
+
+                RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a task into the copy thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                });
     }
 
     private static NativeFileSystemStore createDefaultStore(Configuration conf) {
@@ -201,7 +275,7 @@ public class CosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataOutputStream(
-                new CosFsDataOutputStream(getConf(), store, key, blockSize),
+                new CosFsDataOutputStream(getConf(), store, key, blockSize, this.boundedUploadThreadPool),
                 statistics);
     }
 
@@ -343,14 +417,6 @@ public class CosFileSystem extends FileSystem {
 
         if (key.length() > 0) {
             FileMetadata meta = store.retrieveMetadata(key);
-            /*
-            if (meta == null) {
-                throw new FileNotFoundException("File " + f + " does not exist.");
-            }
-            if (meta.isFile()) {
-                return new FileStatus[] {newFile(meta, absolutePath)};
-            }
-            */
             if (meta != null && meta.isFile()) {
                 return new FileStatus[]{newFile(meta, absolutePath)};
             }
@@ -483,7 +549,7 @@ public class CosFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         long fileSize = store.getFileLength(key);
         return new FSDataInputStream(new BufferedFSInputStream(
-                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize),
+                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize, this.boundedDownloadThreadPool),
                 bufferSize));
     }
 
@@ -491,117 +557,144 @@ public class CosFileSystem extends FileSystem {
     public boolean rename(Path src, Path dst) throws IOException {
         LOG.debug("input rename: src:" + src + " , dst:" + dst);
 
-        String srcKey = pathToKey(makeAbsolute(src));
-
-        if (srcKey.length() == 0) {
-            // Cannot rename root of file system
+        // Renaming the root directory is not allowed
+        if (src.isRoot()) {
+            LOG.debug("Cannot rename the root directory of a filesystem.");
             return false;
         }
 
-        final String debugPreamble = "Renaming '" + src + "' to '" + dst + "' - ";
-        LOG.debug(debugPreamble);
+        // check the source path whether exists or not
+        FileStatus srcFileStatus = this.getFileStatus(src);
 
-        // Figure out the final destination
-        String dstKey;
+        // Source path and destination path are not allowed to be the same
+        if (src.equals(dst)) {
+            LOG.debug("source path and dest path refer to the same file or directory: {}", dst);
+            throw new IOException("source path and dest path refer to the same file or directory");
+        }
+
+        // It is not allowed to rename a parent directory to its subdirectory
+        Path dstParentPath;
+        for (dstParentPath = dst.getParent();
+             null != dstParentPath && !src.equals(dstParentPath);
+             dstParentPath = dstParentPath.getParent()) {
+        }
+
+        if (null != dstParentPath) {
+            LOG.debug("It is not allowed to rename a parent directory:{} to its subdirectory:{}.",
+                    src, dst);
+            throw new IOException(String.format(
+                    "It is not allowed to rename a parent directory:%s to its subdirectory:%s",
+                    src, dst));
+        }
+
+        FileStatus dstFileStatus = null;
         try {
-            boolean dstIsFile = getFileStatus(dst).isFile();
-            if (dstIsFile) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug(debugPreamble + "returning false as dst is an already existing file");
-                }
-                return false;
+            dstFileStatus = this.getFileStatus(dst);
+
+            // The destination path exists and is a file,
+            // and the rename operation is not allowed.
+            if (dstFileStatus.isFile()) {
+                throw new FileAlreadyExistsException(String.format(
+                        "File:%s already exists", dstFileStatus.getPath()));
             } else {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug(debugPreamble + "using dst as output directory");
+                // The destination path is an existing directory,
+                // and it is checked whether there is a file or directory
+                // with the same name as the source path under the destination path
+                dst = new Path(dst, src.getName());
+                FileStatus[] statuses;
+                try {
+                    statuses = this.listStatus(dst);
+                } catch (FileNotFoundException e) {
+                    statuses = null;
                 }
-                dstKey = pathToKey(makeAbsolute(new Path(dst, src.getName())));
+                if (null != statuses && statuses.length > 0) {
+                    LOG.debug("Cannot rename {} to {}, file already exists.", src, dst);
+                    throw new FileAlreadyExistsException(
+                            String.format(
+                                    "File: %s already exists", dst
+                            )
+                    );
+                }
             }
         } catch (FileNotFoundException e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(debugPreamble + "using dst as output destination");
+            // destination path not exists
+            Path tempDstParentPath = dst.getParent();
+            FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
+            if (!dstParentStatus.isDirectory()) {
+                throw new IOException(String.format(
+                        "Cannot rename %s to %s, %s is a file", src, dst, dst.getParent()
+                ));
             }
-            dstKey = pathToKey(makeAbsolute(dst));
-            try {
-                if (getFileStatus(dst.getParent()).isFile()) {
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug(debugPreamble
-                                + "returning false as dst parent exists and is a file");
-                    }
-                    return false;
-                }
-            } catch (FileNotFoundException ex) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug(debugPreamble + "returning false as dst parent does not exist");
-                }
-                return false;
-            }
+            // The default root directory is definitely there.
         }
 
-        boolean srcIsFile;
-        try {
-            srcIsFile = getFileStatus(src).isFile();
-        } catch (FileNotFoundException e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(debugPreamble + "returning false as src does not exist");
-            }
-            return false;
-        }
-        if (srcIsFile) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(debugPreamble + "src is file, so doing copy then delete in COS");
-            }
-            store.copy(srcKey, dstKey);
-            store.delete(srcKey);
+        boolean result = false;
+        if (srcFileStatus.isDirectory()) {
+            result = this.copyDirectory(src, dst);
         } else {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(debugPreamble + "src is directory, so copying contents");
-            }
-
-            if (!srcKey.endsWith(PATH_DELIMITER)) {
-                srcKey += PATH_DELIMITER;
-            }
-            if (!dstKey.endsWith(PATH_DELIMITER)) {
-                dstKey += PATH_DELIMITER;
-            }
-            store.storeEmptyFile(dstKey);
-            List<String> keysToDelete = new ArrayList<String>();
-            String priorLastKey = null;
-            do {
-                PartialListing listing =
-                        store.list(srcKey, COS_MAX_LISTING_LENGTH, priorLastKey, true);
-                for (FileMetadata file : listing.getFiles()) {
-
-                    keysToDelete.add(file.getKey());
-                    store.copy(file.getKey(), dstKey + file.getKey().substring(srcKey.length()));
-                }
-                for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
-                    keysToDelete.add(commonPrefix.getKey());
-                    try {
-                        store.storeEmptyFile(dstKey + commonPrefix.getKey().substring(srcKey.length()));
-                    } catch (Exception e) {
-                        LOG.debug(e.toString());
-                    }
-                }
-                priorLastKey = listing.getPriorLastKey();
-            } while (priorLastKey != null);
-
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(debugPreamble + "all files in src copied, now removing src files");
-            }
-            for (String key : keysToDelete) {
-                store.delete(key);
-            }
-            try {
-                store.delete(srcKey);
-            } catch (Exception e) {
-            }
-
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(debugPreamble + "done");
-            }
+            result = this.copyFile(src, dst);
         }
 
+        if (!result) {
+            //Since rename is a non-atomic operation, after copy fails,
+            // it is not allowed to delete the data of the original path to ensure data security.
+            return false;
+        } else {
+            return this.delete(src, true);
+        }
+    }
+
+    private boolean copyFile(Path srcPath, Path dstPath) throws IOException {
+        String srcKey = pathToKey(srcPath);
+        String dstKey = pathToKey(dstPath);
+        this.store.copy(srcKey, dstKey);
         return true;
+    }
+
+    private boolean copyDirectory(Path srcPath, Path dstPath) throws IOException {
+        String srcKey = pathToKey(srcPath);
+        if (!srcKey.endsWith(PATH_DELIMITER)) {
+            srcKey += PATH_DELIMITER;
+        }
+        String dstKey = pathToKey(dstPath);
+        if (!dstKey.endsWith(PATH_DELIMITER)) {
+            dstKey += PATH_DELIMITER;
+        }
+
+        if (dstKey.startsWith(srcKey)) {
+            throw new IOException("can not copy a directory to a subdirectory of self");
+        }
+
+        this.store.storeEmptyFile(dstKey);
+        CosCopyFileContext copyFileContext = new CosCopyFileContext();
+
+        int copiesToFinishes = 0;
+        String priorLastKey = null;
+        do {
+            PartialListing objectList = this.store.list(srcKey, COS_MAX_LISTING_LENGTH, priorLastKey, true);
+            for (FileMetadata file : objectList.getFiles()) {
+                this.boundedCopyThreadPool.execute(new CosCopyFileTask(
+                        this.store,
+                        file.getKey(),
+                        dstKey.concat(file.getKey().substring(srcKey.length())),
+                        copyFileContext));
+                copiesToFinishes++;
+                if (!copyFileContext.isCopySuccess()) {
+                    break;
+                }
+            }
+            priorLastKey = objectList.getPriorLastKey();
+        } while (null != priorLastKey);
+
+        copyFileContext.lock();
+        try {
+            copyFileContext.awaitAllFinish(copiesToFinishes);
+        } catch (InterruptedException e) {
+            LOG.warn("interrupted when wait copies to finish");
+        } finally {
+            copyFileContext.unlock();
+        }
+        return copyFileContext.isCopySuccess();
     }
 
     private void createParent(Path path) throws IOException {
@@ -648,7 +741,18 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public void close() throws IOException {
-        super.close();
+        try {
+            this.boundedCopyThreadPool.shutdown();
+            this.boundedUploadThreadPool.shutdown();
+            this.boundedDownloadThreadPool.shutdown();
 
+            this.boundedCopyThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+            this.boundedUploadThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+            this.boundedDownloadThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            throw new IOException("Waiting for the remaining tasks (upload, download or copy) to be interrupted");
+        } finally {
+            super.close();
+        }
     }
 }

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -38,7 +39,7 @@ public class CosFsDataOutputStream extends OutputStream {
     private int blockWritten = 0;
     private boolean closed = false;
 
-    public CosFsDataOutputStream(Configuration conf, NativeFileSystemStore store, String key, long blockSize) throws IOException {
+    public CosFsDataOutputStream(Configuration conf, NativeFileSystemStore store, String key, long blockSize, ExecutorService executorService) throws IOException {
         this.conf = conf;
         this.store = store;
         this.key = key;
@@ -51,14 +52,7 @@ public class CosFsDataOutputStream extends OutputStream {
             LOG.warn(String.format("The maximum size of a single block is limited to %d.", Constants.MAX_PART_SIZE));
             this.blockSize = Constants.MAX_PART_SIZE;
         }
-        this.executorService = MoreExecutors.listeningDecorator(
-                Executors.newFixedThreadPool(
-                        conf.getInt(
-                                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE
-                        )
-                )
-        );
+        this.executorService = MoreExecutors.listeningDecorator(executorService);
         try {
             this.currentBlockBuffer = BufferPool.getInstance().getBuffer((int) this.blockSize);
         } catch (InterruptedException e) {
@@ -103,7 +97,6 @@ public class CosFsDataOutputStream extends OutputStream {
                         new ByteBufferInputStream(currentBlockBuffer), key, uploadId,
                         currentBlockId + 1, currentBlockBuffer.remaining());
             }
-            this.executorService.shutdown();
             final List<PartETag> partETagList = this.waitForFinishPartUploads();
             if (null != partETag) {
                 partETagList.add(partETag);

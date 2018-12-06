@@ -9,8 +9,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -99,7 +98,8 @@ public class CosFsInputStream extends FSInputStream {
             NativeFileSystemStore store,
             FileSystem.Statistics statistics,
             String key,
-            long fileSize) {
+            long fileSize,
+            ExecutorService readAheadExecutorService) {
         super();
         this.conf = conf;
         this.store = store;
@@ -113,14 +113,7 @@ public class CosFsInputStream extends FSInputStream {
                 CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
                 CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
         this.closed = false;
-        this.readAheadExecutorService = MoreExecutors.listeningDecorator(
-                Executors.newFixedThreadPool(
-                        conf.getInt(
-                                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE
-                        )
-                )
-        );
+        this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue = new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
     }
 
@@ -245,6 +238,7 @@ public class CosFsInputStream extends FSInputStream {
 
     @Override
     public int read() throws IOException {
+
         if (this.closed) {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }

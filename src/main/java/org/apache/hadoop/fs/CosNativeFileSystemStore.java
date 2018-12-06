@@ -30,6 +30,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.COSCredentialProviderList;
+import org.mortbay.log.Log;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,14 +57,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private void initCOSClient(Configuration conf) throws IOException {
         String appidStr = conf.get(CosNativeFileSystemConfigKeys.COS_APPID_KEY);
-//        String secretId = conf.get(CosNativeFileSystemConfigKeys.COS_SECRET_ID_KEY);
-//        if (secretId == null) {
-//            throw new IOException("config fs.cosn.userinfo.secretId miss!");
-//        }
-//        String secretKey = conf.get(CosNativeFileSystemConfigKeys.COS_SECRET_KEY_KEY);
-//        if (secretKey == null) {
-//            throw new IOException("config fs.cosn.userinfo.secretKey miss!");
-//        }
         COSCredentialProviderList credentialProviderList = CosNUtils.createCosCredentialsProviderSet(conf);
         String region = conf.get(CosNativeFileSystemConfigKeys.COS_REGION_KEY);
         String endpoint_suffix = conf.get(CosNativeFileSystemConfigKeys.COS_ENDPOINT_SUFFIX_KEY);
@@ -106,6 +99,14 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNativeFileSystemConfigKeys.COS_MAX_RETRIES_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES);
 
+        // 设置连接池的最大连接数目
+        config.setMaxConnectionsCount(
+                conf.getInt(
+                        CosNativeFileSystemConfigKeys.MAX_CONNECTION_NUM,
+                        CosNativeFileSystemConfigKeys.DEFAULT_MAX_CONNECTION_NUM
+                )
+        );
+
         this.cosClient = new COSClient(cosCred, config);
     }
 
@@ -114,7 +115,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             threadCount = conf.getInt(
                     CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                    CosNativeFileSystemConfigKeys.DEFAULT_THREAD_POOL_SIZE);
+                    CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE);
         } catch (NumberFormatException e) {
             throw new IOException("fs.cosn.userinfo.upload_thread_pool value is invalid number");
         }
@@ -271,7 +272,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             fileSize = objectMetadata.getContentLength();
             FileMetadata fileMetadata =
                     new FileMetadata(key, fileSize, mtime, !key.endsWith(PATH_DELIMITER));
-            LOG.debug("retive file MetaData key:{}, etag:{}, length:{}", key,
+            LOG.debug("retrieve file MetaData key:{}, etag:{}, length:{}", key,
                     objectMetadata.getETag(), objectMetadata.getContentLength());
             return fileMetadata;
         } catch (CosServiceException e) {
@@ -361,14 +362,14 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             return cosObject.getObjectContent();
         } catch (CosServiceException e) {
             String errMsg =
-                    String.format("retrive key %s with byteRangeStart %d occur a exception: %s",
+                    String.format("retrieve key %s with byteRangeStart %d occur a exception: %s",
                             key, byteRangeStart, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
             return null;
         } catch (CosClientException e) {
             String errMsg =
-                    String.format("retrive key %s with byteRangeStart %d occur a exception: %s",
+                    String.format("retrieve key %s with byteRangeStart %d occur a exception: %s",
                             key, byteRangeStart, e.toString());
             LOG.error("retrieve key: " + key + "'s block, start: " + String.valueOf(byteRangeStart) + " end: " + String.valueOf(byteRangeEnd), e);
             handleException(new Exception(errMsg), key);
@@ -613,13 +614,13 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 }
             } catch (CosServiceException cse) {
                 String errMsg = String.format(
-                        "-----------call cos sdk failed, retryIndex: [%d / %d], call method: %s, exception: %s",
+                        "all cos sdk failed, retryIndex: [%d / %d], call method: %s, exception: %s",
                         retryIndex, this.maxRetryTimes, sdkMethod, cse.toString());
-                int stattusCode = cse.getStatusCode();
+                int statusCode = cse.getStatusCode();
                 // 对5xx错误进行重试
-                if (stattusCode / 100 == 5) {
+                if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
-                        LOG.info(errMsg);
+                        LOG.info(errMsg, cse);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
@@ -636,16 +637,16 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                             throw new IOException(e.toString());
                         }
                     } else {
-                        LOG.error(errMsg);
+                        LOG.error(errMsg, cse);
                         throw new IOException(errMsg);
                     }
                 } else {
                     throw cse;
                 }
             } catch (Exception e) {
-                String errMsg = String.format("-----------------------call cos sdk failed, call method: %s, exception: %s",
-                        sdkMethod, e.toString());
-                LOG.error(errMsg);
+                String errMsg = String.format("call cos sdk failed, retryIndex:[%d / %d], call method: %s, exception: %s",
+                        retryIndex, this.maxRetryTimes, sdkMethod, e.toString());
+                LOG.error(errMsg, e);
                 throw new IOException(errMsg);
             }
         }
