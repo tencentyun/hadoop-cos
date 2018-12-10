@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,8 +29,8 @@ public class CosFsDataOutputStream extends OutputStream {
     private long blockSize;
     private String key;
     private int currentBlockId = 0;
-    private final Set<ByteBuffer> blockCacheBuffers = new HashSet<>();
-    private ByteBuffer currentBlockBuffer = null;
+    private final Set<ByteBufferWrapper> blockCacheByteBufferWrappers = new HashSet<>();
+    private ByteBufferWrapper currentBlockByteBufferWrapper = null;
     private OutputStream currentBlockOutputStream = null;
     private String uploadId = null;
     private final ListeningExecutorService executorService;
@@ -54,17 +53,17 @@ public class CosFsDataOutputStream extends OutputStream {
         }
         this.executorService = MoreExecutors.listeningDecorator(executorService);
         try {
-            this.currentBlockBuffer = BufferPool.getInstance().getBuffer((int) this.blockSize);
+            this.currentBlockByteBufferWrapper = BufferPool.getInstance().getBuffer((int) this.blockSize);
         } catch (InterruptedException e) {
             throw new IOException("Getting a buffer size: " + String.valueOf(this.blockSize) + " from buffer pool occurs an exception: ", e);
         }
         try {
             this.digest = MessageDigest.getInstance("MD5");
             this.currentBlockOutputStream = new DigestOutputStream(
-                    new ByteBufferOutputStream(this.currentBlockBuffer), this.digest);
+                    new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer()), this.digest);
         } catch (NoSuchAlgorithmException e) {
             this.digest = null;
-            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockBuffer);
+            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer());
         }
     }
 
@@ -80,22 +79,23 @@ public class CosFsDataOutputStream extends OutputStream {
         }
         this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
-        LOG.info("output stream has been close. begin to upload last block: " + String.valueOf(this.currentBlockId));
-        if (!this.blockCacheBuffers.contains(this.currentBlockBuffer)) {
-            this.blockCacheBuffers.add(this.currentBlockBuffer);
+        if (!this.blockCacheByteBufferWrappers.contains(this.currentBlockByteBufferWrapper)) {
+            this.blockCacheByteBufferWrappers.add(this.currentBlockByteBufferWrapper);
         }
         // 加到块列表中去
-        if (this.blockCacheBuffers.size() == 1) {
+        if (this.blockCacheByteBufferWrappers.size() == 1) {
             // 单个文件就可以上传完成
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-            store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockBuffer), md5Hash, this.currentBlockBuffer.remaining());
+            store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockByteBufferWrapper.getByteBuffer()), md5Hash,
+                    this.currentBlockByteBufferWrapper.getByteBuffer().remaining());
         } else {
             PartETag partETag = null;
+            LOG.debug("blockWritten: " + String.valueOf(this.blockWritten));
             if (this.blockWritten > 0) {
                 LOG.info("upload last part... blockId: " + this.currentBlockId + " written: " + this.blockWritten);
                 partETag = store.uploadPart(
-                        new ByteBufferInputStream(currentBlockBuffer), key, uploadId,
-                        currentBlockId + 1, currentBlockBuffer.remaining());
+                        new ByteBufferInputStream(currentBlockByteBufferWrapper.getByteBuffer()), key, uploadId,
+                        currentBlockId + 1, currentBlockByteBufferWrapper.getByteBuffer().remaining());
             }
             final List<PartETag> partETagList = this.waitForFinishPartUploads();
             if (null != partETag) {
@@ -104,7 +104,7 @@ public class CosFsDataOutputStream extends OutputStream {
             store.completeMultipartUpload(this.key, this.uploadId, partETagList);
         }
         try {
-            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
+            BufferPool.getInstance().returnBuffer(this.currentBlockByteBufferWrapper);
         } catch (InterruptedException e) {
             LOG.error("Returning the buffer to BufferPool occurs an exception.", e);
         }
@@ -134,14 +134,14 @@ public class CosFsDataOutputStream extends OutputStream {
     private void uploadPart() throws IOException {
         this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
-        this.blockCacheBuffers.add(this.currentBlockBuffer);
+        this.blockCacheByteBufferWrappers.add(this.currentBlockByteBufferWrapper);
 
         if (this.currentBlockId == 0) {
             uploadId = (store).getUploadId(key);
         }
 
         ListenableFuture<PartETag> partETagListenableFuture = this.executorService.submit(new Callable<PartETag>() {
-            private final ByteBuffer buf = currentBlockBuffer;
+            private final ByteBufferWrapper byteBufferWrapper = currentBlockByteBufferWrapper;
             private final String localKey = key;
             private final String localUploadId = uploadId;
             private final int blockId = currentBlockId;
@@ -149,15 +149,15 @@ public class CosFsDataOutputStream extends OutputStream {
             @Override
             public PartETag call() throws Exception {
                 PartETag partETag = (store).uploadPart(
-                        new ByteBufferInputStream(this.buf), this.localKey, this.localUploadId,
-                        this.blockId + 1, this.buf.remaining());
-                BufferPool.getInstance().returnBuffer(this.buf);
+                        new ByteBufferInputStream(this.byteBufferWrapper.getByteBuffer()), this.localKey, this.localUploadId,
+                        this.blockId + 1, this.byteBufferWrapper.getByteBuffer().remaining());
+                BufferPool.getInstance().returnBuffer(this.byteBufferWrapper);
                 return partETag;
             }
         });
         this.partEtagList.add(partETagListenableFuture);
         try {
-            this.currentBlockBuffer = BufferPool.getInstance().getBuffer((int) this.blockSize);
+            this.currentBlockByteBufferWrapper = BufferPool.getInstance().getBuffer((int) this.blockSize);
         } catch (InterruptedException e) {
             throw new IOException("Getting a buffer size: " + String.valueOf(this.blockSize) + " from buffer pool occurs an exception: ", e);
         }
@@ -165,9 +165,9 @@ public class CosFsDataOutputStream extends OutputStream {
         if (null != this.digest) {
             this.digest.reset();
             this.currentBlockOutputStream = new DigestOutputStream(
-                    new ByteBufferOutputStream(this.currentBlockBuffer), this.digest);
+                    new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer()), this.digest);
         } else {
-            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockBuffer);
+            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer());
         }
     }
 

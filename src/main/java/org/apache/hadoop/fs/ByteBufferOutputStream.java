@@ -33,14 +33,6 @@ public class ByteBufferOutputStream extends OutputStream {
 
     @Override
     public void flush() throws IOException {
-//        if (this.isClosed) {
-//            throw new IOException("flush a closed stream");
-//        }
-//        if (this.isFlush) {
-//            return;
-//        }
-////        super.flush();
-//        this.isFlush = true;
     }
 
     @Override

@@ -7,16 +7,18 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * 缓冲池
+ * 当内存缓冲区够用时，则使用内存缓冲区
+ * 当内存缓冲区不够用时，则使用磁盘缓冲区
+ */
 public class BufferPool {
     static final Logger LOG = LoggerFactory.getLogger(BufferPool.class);
 
@@ -26,22 +28,7 @@ public class BufferPool {
         return ourInstance;
     }
 
-    enum BufferType {
-        MEMORY("Memory"), DISK("Disk");
-
-        private final String str;
-
-        BufferType(String str) {
-            this.str = str;
-        }
-
-        public String getStr() {
-            return str;
-        }
-    }
-
     private BlockingQueue<ByteBuffer> bufferPool = null;
-    private BufferType type = null;
     private int singleBufferSize = 0;
     private File diskBufferDir = null;
 
@@ -87,50 +74,25 @@ public class BufferPool {
                 CosNativeFileSystemConfigKeys.COS_BLOCK_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_BLOCK_SIZE);
 
-        String strBufferType = conf.get(
-                CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_TYPE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE);
-        if (strBufferType.equalsIgnoreCase(BufferType.MEMORY.getStr())) {
-            this.type = BufferType.MEMORY;
-        }
-        if (strBufferType.equalsIgnoreCase(BufferType.DISK.getStr())) {
-            this.type = BufferType.DISK;
-        }
-        if (null == this.type) {
-            throw new IOException("The BufferType option specified in the configuration file is invalid. "
-                    + "Valid values are: memory or disk");
-        }
-
-        int bufferSizeLimit = conf.getInt(
+        int memoryBufferLimit = conf.getInt(
                 CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_SIZE);
+
         this.diskBufferDir = this.createDir(conf.get(
                 CosNativeFileSystemConfigKeys.COS_BUFFER_DIR_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR));
 
-        int bufferPoolSize = bufferSizeLimit / this.singleBufferSize;
+        int bufferPoolSize = memoryBufferLimit / this.singleBufferSize;
+        LOG.debug("buffer pool size: " + String.valueOf(bufferPoolSize));
         if (0 == bufferPoolSize) {
             throw new IOException(
                     String.format("The total size of the buffer[%d] is smaller than a single block [%d]."
                                     + "please consider increase the buffer size or decrease the block size",
-                            bufferSizeLimit, this.singleBufferSize));
+                            memoryBufferLimit, this.singleBufferSize));
         }
         this.bufferPool = new LinkedBlockingQueue<>(bufferPoolSize);
         for (int i = 0; i < bufferPoolSize; i++) {
-            if (this.type == BufferType.MEMORY) {
-                this.bufferPool.add(ByteBuffer.allocateDirect(this.singleBufferSize));
-            } else {
-                File tmpFile = File.createTempFile(
-                        Constants.BLOCK_TMP_FILE_PREFIX,
-                        Constants.BLOCK_TMP_FILE_SUFFIX,
-                        this.diskBufferDir
-                );
-                tmpFile.deleteOnExit();
-                RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
-                raf.setLength(this.singleBufferSize);
-                MappedByteBuffer buf = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, this.singleBufferSize);
-                this.bufferPool.add(buf);
-            }
+            this.bufferPool.add(ByteBuffer.allocateDirect(this.singleBufferSize));
         }
 
         this.isInitialize.set(true);
@@ -142,64 +104,58 @@ public class BufferPool {
         }
     }
 
-    public ByteBuffer getBuffer(int bufferSize) throws IOException, InterruptedException {
+    public ByteBufferWrapper getBuffer(int bufferSize) throws IOException, InterruptedException {
         this.checkInitialize();
         if (bufferSize > 0 && bufferSize <= this.singleBufferSize) {
-            if (this.type == BufferType.MEMORY) {
-                return this.getByteBuffer();
-            } else {
-                return this.getMappedBuffer();
+            ByteBufferWrapper byteBufferWrapper = this.getByteBuffer();
+            if (null == byteBufferWrapper) {
+                // 内存缓冲区不够用了，则使用磁盘缓冲区
+                byteBufferWrapper = this.getMappedBuffer();
             }
+            return byteBufferWrapper;
         } else {
             throw new IOException("Parameter buffer size out of range: 1MB " + " to "
                     + this.singleBufferSize);
         }
     }
 
-    ByteBuffer getByteBuffer() throws IOException, InterruptedException {
+    ByteBufferWrapper getByteBuffer() throws IOException, InterruptedException {
         this.checkInitialize();
-        return this.bufferPool.poll(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        LOG.debug("get buffer, current buffer pool size: " + String.valueOf(this.bufferPool.size()) + " current thread: " + Thread.currentThread().getName());
+        ByteBuffer buffer = this.bufferPool.poll();
+        return buffer == null ? null : new ByteBufferWrapper(buffer);
     }
 
-    ByteBuffer getMappedBuffer() throws IOException, InterruptedException {
+    ByteBufferWrapper getMappedBuffer() throws IOException, InterruptedException {
         this.checkInitialize();
-        return this.bufferPool.poll(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        File tmpFile = File.createTempFile(
+                Constants.BLOCK_TMP_FILE_PREFIX,
+                Constants.BLOCK_TMP_FILE_SUFFIX,
+                this.diskBufferDir
+        );
+        LOG.debug("get disk buffer, current buffer pool size: " + String.valueOf(this.bufferPool.size()) + " current thread: " + Thread.currentThread());
+        tmpFile.deleteOnExit();
+        RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
+        raf.setLength(this.singleBufferSize);
+        MappedByteBuffer buf = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, this.singleBufferSize);
+        return new ByteBufferWrapper(buf, raf, tmpFile);
     }
 
-    public void returnBuffer(ByteBuffer buffer) throws InterruptedException {
-        buffer.clear();
-        if (null == this.bufferPool) {
+    public void returnBuffer(ByteBufferWrapper byteBufferWrapper) throws IOException, InterruptedException {
+        if (null == this.bufferPool || null == byteBufferWrapper) {
             return;
         }
-        if (buffer instanceof ByteBuffer) {
-            this.bufferPool.put(buffer);
-        } else {
-            this.bufferPool.put(buffer);
-        }
-    }
 
-    @Override
-    protected void finalize() throws Throwable {
-        super.finalize();
-        if (this.type == BufferType.DISK) {
-            for (ByteBuffer buffer : this.bufferPool) {
-                if (buffer instanceof MappedByteBuffer) {
-                    Method getCleanerMethod = null;
-                    try {
-                        getCleanerMethod = buffer.getClass().getMethod("cleaner", new Class[0]);
-                        getCleanerMethod.setAccessible(true);
-                        sun.misc.Cleaner cleaner = (sun.misc.Cleaner) getCleanerMethod.invoke(buffer, new Object[0]);
-                        cleaner.clean();
-                    } catch (NoSuchMethodException e) {
-                        LOG.error("closing buffer pool occurs an exception: ", e);
-                    } catch (IllegalAccessException e) {
-                        LOG.error("closing buffer pool occurs an exception: ", e);
-                    } catch (InvocationTargetException e) {
-                        LOG.error("closing buffer pool occurs an exception: ", e);
-                    }
-                }
+        if (byteBufferWrapper.isDiskBuffer()) {
+            byteBufferWrapper.close();
+        } else {
+            ByteBuffer byteBuffer = byteBufferWrapper.getByteBuffer();
+            if (null != byteBuffer) {
+                LOG.debug("return buffer, current buffer pool size: " + String.valueOf(this.bufferPool.size()) + " current thread: " + Thread.currentThread().getName());
+                byteBuffer.clear();
+                this.bufferPool.put(byteBuffer);
             }
         }
-        this.bufferPool.clear();
+
     }
 }

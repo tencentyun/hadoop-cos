@@ -49,17 +49,12 @@ done
 
     <property>
         <name>fs.defaultFS</name>
-        <value>cosn://<bucket-appid></value>
+        <value>cosn://bucket-appid</value>
     </property>
 
     <property>
         <name>hadoop.tmp.dir</name>
         <value>${HADOOP_PATH}/tmp</value>
-    </property>
-
-    <property>
-        <name>dfs.name.dir</name>
-        <value>${HADOOP_PATH}/name</value>
     </property>
 
     <property>
@@ -127,26 +122,17 @@ done
     </property>
 
     <property>
-    	<name>fs.cosn.upload.buffer</name>
-        <value>disk</value>
-        <description>
-        	There are two options to choose from:
-            "disk": Use some temporary files as buffer pool, and use the memory mapping technology to obtain a memory access speed for buffer IO approximately.
-            "memory": Use some direct byte buffers as buffer pool, and obtain a memory access speed for buffer IO.
-            Default is disk mode.
-        </description>
-    </property>
-
-    <property>
-    	<name>fs.cosn.upload.buffer.size</name>
+    	<name>fs.cosn.memory.buffer.size</name>
         <value>134217728</value>
-        <description>The total size of the buffer pool</description>
+        <description>The total size of the memory buffer pool</description>
     </property>
 
     <property>
     	<name>fs.cosn.block.size</name>
         <value>8388608</value>
-        <description>Block size to use cosn filesysten, which is the part size for MultipartUpload. Considering the COS supports up to 10000 blocks, user should estimate the maximum size of a single file. for example, 8MB part size can allow  writing a 78GB single file.</description>
+        <description>Block size to use cosn filesysten, which is the part size for MultipartUpload.
+        Considering the COS supports up to 10000 blocks, user should estimate the maximum size of a single file.
+        for example, 8MB part size can allow  writing a 78GB single file.</description>
     </property>
 
     <property>
@@ -172,15 +158,15 @@ done
 |:-----------------------------------:|:--------------------:|:-----:|:---:|
 |fs.defaultFS                       | 配置hadoop默认使用的底层文件系统，如果想使用cos作为hadoop默认文件系统，则此项应设置为cosn://bucket-appid，此时可以通过文件路径访问cos对象，如/hadoop/inputdata/test.dat。若不想把cos作为hadoop默认文件系统，则不需要修改此项，当需要访问cos上的对象时，则指定完整的uri即可，如cosn://testbucket-1252681927/hadoop/inputdata/test.dat来访问。
 |fs.cosn.credentials.provider       |配置secret id和secret key的获取方式。当前支持两种获取方式：1.org.apache.hadoop.fs.auth.SimpleCredentialProvider：从core-site.xml配置文件中读取fs.cosn.userinfo.secretId和fs.cosn.userinfo.secretKey来获取secret id和secret key 2.org.apache.hadoop.fs.auth.EnvironmentVariableCredentialProvider：从系统环境变量COS_SECRET_ID和COS_SECRET_KEY中获取|如果不指定改配置项，默认会按照以下顺序读取：1.org.apache.hadoop.fs.auth.SimpleCredentialProvider；2.org.apache.hadoop.fs.auth.EnvironmentVariableCredentialProvider；|否|
+|fs.cosn.useHttps|配置是否使用https协议|false|否|
 |fs.cosn.userinfo.endpoint_suffix|指定要连接的COS endpoint，该项为非必填项目。对于公有云COS用户而言，只需要正确填写上述的region配置即可。|无|否|
 |fs.cosn.userinfo.secretId/secretKey| 填写您账户的API 密钥信息。可通过 [云 API 密钥 控制台](https://console.cloud.tencent.com/capi) 查看 | 无  | 是|
 |fs.cosn.impl                      | cosn对FileSystem的实现类，固定为 org.apache.hadoop.fs.CosFileSystem| 无|是|
 |fs.AbstractFileSystem.cosn.impl   | cosn对AbstractFileSy stem的实现类，固定为org.apache.hadoop.fs.CosN | 无 |是|
-|fs.cosn.userinfo.region           | 请填写您的地域信息，枚举值为 [可用地域](https://cloud.tencent.com/document/product/436/6224) 中的地域简称，如	ap-beijing、ap-guangzhou 等 | 无 | 是|
-|fs.cosn.buffer.dir                | 请设置一个实际存在的本地目录，运行过程中产生的临时文件会暂时放于此处。如果buffer指定了disk类型，则该目录需要预留至少fs.cosn.upload.buffer.size大小的空间| /tmp/hadoop_cos| 否|
-|fs.cosn.upload.buffer             | 流式上传时，使用的缓冲区类型。当前支持两种缓冲区类型：disk和memory，其中disk将会在fs.cosn.buffer.dir选项指定的文件系统目录中生成若干个文件临时文件，并使用内存映射技术将其包装为上传缓冲池。内存较大机器建议可以使用memory类型的缓冲区，同时缓冲区的大小至少保证大于等于一个block的大小。| disk | 否|
-|fs.cosn.upload.buffer.size        | 向COS流式上传文件时，本地使用的缓冲区的大小。要求至少大于等于一个block的大小|134217728（128MB）|否|
-|fs.cosn.block.size                | CosN文件系统每个block的大小，也是分块上传的每个part size的大小。由于COS的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，block size为8MB时，最大能够支持78GB的单文件上传。 block size最大可以支持到2GB，即单文件最大可支持19TB| 8388608（8MB） | 否 |
+|fs.cosn.userinfo.region           | 请填写您的地域信息，枚举值为 [可用地域](https://cloud.tencent.com/document/product/436/6224) 中的地域简称，如ap-beijing、ap-guangzhou等 | 无 | 是|
+|fs.cosn.tmp.dir                   | 请设置一个实际存在的本地目录，运行过程中产生的临时文件会暂时放于此处|/tmp/hadoop_cos | 否|
+|fs.cosn.buffer.size        | 向COS流式上传文件时，本地使用的内存缓冲区的大小。要求至少大于等于一个block的大小|33554432（32MB）|否|
+|fs.cosn.block.size                | CosN文件系统每个block的大小，也是分块上传的每个part size的大小。由于COS的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，block size为8MB时，最大能够支持78GB的单文件上传。 block size最大可以支持到2GB，即单文件最大可支持19TB | 8388608（8MB） | 否 |
 |fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | CPU核心数*5 | 否|
 |fs.cosn.download_thread_pool 	   | 文件读取时，可用于预读的并发线程数目 | CPU核心数*5 | 否 |
 |fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | CPU核心数目*3 | 否 |

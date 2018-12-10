@@ -26,7 +26,7 @@ import org.apache.hadoop.fs.CommonConfigurationKeys;
 @InterfaceStability.Unstable
 public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.2";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.3";
 
     public static final String COS_CREDENTIALS_PROVIDER = "fs.cosn.credentials.provider";
     public static final String COS_APPID_KEY = "fs.cosn.userinfo.appid";
@@ -38,13 +38,11 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String COS_USE_HTTPS_KEY = "fs.cosn.useHttps";
     public static final boolean DEFAULT_USE_HTTPS = false;
 
-    public static final String COS_BUFFER_DIR_KEY = "fs.cosn.buffer.dir";
+    public static final String COS_BUFFER_DIR_KEY = "fs.cosn.tmp.dir";
     public static final String DEFAULT_BUFFER_DIR = "/tmp/hadoop_cos";
 
-    public static final String COS_UPLOAD_BUFFER_TYPE_KEY = "fs.cosn.upload.buffer";
-    public static final String DEFAULT_UPLOAD_BUFFER_TYPE = "disk";
-    public static final String COS_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
-    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 128 * Unit.MB;
+    public static final String COS_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.buffer.size";
+    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 32 * Unit.MB;
 
     public static final String COS_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final int DEFAULT_BLOCK_SIZE = 8 * Unit.MB;
