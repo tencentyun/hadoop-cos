@@ -90,7 +90,6 @@ public class CosFsDataOutputStream extends OutputStream {
                     this.currentBlockByteBufferWrapper.getByteBuffer().remaining());
         } else {
             PartETag partETag = null;
-            LOG.debug("blockWritten: " + String.valueOf(this.blockWritten));
             if (this.blockWritten > 0) {
                 LOG.info("upload last part... blockId: " + this.currentBlockId + " written: " + this.blockWritten);
                 partETag = store.uploadPart(

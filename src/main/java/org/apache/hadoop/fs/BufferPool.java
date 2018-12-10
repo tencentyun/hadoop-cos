@@ -121,7 +121,6 @@ public class BufferPool {
 
     ByteBufferWrapper getByteBuffer() throws IOException, InterruptedException {
         this.checkInitialize();
-        LOG.debug("get buffer, current buffer pool size: " + String.valueOf(this.bufferPool.size()) + " current thread: " + Thread.currentThread().getName());
         ByteBuffer buffer = this.bufferPool.poll();
         return buffer == null ? null : new ByteBufferWrapper(buffer);
     }
@@ -133,7 +132,6 @@ public class BufferPool {
                 Constants.BLOCK_TMP_FILE_SUFFIX,
                 this.diskBufferDir
         );
-        LOG.debug("get disk buffer, current buffer pool size: " + String.valueOf(this.bufferPool.size()) + " current thread: " + Thread.currentThread());
         tmpFile.deleteOnExit();
         RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
         raf.setLength(this.singleBufferSize);
@@ -151,7 +149,6 @@ public class BufferPool {
         } else {
             ByteBuffer byteBuffer = byteBufferWrapper.getByteBuffer();
             if (null != byteBuffer) {
-                LOG.debug("return buffer, current buffer pool size: " + String.valueOf(this.bufferPool.size()) + " current thread: " + Thread.currentThread().getName());
                 byteBuffer.clear();
                 this.bufferPool.put(byteBuffer);
             }
