@@ -98,8 +98,7 @@ public class CosFsInputStream extends FSInputStream {
             NativeFileSystemStore store,
             FileSystem.Statistics statistics,
             String key,
-            long fileSize,
-            ExecutorService readAheadExecutorService) {
+            long fileSize) {
         super();
         this.conf = conf;
         this.store = store;
@@ -113,7 +112,24 @@ public class CosFsInputStream extends FSInputStream {
                 CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
                 CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
         this.closed = false;
-        this.readAheadExecutorService = readAheadExecutorService;
+        long threadKeepAliveTime = conf.getLong(
+                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
+        this.readAheadExecutorService = new ThreadPoolExecutor(maxReadPartNumber / 2,
+                maxReadPartNumber, threadKeepAliveTime, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(maxReadPartNumber),
+                new RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a task into the download thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                });
         this.readBufferQueue = new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
     }
 
@@ -260,5 +276,15 @@ public class CosFsInputStream extends FSInputStream {
         }
 
         return byteRead;
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (this.closed) {
+            return;
+        }
+        this.readAheadExecutorService.shutdown();
+        this.closed = true;
+        this.buffer = null;
     }
 }

@@ -116,14 +116,14 @@ done
     </property>
 
     <property>
-        <name>fs.cosn.buffer.dir</name>
-        <value>${hadoop.tmp.dir}/cos</value>
-        <description>The local path where the cosn filesystem should store files before write to cos.</description>
+        <name>fs.cosn.tmp.dir</name>
+        <value>/tmp/hadoop_cos</value>
+        <description>Temporary files will be placed here.</description>
     </property>
 
     <property>
-    	<name>fs.cosn.memory.buffer.size</name>
-        <value>134217728</value>
+    	<name>fs.cosn.buffer.size</name>
+        <value>33554432</value>
         <description>The total size of the memory buffer pool</description>
     </property>
 
@@ -148,6 +148,21 @@ done
         <description>The number of seconds to sleep between each COS retry.</description>
     </property>
 
+    <property>
+    	<name>fs.cosn.read.ahead.block.size</name>
+        <value>524288</value>
+        <description>
+        	Bytes to read ahead during a seek() before closing and
+            re-opening the cosn HTTP connection.
+        </description>
+    </property>
+
+	<property>
+    	<name>fs.cosn.read.ahead.queue.size</name>
+        <value>10</value>
+        <description>The length of the pre-read queue.</description>
+    </property>
+
 </configuration>
 
 ```
@@ -168,8 +183,9 @@ done
 |fs.cosn.buffer.size        | 向COS流式上传文件时，本地使用的内存缓冲区的大小。要求至少大于等于一个block的大小|33554432（32MB）|否|
 |fs.cosn.block.size                | CosN文件系统每个block的大小，也是分块上传的每个part size的大小。由于COS的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，block size为8MB时，最大能够支持78GB的单文件上传。 block size最大可以支持到2GB，即单文件最大可支持19TB | 8388608（8MB） | 否 |
 |fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | CPU核心数*5 | 否|
-|fs.cosn.download_thread_pool 	   | 文件读取时，可用于预读的并发线程数目 | CPU核心数*5 | 否 |
 |fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | CPU核心数目*3 | 否 |
+|fs.cosn.read.ahead.block.size     | 预读块的大小                                 | 524288（512KB） |  否 |
+|fs.cosn.read.ahead.queue.size     | 预读队列的长度                               | 10              | 否  |
 |fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 3 | 否 |
 |fs.cosn.retry.interval.seconds    | 每次重试的时间间隔 | 3 | 否 |
 |fs.cosn.max.connection.num | 配置COS连接池中维持的最大连接数目，这个数目与单机读写COS的并发有关，建议至少大于或等于单机读写COS的并发数| 1024 | 否|

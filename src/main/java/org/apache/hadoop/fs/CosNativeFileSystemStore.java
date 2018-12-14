@@ -526,6 +526,13 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         throw new IOException("dump Not supported");
     }
 
+    @Override
+    public void close() {
+        if (null != this.cosClient) {
+            this.cosClient.shutdown();
+        }
+    }
+
     // process Exception and print detail
     private void handleException(Exception e, String key) throws IOException {
         String cosPath = "cosn://" + bucketName + key;
@@ -651,4 +658,5 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
         }
     }
+
 }

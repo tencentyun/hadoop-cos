@@ -56,7 +56,6 @@ public class CosFileSystem extends FileSystem {
     private String group = "Unknown";
 
     private ExecutorService boundedUploadThreadPool;
-    private ExecutorService boundedDownloadThreadPool;
     private ExecutorService boundedCopyThreadPool;
 
     public CosFileSystem() {
@@ -117,36 +116,11 @@ public class CosFileSystem extends FileSystem {
                     }
                 });
 
-        int downloadThreadPoolSize = conf.getInt(
-                CosNativeFileSystemConfigKeys.DOWNLOAD_THREAD_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_DOWNLOAD_THREAD_POOL_SIZE
-        );
-        this.boundedDownloadThreadPool = new
-
-                ThreadPoolExecutor(downloadThreadPoolSize, downloadThreadPoolSize,
-                threadKeepAliveTime, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(2 * downloadThreadPoolSize), new
-
-                RejectedExecutionHandler() {
-                    @Override
-                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-                        if (!executor.isShutdown()) {
-                            try {
-                                executor.getQueue().put(r);
-                            } catch (InterruptedException e) {
-                                LOG.error("put a task into the download thread pool occurs an exception.", e);
-                            }
-                        }
-                    }
-                });
-
         int copyThreadPoolSize = conf.getInt(
                 CosNativeFileSystemConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
         );
-        this.boundedCopyThreadPool = new
-
-                ThreadPoolExecutor(copyThreadPoolSize, copyThreadPoolSize,
+        this.boundedCopyThreadPool = new ThreadPoolExecutor(copyThreadPoolSize, copyThreadPoolSize,
                 threadKeepAliveTime, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(2 * copyThreadPoolSize), new
 
@@ -476,9 +450,57 @@ public class CosFileSystem extends FileSystem {
         return status;
     }
 
+    /**
+     * Validate the path from the bottom up.
+     *
+     * @param path
+     * @throws IOException
+     */
+    private void validatePath(Path path) throws IOException {
+        Path parent = path.getParent();
+        do {
+            try {
+                FileStatus fileStatus = getFileStatus(parent);
+                if (fileStatus.isDirectory()) {
+                    break;
+                } else {
+                    throw new FileAlreadyExistsException(String.format(
+                            "Can't make directory for path '%s', it is a file.", parent));
+                }
+            } catch (FileNotFoundException e) {
+            }
+            parent = parent.getParent();
+        } while (parent != null);
+    }
+
     @Override
-    public boolean mkdirs(Path f, FsPermission permission) throws IOException {
-        LOG.debug("mkdirs " + f);
+    public boolean mkdirs(Path f, FsPermission permission)
+            throws IOException {
+        try {
+            FileStatus fileStatus = getFileStatus(f);
+            if (fileStatus.isDirectory()) {
+                return true;
+            } else {
+                throw new FileAlreadyExistsException("Path is a file: " + f);
+            }
+        } catch (FileNotFoundException e) {
+            validatePath(f);
+        }
+
+        return mkDirRecursively(f, permission);
+    }
+
+    /**
+     * Recursively create a directory.
+     *
+     * @param f          Absolute path to the directory
+     * @param permission Directory permissions
+     * @return Return true if the creation was successful,  throw a IOException.
+     * @throws IOException
+     */
+    public boolean mkDirRecursively(Path f, FsPermission permission)
+            throws IOException {
+        System.out.println(f);
         Path absolutePath = makeAbsolute(f);
         List<Path> paths = new ArrayList<Path>();
         do {
@@ -494,7 +516,8 @@ public class CosFileSystem extends FileSystem {
                 FileStatus fileStatus = getFileStatus(path);
                 if (fileStatus.isFile()) {
                     throw new FileAlreadyExistsException(
-                            String.format("Can't make directory for path '%s' since it is a file.", f));
+                            String.format(
+                                    "Can't make directory for path '%s' since it is a file.", f));
                 }
                 if (fileStatus.isDirectory()) {
                     break;
@@ -503,7 +526,7 @@ public class CosFileSystem extends FileSystem {
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Making dir '" + f + "' in COS");
                 }
-                // 创建目录
+
                 String folderPath = pathToKey(makeAbsolute(f));
                 if (!folderPath.endsWith(PATH_DELIMITER)) {
                     folderPath += PATH_DELIMITER;
@@ -520,14 +543,14 @@ public class CosFileSystem extends FileSystem {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isFile()) {
                 throw new FileAlreadyExistsException(
-                        String.format("Can't make directory for path '%s' since it is a file.", f));
-
+                        String.format(
+                                "Can't make directory for path '%s' since it is a file.", f));
             }
         } catch (FileNotFoundException e) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Making dir '" + f + "' in COS");
             }
-            // 创建目录
+
             String folderPath = pathToKey(makeAbsolute(f));
             if (!folderPath.endsWith(PATH_DELIMITER)) {
                 folderPath += PATH_DELIMITER;
@@ -549,7 +572,7 @@ public class CosFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         long fileSize = store.getFileLength(key);
         return new FSDataInputStream(new BufferedFSInputStream(
-                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize, this.boundedDownloadThreadPool),
+                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize),
                 bufferSize));
     }
 
@@ -744,15 +767,14 @@ public class CosFileSystem extends FileSystem {
         try {
             this.boundedCopyThreadPool.shutdown();
             this.boundedUploadThreadPool.shutdown();
-            this.boundedDownloadThreadPool.shutdown();
 
             this.boundedCopyThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
             this.boundedUploadThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-            this.boundedDownloadThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             throw new IOException("Waiting for the remaining tasks (upload, download or copy) to be interrupted");
         } finally {
             super.close();
+            this.store.close();
         }
     }
 }

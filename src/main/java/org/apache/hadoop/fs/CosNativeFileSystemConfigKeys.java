@@ -58,9 +58,6 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
     public static final int DEFAULT_COPY_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;
 
-    public static final String DOWNLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.download_thread_pool";
-    public static final int DEFAULT_DOWNLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 5;
-
     public static final String THREAD_KEEP_ALIVE_TIME_KEY = "fs.cosn.threads.keep_alive_time";
     public static final long DEFAULT_THREAD_KEEP_ALIVE_TIME = 60L;
 
