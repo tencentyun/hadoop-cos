@@ -22,7 +22,7 @@ public class COSCredentialProviderList implements COSCredentialsProvider, AutoCl
     private static final String NO_COS_CREDENTIAL_PROVIDERS = new String("No COS Credential Providers");
     private static final String CREDENTIALS_REQUESTED_WHEN_CLOSED = new String("Credentials requested after provider list was closed");
 
-    private final List<COSCredentialsProvider> providers = new ArrayList<>(1);
+    private final List<COSCredentialsProvider> providers = new ArrayList<COSCredentialsProvider>(1);
     private boolean reuseLastProvider = true;
     private COSCredentialsProvider lastProvider;
 

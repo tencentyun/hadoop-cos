@@ -69,4 +69,3 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String MAX_CONNECTION_NUM = "fs.cosn.max.connection.num";
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 }
-

@@ -90,7 +90,7 @@ public class BufferPool {
                                     + "please consider increase the buffer size or decrease the block size",
                             memoryBufferLimit, this.singleBufferSize));
         }
-        this.bufferPool = new LinkedBlockingQueue<>(bufferPoolSize);
+        this.bufferPool = new LinkedBlockingQueue<ByteBuffer>(bufferPoolSize);
         for (int i = 0; i < bufferPoolSize; i++) {
             this.bufferPool.add(ByteBuffer.allocateDirect(this.singleBufferSize));
         }
@@ -153,6 +153,5 @@ public class BufferPool {
                 this.bufferPool.put(byteBuffer);
             }
         }
-
     }
 }

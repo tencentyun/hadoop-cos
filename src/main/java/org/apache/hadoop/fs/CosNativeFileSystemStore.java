@@ -149,6 +149,22 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             String debugMsg = String.format("store file success, cos key: %s, etag: %s", key,
                     putObjectResult.getETag());
             LOG.debug(debugMsg);
+        } catch (CosServiceException cse) {
+            // 避免并发上传的问题
+            int statusCode = cse.getStatusCode();
+            if (statusCode == 409) {
+                // Check一下这个文件是否已经存在
+                FileMetadata fileMetadata = this.QueryObjectMetadata(key);
+                if (null == fileMetadata) {
+                    // 如果文件不存在，则需要抛出异常
+                    throw cse;
+                }
+                LOG.warn("Upload file: " + key + " concurrently.");
+                return;
+            } else {
+                // 其他错误都要抛出来
+                throw cse;
+            }
         } catch (Exception e) {
             String errMsg =
                     String.format("store file failed, cos key: %s, exception: %s",
@@ -187,6 +203,21 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             String debugMsg = String.format("store empty file success, cos key: %s, etag: %s", key,
                     putObjectResult.getETag());
             LOG.debug(debugMsg);
+        } catch (CosServiceException cse) {
+            int statusCode = cse.getStatusCode();
+            if (statusCode == 409) {
+                // 并发上传文件导致，再check一遍文件是否存在
+                FileMetadata fileMetadata = this.QueryObjectMetadata(key);
+                if (null == fileMetadata) {
+                    // 文件还是不存在，必须要抛出异常
+                    throw cse;
+                }
+                LOG.warn("Upload file: " + key + " concurrently.");
+                return;
+            } else {
+                // 其他错误必须抛出
+                throw cse;
+            }
         } catch (Exception e) {
             String errMsg =
                     String.format("store empty file failed, cos key: %s, exception: %s",
@@ -334,7 +365,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public InputStream retrieve(String key, long byteRangeStart) throws IOException {
         try {
-            LOG.debug("retrive key:{}, byteRangeStart:{}", key, byteRangeStart);
+            LOG.debug("retrieve key:{}, byteRangeStart:{}", key, byteRangeStart);
             long fileSize = getFileLength(key);
             long byteRangeEnd = fileSize - 1;
             GetObjectRequest getObjectRequest = new GetObjectRequest(this.bucketName, key);
@@ -345,7 +376,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             return cosObject.getObjectContent();
         } catch (Exception e) {
             String errMsg =
-                    String.format("retrive key %s with byteRangeStart %d occur a exception: %s",
+                    String.format("retrieve key %s with byteRangeStart %d occur a exception: %s",
                             key, byteRangeStart, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
@@ -423,8 +454,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.error(errMsg);
             handleException(new Exception(errMsg), prefix);
         }
-        ArrayList<FileMetadata> fileMetadataArry = new ArrayList<>();
-        ArrayList<FileMetadata> commonPrefixsArry = new ArrayList<>();
+        ArrayList<FileMetadata> fileMetadataArry = new ArrayList<FileMetadata>();
+        ArrayList<FileMetadata> commonPrefixsArry = new ArrayList<FileMetadata>();
 
         List<COSObjectSummary> summaries = objectListing.getObjectSummaries();
         for (COSObjectSummary cosObjectSummary : summaries) {
@@ -493,7 +524,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             callCOSClientWithRetry(deleteObjectRequest);
         } catch (Exception e) {
             String errMsg = String.format(
-                    "rename object faild, src cos key: %s, dst cos key: %s, exception: %s", srcKey,
+                    "rename object failed, src cos key: %s, dst cos key: %s, exception: %s", srcKey,
                     dstKey, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), srcKey);
@@ -509,7 +540,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             callCOSClientWithRetry(copyObjectRequest);
         } catch (Exception e) {
             String errMsg = String.format(
-                    "rename object faild, src cos key: %s, dst cos key: %s, exception: %s", srcKey,
+                    "rename object failed, src cos key: %s, dst cos key: %s, exception: %s", srcKey,
                     dstKey, e.toString());
             LOG.error(errMsg);
             handleException(new Exception(errMsg), srcKey);

@@ -40,7 +40,7 @@ public class CosFileReadTask implements Runnable {
                 ),
                 TimeUnit.SECONDS
         );
-        Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap = new HashMap<>();
+        Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap = new HashMap<Class<? extends Exception>, RetryPolicy>();
         retryPolicyMap.put(IOException.class, defaultPolicy);
         retryPolicyMap.put(IndexOutOfBoundsException.class, RetryPolicies.TRY_ONCE_THEN_FAIL);
         retryPolicyMap.put(NullPointerException.class, RetryPolicies.TRY_ONCE_THEN_FAIL);

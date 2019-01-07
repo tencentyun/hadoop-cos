@@ -1,6 +1,5 @@
 package org.apache.hadoop.fs;
 
-import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,7 +110,6 @@ public class CosFsInputStream extends FSInputStream {
         this.maxReadPartNumber = conf.getInt(
                 CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
                 CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
-        this.closed = false;
         long threadKeepAliveTime = conf.getLong(
                 CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
                 CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
@@ -131,6 +129,7 @@ public class CosFsInputStream extends FSInputStream {
                     }
                 });
         this.readBufferQueue = new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
+        this.closed = false;
     }
 
     private synchronized void reopen(long pos) throws IOException {
@@ -254,7 +253,6 @@ public class CosFsInputStream extends FSInputStream {
 
     @Override
     public int read() throws IOException {
-
         if (this.closed) {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
@@ -283,6 +281,7 @@ public class CosFsInputStream extends FSInputStream {
         if (this.closed) {
             return;
         }
+
         this.readAheadExecutorService.shutdown();
         this.closed = true;
         this.buffer = null;
