@@ -11,7 +11,7 @@ Hadoop cosn 插件实现了以腾讯云 COS 作为底层存储文件系统运行
 Linux 或 Windows 系统
 
 ### 软件依赖
-Hadoop-2.7.2及以上版本
+Hadoop-2.6.0及以上版本
 
 ## 安装方法
 
