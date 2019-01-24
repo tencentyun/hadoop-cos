@@ -119,11 +119,15 @@ public class CosFsDataOutputStream extends OutputStream {
                         new ByteBufferInputStream(currentBlockByteBufferWrapper.getByteBuffer()), key, uploadId,
                         currentBlockId + 1, currentBlockByteBufferWrapper.getByteBuffer().remaining());
             }
-            final List<PartETag> partETagList = this.waitForFinishPartUploads();
-            if (null != partETag) {
-                partETagList.add(partETag);
+            final List<PartETag> futurePartEtagList = this.waitForFinishPartUploads();
+            if (null == futurePartEtagList) {
+                throw new IOException("Failed to multipart upload to oss, abort it.");
             }
-            store.completeMultipartUpload(this.key, this.uploadId, partETagList);
+            List<PartETag> tempPartETagList = new LinkedList<PartETag>(futurePartEtagList);
+            if (null != partETag) {
+                tempPartETagList.add(partETag);
+            }
+            store.completeMultipartUpload(this.key, this.uploadId, tempPartETagList);
         }
         try {
             BufferPool.getInstance().returnBuffer(this.currentBlockByteBufferWrapper);
