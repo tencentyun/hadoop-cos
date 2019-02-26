@@ -17,7 +17,6 @@ package org.apache.hadoop.fs;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
-import org.apache.hadoop.fs.CommonConfigurationKeys;
 
 /**
  * This class contains constants for configuration keys used in the cos file system.
@@ -26,7 +25,7 @@ import org.apache.hadoop.fs.CommonConfigurationKeys;
 @InterfaceStability.Unstable
 public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.5";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.5.1";
 
     public static final String COS_CREDENTIALS_PROVIDER = "fs.cosn.credentials.provider";
     public static final String COS_APPID_KEY = "fs.cosn.userinfo.appid";

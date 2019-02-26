@@ -1,9 +1,14 @@
 package org.apache.hadoop.fs;
 
+import sun.nio.ch.FileChannelImpl;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 
 public class ByteBufferWrapper {
     private ByteBuffer byteBuffer = null;
@@ -35,7 +40,35 @@ public class ByteBufferWrapper {
         }
 
         if (null != randomAccessFile) {
+            this.randomAccessFile.getChannel().close();
             this.randomAccessFile.close();
+        }
+
+        if (this.byteBuffer instanceof MappedByteBuffer) {
+            try {
+                Method method = FileChannelImpl.class.getDeclaredMethod(
+                        "unmap",
+                        MappedByteBuffer.class);
+                method.setAccessible(true);
+                method.invoke(
+                        FileChannelImpl.class,
+                        (MappedByteBuffer) this.byteBuffer);
+            } catch (NoSuchMethodException e) {
+                throw new IOException(
+                        "An exception occurred " +
+                                "while releasing MappedByteBuffer, " +
+                                "which may cause a memory leak.", e);
+            } catch (IllegalAccessException e) {
+                throw new IOException(
+                        "An exception occurred " +
+                                "while releasing MappedByteBuffer, " +
+                                "which may cause a memory leak.", e);
+            } catch (InvocationTargetException e) {
+                throw new IOException(
+                        "An exception occurred " +
+                                "while releasing MappedByteBuffer, " +
+                                "which may cause a memory leak.", e);
+            }
         }
 
         if (null != this.file && this.file.exists()) {
