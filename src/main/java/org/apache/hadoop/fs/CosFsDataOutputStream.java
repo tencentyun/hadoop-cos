@@ -38,7 +38,11 @@ public class CosFsDataOutputStream extends OutputStream {
     private int blockWritten = 0;
     private boolean closed = false;
 
-    public CosFsDataOutputStream(Configuration conf, NativeFileSystemStore store, String key, long blockSize) throws IOException {
+    public CosFsDataOutputStream(
+            Configuration conf,
+            NativeFileSystemStore store,
+            String key, long blockSize,
+            ExecutorService executorService) throws IOException {
         this.conf = conf;
         this.store = store;
         this.key = key;
@@ -52,29 +56,8 @@ public class CosFsDataOutputStream extends OutputStream {
             this.blockSize = Constants.MAX_PART_SIZE;
         }
 
-        long threadKeepAliveTime = conf.getLong(
-                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
-        int uploadThreadPoolSize = conf.getInt(
-                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE
-        );
-        this.executorService = MoreExecutors.listeningDecorator(
-                new ThreadPoolExecutor(uploadThreadPoolSize, uploadThreadPoolSize,
-                        threadKeepAliveTime, TimeUnit.SECONDS,
-                        new LinkedBlockingQueue<Runnable>(2 * uploadThreadPoolSize),
-                        new RejectedExecutionHandler() {
-                            @Override
-                            public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-                                if (!executor.isShutdown()) {
-                                    try {
-                                        executor.getQueue().put(r);
-                                    } catch (InterruptedException e) {
-                                        LOG.error("put a task into the download thread pool occurs an exception.", e);
-                                    }
-                                }
-                            }
-                        }));
+        this.executorService = MoreExecutors.listeningDecorator(executorService);
+
         try {
             this.currentBlockByteBufferWrapper = BufferPool.getInstance().getBuffer((int) this.blockSize);
         } catch (InterruptedException e) {
@@ -134,7 +117,6 @@ public class CosFsDataOutputStream extends OutputStream {
         } catch (InterruptedException e) {
             LOG.error("Returning the buffer to BufferPool occurs an exception.", e);
         }
-        this.executorService.shutdown();    // 一定要记得关闭线程池
         LOG.info("OutputStream for key '{}' upload complete", key);
         this.blockWritten = 0;
         this.closed = true;

@@ -97,7 +97,8 @@ public class CosFsInputStream extends FSInputStream {
             NativeFileSystemStore store,
             FileSystem.Statistics statistics,
             String key,
-            long fileSize) {
+            long fileSize,
+            ExecutorService readAheadExecutorService) {
         super();
         this.conf = conf;
         this.store = store;
@@ -110,24 +111,7 @@ public class CosFsInputStream extends FSInputStream {
         this.maxReadPartNumber = conf.getInt(
                 CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
                 CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
-        long threadKeepAliveTime = conf.getLong(
-                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
-        this.readAheadExecutorService = new ThreadPoolExecutor(maxReadPartNumber / 2,
-                maxReadPartNumber, threadKeepAliveTime, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(maxReadPartNumber),
-                new RejectedExecutionHandler() {
-                    @Override
-                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-                        if (!executor.isShutdown()) {
-                            try {
-                                executor.getQueue().put(r);
-                            } catch (InterruptedException e) {
-                                LOG.error("put a task into the download thread pool occurs an exception.", e);
-                            }
-                        }
-                    }
-                });
+        this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue = new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
         this.closed = false;
     }
@@ -277,12 +261,56 @@ public class CosFsInputStream extends FSInputStream {
     }
 
     @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+        if (this.closed) {
+            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
+        }
+
+        if (len == 0) {
+            return 0;
+        }
+
+        if (off < 0 || len < 0 || len > b.length) {
+            throw new IndexOutOfBoundsException();
+        }
+
+        int bytesRead = 0;
+        while (position < fileSize && bytesRead < len) {
+            if (partRemaining <= 0) {
+                reopen(position);
+            }
+
+            int bytes = 0;
+            for (int i = this.buffer.length - (int) partRemaining;
+                 i < this.buffer.length; i++) {
+                b[off + bytesRead] = this.buffer[i];
+                bytes++;
+                bytesRead++;
+                if (off + bytesRead >= len) {
+                    break;
+                }
+            }
+
+            if (bytes > 0) {
+                this.position += bytes;
+                this.partRemaining -= bytes;
+            } else if (this.partRemaining != 0) {
+                throw new IOException("Failed to read from stream. Remaining: " + this.partRemaining);
+            }
+        }
+        if (null != this.statistics && bytesRead > 0) {
+            this.statistics.incrementBytesRead(bytesRead);
+        }
+
+        return bytesRead == 0 ? -1 : bytesRead;
+    }
+
+    @Override
     public void close() throws IOException {
         if (this.closed) {
             return;
         }
 
-        this.readAheadExecutorService.shutdown();
         this.closed = true;
         this.buffer = null;
     }

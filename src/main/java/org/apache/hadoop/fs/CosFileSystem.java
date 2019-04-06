@@ -55,6 +55,9 @@ public class CosFileSystem extends FileSystem {
     private String owner = "Unknown";
     private String group = "Unknown";
 
+    private ExecutorService boundedIOThreadPool;
+    private ExecutorService boundedCopyThreadPool;
+
     public CosFileSystem() {
     }
 
@@ -86,8 +89,64 @@ public class CosFileSystem extends FileSystem {
                 this.getWorkingDirectory());
         this.owner = getOwnerId();
         this.group = getGroupId();
-        LOG.debug("owner:" + owner + ", group:" + group);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("owner:" + owner + ", group:" + group);
+        }
         BufferPool.getInstance().initialize(getConf());
+
+        // initialize the thread pool
+        int uploadThreadPoolSize = this.getConf().getInt(
+                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE
+        );
+        int readAheadPoolSize = this.getConf().getInt(
+                CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
+                CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE
+        );
+        int ioThreadPoolSize = uploadThreadPoolSize + readAheadPoolSize / 3;
+        long threadKeepAlive = this.getConf().getLong(
+                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME
+        );
+        this.boundedIOThreadPool = new ThreadPoolExecutor(
+                ioThreadPoolSize / 2, ioThreadPoolSize,
+                threadKeepAlive, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(ioThreadPoolSize * 2),
+                new RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a io task into the download thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                }
+        );
+
+        int copyThreadPoolSize = this.getConf().getInt(
+                CosNativeFileSystemConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
+                CosNativeFileSystemConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
+        );
+        this.boundedCopyThreadPool = new ThreadPoolExecutor(
+                copyThreadPoolSize / 2, copyThreadPoolSize,
+                threadKeepAlive, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(copyThreadPoolSize * 2),
+                new RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a copy task into the download thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                }
+        );
     }
 
     private static NativeFileSystemStore createDefaultStore(Configuration conf) {
@@ -203,7 +262,7 @@ public class CosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataOutputStream(
-                new CosFsDataOutputStream(getConf(), store, key, blockSize),
+                new CosFsDataOutputStream(getConf(), store, key, blockSize, this.boundedIOThreadPool),
                 statistics);
     }
 
@@ -526,7 +585,7 @@ public class CosFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         long fileSize = store.getFileLength(key);
         return new FSDataInputStream(new BufferedFSInputStream(
-                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize),
+                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize, this.boundedIOThreadPool),
                 bufferSize));
     }
 
@@ -643,28 +702,6 @@ public class CosFileSystem extends FileSystem {
         }
 
         this.store.storeEmptyFile(dstKey);
-        int copyThreadPoolSize = this.getConf().getInt(
-                CosNativeFileSystemConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
-        );
-        long threadKeepAliveTime = this.getConf().getLong(
-                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
-        ExecutorService boundedCopyThreadPool = new ThreadPoolExecutor(copyThreadPoolSize, copyThreadPoolSize,
-                threadKeepAliveTime, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(2 * copyThreadPoolSize),
-                new RejectedExecutionHandler() {
-                    @Override
-                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-                        if (!executor.isShutdown()) {
-                            try {
-                                executor.getQueue().put(r);
-                            } catch (InterruptedException e) {
-                                LOG.error("put a task into the copy thread pool occurs an exception.", e);
-                            }
-                        }
-                    }
-                });
         CosCopyFileContext copyFileContext = new CosCopyFileContext();
 
         int copiesToFinishes = 0;
@@ -672,7 +709,7 @@ public class CosFileSystem extends FileSystem {
         do {
             PartialListing objectList = this.store.list(srcKey, COS_MAX_LISTING_LENGTH, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
-                boundedCopyThreadPool.execute(new CosCopyFileTask(
+                this.boundedCopyThreadPool.execute(new CosCopyFileTask(
                         this.store,
                         file.getKey(),
                         dstKey.concat(file.getKey().substring(srcKey.length())),
@@ -687,7 +724,6 @@ public class CosFileSystem extends FileSystem {
 
         copyFileContext.lock();
         try {
-            boundedCopyThreadPool.shutdown();
             copyFileContext.awaitAllFinish(copiesToFinishes);
         } catch (InterruptedException e) {
             LOG.warn("interrupted when wait copies to finish");
@@ -743,7 +779,12 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public void close() throws IOException {
-        super.close();
-        this.store.close();
+        try {
+            this.store.close();
+            this.boundedIOThreadPool.shutdown();
+            this.boundedCopyThreadPool.shutdown();
+        } finally {
+            super.close();
+        }
     }
 }

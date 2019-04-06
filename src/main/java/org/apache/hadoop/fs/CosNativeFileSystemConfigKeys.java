@@ -47,7 +47,7 @@ public class CosNativeFileSystemConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_BLOCK_SIZE = 8 * Unit.MB;
 
     public static final String COS_MAX_RETRIES_KEY = "fs.cosn.maxRetries";
-    public static final int DEFAULT_MAX_RETRIES = 3;
+    public static final int DEFAULT_MAX_RETRIES = 5;
     public static final String COS_RETRY_INTERVAL_KEY = "fs.cosn.retry.interval.seconds";
     public static final long DEFAULT_RETRY_INTERVAL = 3;
 
