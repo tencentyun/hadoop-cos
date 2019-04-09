@@ -682,10 +682,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     throw cse;
                 }
             } catch (Exception e) {
-                String errMsg = String.format("call cos sdk failed, retryIndex:[%d / %d], call method: %s, exception: %s",
-                        retryIndex, this.maxRetryTimes, sdkMethod, e.toString());
-                LOG.error(errMsg, e);
-                throw new IOException(errMsg);
+                throw new IOException(e);
             }
         }
     }
