@@ -1,6 +1,5 @@
 package org.apache.hadoop.fs;
 
-import com.qcloud.cos.exception.CosServiceException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.retry.RetryPolicies;

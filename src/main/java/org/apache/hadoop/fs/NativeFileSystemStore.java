@@ -18,17 +18,17 @@
 
 package org.apache.hadoop.fs;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.util.List;
-
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.util.List;
 
 /**
  * <p>
@@ -43,7 +43,7 @@ interface NativeFileSystemStore {
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
-    void storeFile(String key, InputStream inputStream, byte[]md5Hash, long contentLength) throws IOException;
+    void storeFile(String key, InputStream inputStream, byte[] md5Hash, long contentLength) throws IOException;
 
     void storeEmptyFile(String key) throws IOException;
 

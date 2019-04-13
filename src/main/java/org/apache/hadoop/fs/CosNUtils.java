@@ -2,19 +2,17 @@ package org.apache.hadoop.fs;
 
 import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.auth.COSCredentialProviderList;
+import org.apache.hadoop.fs.auth.EnvironmentVariableCredentialProvider;
+import org.apache.hadoop.fs.auth.SimpleCredentialProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.net.URI;
-
-import org.apache.hadoop.fs.auth.COSCredentialProviderList;
-import org.apache.hadoop.fs.auth.EnvironmentVariableCredentialProvider;
-import org.apache.hadoop.fs.auth.SimpleCredentialProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class CosNUtils {
     private static final Logger LOG = LoggerFactory.getLogger(CosNUtils.class);
