@@ -41,14 +41,18 @@ public class BufferPool {
         File dir = new File(dirPath);
         if (null != dir) {
             if (!dir.exists()) {
-                LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
+                }
                 if (dir.mkdirs()) {
                     dir.setWritable(true);
                     dir.setReadable(true);
                     dir.setExecutable(true);
                     String cmd = "chmod 777 " + dir.getAbsolutePath();
                     Runtime.getRuntime().exec(cmd);
-                    LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
+                    }
                 } else {
                     // Once again, check if it has been created successfully.
                     // Prevent problems created by multiple processes at the same time
@@ -57,7 +61,9 @@ public class BufferPool {
                     }
                 }
             } else {
-                LOG.debug("buffer dir: " + dirPath + " already exists.");
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("buffer dir: " + dirPath + " already exists.");
+                }
             }
         } else {
             throw new IOException("creating buffer dir: " + dir.getAbsolutePath() + "failed.");
@@ -83,7 +89,9 @@ public class BufferPool {
                 CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR));
 
         int bufferPoolSize = memoryBufferLimit / this.singleBufferSize;
-        LOG.debug("buffer pool size: " + String.valueOf(bufferPoolSize));
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("buffer pool size: {}", bufferPoolSize);
+        }
         if (0 == bufferPoolSize) {
             throw new IOException(
                     String.format("The total size of the buffer[%d] is smaller than a single block [%d]."
@@ -114,8 +122,8 @@ public class BufferPool {
             }
             return byteBufferWrapper;
         } else {
-            throw new IOException("Parameter buffer size out of range: 1MB " + " to "
-                    + this.singleBufferSize);
+            throw new IOException("Parameter buffer size out of range: 1048576 " + " to "
+                    + this.singleBufferSize + " request buffer size: " + String.valueOf(bufferSize));
         }
     }
 

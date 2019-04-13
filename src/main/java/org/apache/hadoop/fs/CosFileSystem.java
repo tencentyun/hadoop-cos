@@ -15,13 +15,6 @@
 
 package org.apache.hadoop.fs;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.util.*;
-import java.util.concurrent.*;
-
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -32,6 +25,13 @@ import org.apache.hadoop.io.retry.RetryProxy;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * A {@link FileSystem} for reading and writing files stored on
@@ -279,7 +279,9 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
-        LOG.debug("ready to delete path:" + f + ", recursive:" + recursive);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("ready to delete path:" + f + ", recursive:" + recursive);
+        }
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -337,7 +339,9 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
-        LOG.debug("getFileStatus: " + f);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("getFileStatus: " + f);
+        }
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -366,7 +370,9 @@ public class CosFileSystem extends FileSystem {
         if (!key.endsWith(PATH_DELIMITER)) {
             key += PATH_DELIMITER;
         }
-        LOG.debug("getFileStatus listing key '" + key + "'");
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("getFileStatus listing key '" + key + "'");
+        }
         PartialListing listing = store.list(key, 1);
         if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
             if (LOG.isDebugEnabled()) {
