@@ -35,8 +35,7 @@ public class CosFileReadTask implements Runnable {
                         CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES),
                 conf.getLong(
                         CosNativeFileSystemConfigKeys.COS_RETRY_INTERVAL_KEY,
-                        CosNativeFileSystemConfigKeys.DEFAULT_RETRY_INTERVAL
-                ),
+                        CosNativeFileSystemConfigKeys.DEFAULT_RETRY_INTERVAL),
                 TimeUnit.SECONDS
         );
         Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap = new HashMap<Class<? extends Exception>, RetryPolicy>();
@@ -64,6 +63,7 @@ public class CosFileReadTask implements Runnable {
                     break;
                 } catch (IOException e) {
                     this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.ERROR);
+                    LOG.error("exception: {}", e);
                     LOG.warn("Exception occurs when retrieve the block range start: "
                             + String.valueOf(this.readBuffer.getStart()) + " end: " + this.readBuffer.getEnd());
                     try {
