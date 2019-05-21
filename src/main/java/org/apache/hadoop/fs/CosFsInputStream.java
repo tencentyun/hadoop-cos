@@ -168,7 +168,7 @@ public class CosFsInputStream extends FSInputStream {
 
             long byteStart = this.lastByteStart + partSize * (i + 1);
             long byteEnd = byteStart + partSize - 1;
-            if (byteEnd > this.fileSize) {
+            if (byteEnd >= this.fileSize) {
                 byteEnd = this.fileSize - 1;
             }
 
