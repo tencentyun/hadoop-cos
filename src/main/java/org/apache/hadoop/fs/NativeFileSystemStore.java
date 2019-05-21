@@ -1,21 +1,3 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
@@ -43,11 +25,14 @@ interface NativeFileSystemStore {
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
-    void storeFile(String key, InputStream inputStream, byte[] md5Hash, long contentLength) throws IOException;
+    void storeFile(String key, InputStream inputStream, byte[] md5Hash,
+                   long contentLength) throws IOException;
 
     void storeEmptyFile(String key) throws IOException;
 
-    CompleteMultipartUploadResult completeMultipartUpload(String key, String uploadId, List<PartETag> partETagList);
+    CompleteMultipartUploadResult completeMultipartUpload(String key,
+                                                          String uploadId,
+                                                          List<PartETag> partETagList);
 
     void abortMultipartUpload(String key, String uploadId);
 
@@ -55,7 +40,8 @@ interface NativeFileSystemStore {
 
     PartETag uploadPart(File file, String key, String uploadId, int partNum) throws IOException;
 
-    PartETag uploadPart(InputStream inputStream, String key, String uploadId, int partNum, long partSize) throws IOException;
+    PartETag uploadPart(InputStream inputStream, String key, String uploadId,
+                        int partNum, long partSize) throws IOException;
 
     FileMetadata retrieveMetadata(String key) throws IOException;
 
@@ -63,15 +49,18 @@ interface NativeFileSystemStore {
 
     InputStream retrieve(String key, long byteRangeStart) throws IOException;
 
-    InputStream retrieveBlock(String key, long byteRangeStart, long byteRangeEnd) throws IOException;
+    InputStream retrieveBlock(String key, long byteRangeStart,
+                              long byteRangeEnd) throws IOException;
 
-    boolean retrieveBlock(String key, long byteRangeStart, long blockSize, String localBlockPath) throws IOException;
+    boolean retrieveBlock(String key, long byteRangeStart, long blockSize,
+                          String localBlockPath) throws IOException;
 
     long getFileLength(String key) throws IOException;
 
     PartialListing list(String prefix, int maxListingLength) throws IOException;
 
-    PartialListing list(String prefix, int maxListingLength, String priorLastKey, boolean recursive)
+    PartialListing list(String prefix, int maxListingLength,
+                        String priorLastKey, boolean recursive)
             throws IOException;
 
     void delete(String key) throws IOException;

@@ -14,7 +14,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 
 public class CosFsInputStream extends FSInputStream {
-    public static final Logger LOG = LoggerFactory.getLogger(CosFsInputStream.class);
+    public static final Logger LOG =
+            LoggerFactory.getLogger(CosFsInputStream.class);
 
     public class ReadBuffer {
         public static final int INIT = 1;
@@ -106,13 +107,14 @@ public class CosFsInputStream extends FSInputStream {
         this.key = key;
         this.fileSize = fileSize;
         this.PreReadPartSize = conf.getLong(
-                CosNativeFileSystemConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
+                CosNConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
         this.maxReadPartNumber = conf.getInt(
-                CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
-                CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
+                CosNConfigKeys.READ_AHEAD_QUEUE_SIZE,
+                CosNConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
         this.readAheadExecutorService = readAheadExecutorService;
-        this.readBufferQueue = new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
+        this.readBufferQueue =
+                new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
         this.closed = false;
     }
 
@@ -152,8 +154,10 @@ public class CosFsInputStream extends FSInputStream {
         if (currentBufferQueueSize == 0) {
             this.lastByteStart = pos - partSize;
         } else {
-            ReadBuffer[] readBuffers = this.readBufferQueue.toArray(new ReadBuffer[currentBufferQueueSize]);
-            this.lastByteStart = readBuffers[currentBufferQueueSize - 1].getStart();
+            ReadBuffer[] readBuffers =
+                    this.readBufferQueue.toArray(new ReadBuffer[currentBufferQueueSize]);
+            this.lastByteStart =
+                    readBuffers[currentBufferQueueSize - 1].getStart();
         }
 
         int maxLen = this.maxReadPartNumber - currentBufferQueueSize;
@@ -172,7 +176,9 @@ public class CosFsInputStream extends FSInputStream {
             if (readBuffer.getBuffer().length == 0) {
                 readBuffer.setStatus(ReadBuffer.SUCCESS);
             } else {
-                this.readAheadExecutorService.execute(new CosFileReadTask(this.conf, this.key, this.store, readBuffer));
+                this.readAheadExecutorService.execute(
+                        new CosNFileReadTask(
+                                this.conf, this.key, this.store, readBuffer));
             }
 
             this.readBufferQueue.add(readBuffer);
@@ -247,7 +253,8 @@ public class CosFsInputStream extends FSInputStream {
 
         int byteRead = -1;
         if (this.partRemaining != 0) {
-            byteRead = this.buffer[(int) (this.buffer.length - this.partRemaining)] & 0xff;
+            byteRead =
+                    this.buffer[(int) (this.buffer.length - this.partRemaining)] & 0xff;
         }
         if (byteRead >= 0) {
             this.position++;
@@ -295,7 +302,8 @@ public class CosFsInputStream extends FSInputStream {
                 this.position += bytes;
                 this.partRemaining -= bytes;
             } else if (this.partRemaining != 0) {
-                throw new IOException("Failed to read from stream. Remaining: " + this.partRemaining);
+                throw new IOException("Failed to read from stream. Remaining:" +
+                        " " + this.partRemaining);
             }
         }
         if (null != this.statistics && bytesRead > 0) {

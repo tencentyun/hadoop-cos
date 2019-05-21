@@ -4,23 +4,25 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
-public class ByteBufferOutputStream extends OutputStream {
-    private ByteBuffer byteBuffer;
-    private boolean isFlush = false;
-    private boolean isClosed = true;
+import org.apache.hadoop.fs.buffer.CosNByteBuffer;
 
-    public ByteBufferOutputStream(ByteBuffer byteBuffer) throws IOException {
-        if (null == byteBuffer) {
-            throw new IOException("byte buffer is null");
+/**
+ * The input stream class is used for buffered files.
+ * The purpose of providing this class is to optimize buffer put performance.
+ */
+public class BufferOutputStream extends OutputStream {
+    private ByteBuffer byteBuffer;
+    private boolean isFlush;
+    private boolean isClosed;
+
+    public BufferOutputStream(CosNByteBuffer buffer) throws IOException {
+        if (null == buffer) {
+            throw new IOException("buffer is null");
         }
-        this.byteBuffer = byteBuffer;
+        this.byteBuffer = buffer.getByteBuffer();
         this.byteBuffer.clear();
         this.isFlush = false;
         this.isClosed = false;
-    }
-
-    public ByteBufferOutputStream(byte[] buffer) throws IOException {
-        this(ByteBuffer.wrap(buffer));
     }
 
     @Override
@@ -32,7 +34,11 @@ public class ByteBufferOutputStream extends OutputStream {
     }
 
     @Override
-    public void flush() throws IOException {
+    public void flush() {
+        if (this.isFlush) {
+            return;
+        }
+        this.isFlush = true;
     }
 
     @Override

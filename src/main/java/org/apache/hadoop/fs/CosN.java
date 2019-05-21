@@ -7,7 +7,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 
 public class CosN extends DelegateToFileSystem {
-    public CosN(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    public CosN(URI theUri, Configuration conf) throws IOException,
+            URISyntaxException {
         super(theUri, new CosFileSystem(), conf, CosFileSystem.SCHEME, false);
     }
 

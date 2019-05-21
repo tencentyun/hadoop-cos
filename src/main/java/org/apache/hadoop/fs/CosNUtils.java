@@ -4,6 +4,7 @@ import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.COSCredentialProviderList;
 import org.apache.hadoop.fs.auth.EnvironmentVariableCredentialProvider;
+import org.apache.hadoop.fs.auth.SessionCredentialProvider;
 import org.apache.hadoop.fs.auth.SimpleCredentialProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,29 +14,37 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 
 public final class CosNUtils {
     private static final Logger LOG = LoggerFactory.getLogger(CosNUtils.class);
 
     static final String INSTANTIATION_EXCEPTION = "instantiation exception";
-    static final String NOT_COS_CREDENTIAL_PROVIDER = "is not cos credential provider";
-    static final String ABSTRACT_CREDENTIAL_PROVIDER = "is abstract and therefore cannot be created";
+    static final String NOT_COS_CREDENTIAL_PROVIDER = "is not cos credential " +
+            "provider";
+    static final String ABSTRACT_CREDENTIAL_PROVIDER = "is abstract and " +
+            "therefore cannot be created";
 
     private CosNUtils() {
     }
 
-    public static COSCredentialProviderList createCosCredentialsProviderSet(Configuration conf) throws IOException {
-        COSCredentialProviderList credentialProviderList = new COSCredentialProviderList();
+    public static COSCredentialProviderList createCosCredentialsProviderSet(
+            URI uri,
+            Configuration conf) throws IOException {
+        COSCredentialProviderList credentialProviderList =
+                new COSCredentialProviderList();
 
         Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
                 conf,
-                CosNativeFileSystemConfigKeys.COS_CREDENTIALS_PROVIDER);
+                CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
         if (0 == cosClasses.length) {
-            credentialProviderList.add(new SimpleCredentialProvider(conf));
-            credentialProviderList.add(new EnvironmentVariableCredentialProvider());
+            credentialProviderList.add(new SessionCredentialProvider(uri,
+                    conf));
+            credentialProviderList.add(new SimpleCredentialProvider(uri, conf));
+            credentialProviderList.add(new EnvironmentVariableCredentialProvider(uri, conf));
         } else {
             for (Class<?> credClass : cosClasses) {
-                credentialProviderList.add(createCOSCredentialProvider(
+                credentialProviderList.add(createCOSCredentialProvider(uri,
                         conf,
                         credClass));
             }
@@ -57,6 +66,7 @@ public final class CosNUtils {
     }
 
     public static COSCredentialsProvider createCOSCredentialProvider(
+            URI uri,
             Configuration conf,
             Class<?> credClass) throws IOException {
         COSCredentialsProvider credentialsProvider;
@@ -66,31 +76,44 @@ public final class CosNUtils {
         if (Modifier.isAbstract(credClass.getModifiers())) {
             throw new IllegalArgumentException("class " + credClass + " " + ABSTRACT_CREDENTIAL_PROVIDER);
         }
-        LOG.debug("Credential Provider class: " + credClass.getName());
+        LOG.info("Credential Provider class: " + credClass.getName());
 
         try {
             // new credClass()
             Constructor constructor = getConstructor(credClass);
             if (constructor != null) {
-                credentialsProvider = (COSCredentialsProvider) constructor.newInstance();
+                credentialsProvider =
+                        (COSCredentialsProvider) constructor.newInstance();
                 return credentialsProvider;
             }
             // new credClass(conf)
             constructor = getConstructor(credClass, Configuration.class);
             if (null != constructor) {
-                credentialsProvider = (COSCredentialsProvider) constructor.newInstance(conf);
+                credentialsProvider =
+                        (COSCredentialsProvider) constructor.newInstance(conf);
                 return credentialsProvider;
             }
 
-            Method factory = getFactoryMethod(credClass, COSCredentialsProvider.class, "getInstance");
+            // new credClass(uri, conf)
+            constructor = getConstructor(credClass, URI.class,
+                    Configuration.class);
+            if (null != constructor) {
+                credentialsProvider =
+                        (COSCredentialsProvider) constructor.newInstance(uri,
+                                conf);
+                return credentialsProvider;
+            }
+
+            Method factory = getFactoryMethod(credClass,
+                    COSCredentialsProvider.class, "getInstance");
             if (null != factory) {
-                credentialsProvider = (COSCredentialsProvider) factory.invoke(null);
+                credentialsProvider =
+                        (COSCredentialsProvider) factory.invoke(null);
                 return credentialsProvider;
             }
 
             throw new IllegalArgumentException(
-                    "Not supported constructor or factory method found"
-            );
+                    "Not supported constructor or factory method found");
 
         } catch (IllegalAccessException e) {
             throw new IOException(credClass.getName() + " " + INSTANTIATION_EXCEPTION + ": " + e,
@@ -108,16 +131,19 @@ public final class CosNUtils {
         }
     }
 
-    private static Constructor<?> getConstructor(Class<?> cl, Class<?>... args) {
+    private static Constructor<?> getConstructor(Class<?> cl,
+                                                 Class<?>... args) {
         try {
             Constructor constructor = cl.getDeclaredConstructor(args);
-            return Modifier.isPublic(constructor.getModifiers()) ? constructor : null;
+            return Modifier.isPublic(constructor.getModifiers()) ?
+                    constructor : null;
         } catch (NoSuchMethodException e) {
             return null;
         }
     }
 
-    private static Method getFactoryMethod(Class<?> cl, Class<?> returnType, String methodName) {
+    private static Method getFactoryMethod(Class<?> cl, Class<?> returnType,
+                                           String methodName) {
         try {
             Method m = cl.getDeclaredMethod(methodName);
             if (Modifier.isPublic(m.getModifiers())

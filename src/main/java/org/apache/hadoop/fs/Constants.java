@@ -4,10 +4,22 @@ public final class Constants {
     private Constants() {
     }
 
-    public static final String BLOCK_TMP_FILE_PREFIX = "cos_";                    // The block file prefix for multipart upload op
-    public static final String BLOCK_TMP_FILE_SUFFIX = "_local_block_cache";    // Suffix for local cache file name
-    public static final int MAX_PART_NUM = 10000;                                   // Maximum number of blocks uploaded in chunks
-    public static final long MAX_PART_SIZE = 5 * Unit.GB;                           // The maximum size of a single block
-    public static final long MIN_PART_SIZE = 1 * Unit.MB;                           // The minimum size of a single block
-    public static final int MAX_BUFFER_SIZE = Integer.MAX_VALUE - 8;
+    // The block file prefix for multipart upload op.
+    public static final String BLOCK_TMP_FILE_PREFIX = "cos_";
+
+    // Suffix for local cache file name
+    public static final String BLOCK_TMP_FILE_SUFFIX = "_local_block_cache";
+
+    // Maximum number of blocks uploaded in trunks.
+    public static final int MAX_PART_NUM = 10000;
+    // The maximum size of a single block.
+    public static final long MAX_PART_SIZE = 2 * Unit.GB;
+    // The minimum size of a single block.
+    public static final long MIN_PART_SIZE = Unit.MB;
+    // The maximum size of the buffer is 8GB
+    public static final long MAX_BUFFER_SIZE = 2 * Unit.GB;
+
+    // Environments variables for the COS secretId and secretKey.
+    public static final String COSN_SECRET_ID_ENV = "COSN_SECRET_ID";
+    public static final String COSN_SECRET_KEY_ENV = "COSN_SECRET_KEY";
 }

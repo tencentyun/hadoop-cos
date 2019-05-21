@@ -1,165 +1,263 @@
 package org.apache.hadoop.fs;
 
-import org.apache.hadoop.conf.Configuration;
+import java.io.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.apache.hadoop.fs.buffer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.hadoop.conf.Configuration;
 
 /**
- * 缓冲池
- * 当内存缓冲区够用时，则使用内存缓冲区
- * 当内存缓冲区不够用时，则使用磁盘缓冲区
+ * BufferPool class is used to manage the buffers during program execution.
+ * It is provided in a thread-safe singleton mode,and
+ * keeps the program's memory and disk consumption at a stable value.
  */
-public class BufferPool {
-    static final Logger LOG = LoggerFactory.getLogger(BufferPool.class);
+public final class BufferPool {
+    private static final Logger LOG =
+            LoggerFactory.getLogger(BufferPool.class);
 
     private static BufferPool ourInstance = new BufferPool();
 
+    /**
+     * Use this method to get the instance of BufferPool.
+     *
+     * @return the instance of BufferPool
+     */
     public static BufferPool getInstance() {
         return ourInstance;
     }
 
-    private BlockingQueue<ByteBuffer> bufferPool = null;
-    private int singleBufferSize = 0;
-    private File diskBufferDir = null;
+    private long blockSize = 0;
+    private long totalBufferSize = 0;
+    private BufferType bufferType;
+    private CosNBufferFactory bufferFactory;
+    private BlockingQueue<CosNByteBuffer> bufferPool;
 
+    private int referCount = 0;
     private AtomicBoolean isInitialize = new AtomicBoolean(false);
 
     private BufferPool() {
     }
 
-    private File createDir(String dirPath) throws IOException {
-        File dir = new File(dirPath);
-        if (null != dir) {
-            if (!dir.exists()) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("buffer dir: " + dirPath + " is not exists. creating it.");
-                }
-                if (dir.mkdirs()) {
-                    dir.setWritable(true);
-                    dir.setReadable(true);
-                    dir.setExecutable(true);
-                    String cmd = "chmod 777 " + dir.getAbsolutePath();
-                    Runtime.getRuntime().exec(cmd);
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("buffer dir: " + dir.getAbsolutePath() + " is created successfully.");
-                    }
-                } else {
-                    // Once again, check if it has been created successfully.
-                    // Prevent problems created by multiple processes at the same time
-                    if (!dir.exists()) {
-                        throw new IOException("buffer dir:" + dir.getAbsolutePath() + " is created failure");
-                    }
-                }
-            } else {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("buffer dir: " + dirPath + " already exists.");
-                }
-            }
-        } else {
-            throw new IOException("creating buffer dir: " + dir.getAbsolutePath() + "failed.");
-        }
-
-        return dir;
-    }
-
-    public synchronized void initialize(Configuration conf) throws IOException {
+    /**
+     * Create buffers correctly by reading the buffer file directory,
+     * buffer pool size,and file block size in the configuration.
+     *
+     * @param conf Provides configurations for the Hadoop runtime
+     * @throws IOException Configuration errors,
+     *                     insufficient or no access for memory or
+     *                     disk space may cause this exception
+     */
+    public synchronized void initialize(Configuration conf)
+            throws IOException {
         if (this.isInitialize.get()) {
+            LOG.debug("Buffer pool: [{}] is initialized and referenced once. "
+                    + "current reference count: [{}].", this, this.referCount);
+            this.referCount++;
             return;
         }
-        this.singleBufferSize = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_BLOCK_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_BLOCK_SIZE);
 
-        int memoryBufferLimit = conf.getInt(
-                CosNativeFileSystemConfigKeys.COS_UPLOAD_BUFFER_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_BUFFER_SIZE);
-
-        this.diskBufferDir = this.createDir(conf.get(
-                CosNativeFileSystemConfigKeys.COS_BUFFER_DIR_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_BUFFER_DIR));
-
-        int bufferPoolSize = memoryBufferLimit / this.singleBufferSize;
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("buffer pool size: {}", bufferPoolSize);
-        }
-        if (0 == bufferPoolSize) {
-            throw new IOException(
-                    String.format("The total size of the buffer[%d] is smaller than a single block [%d]."
-                                    + "please consider increase the buffer size or decrease the block size",
-                            memoryBufferLimit, this.singleBufferSize));
-        }
-        this.bufferPool = new LinkedBlockingQueue<ByteBuffer>(bufferPoolSize);
-        for (int i = 0; i < bufferPoolSize; i++) {
-            this.bufferPool.add(ByteBuffer.allocateDirect(this.singleBufferSize));
+        this.blockSize = conf.getLong(CosNConfigKeys.COSN_BLOCK_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_BLOCK_SIZE);
+        // The block size of CosN can only support up to 2GB.
+        if (this.blockSize < Constants.MIN_PART_SIZE
+                || this.blockSize > Constants.MAX_PART_SIZE) {
+            String exceptionMsg = String.format(
+                    "The block size of CosN is limited to %d to %d. current " +
+                            "block size: %d",
+                    Constants.MIN_PART_SIZE, Constants.MAX_PART_SIZE,
+                    this.blockSize);
+            throw new IllegalArgumentException(exceptionMsg);
         }
 
+        this.bufferType = BufferType.TypeFactory(conf.get(
+                CosNConfigKeys.COSN_UPLOAD_BUFFER_TYPE_KEY,
+                CosNConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE));
+
+        if (null == this.bufferType
+                || (BufferType.NON_DIRECT_MEMORY != this.bufferType
+                && BufferType.DIRECT_MEMORY != this.bufferType
+                && BufferType.MAPPED_DISK != this.bufferType)) {
+            LOG.warn("The [{}] option is set incorrectly, using the default " +
+                            "settings:"
+                            + " [{}].",
+                    CosNConfigKeys.COSN_UPLOAD_BUFFER_TYPE_KEY,
+                    CosNConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE);
+        }
+
+        if (conf.get(CosNConfigKeys.COSN_UPLOAD_BUFFER_SIZE_KEY) == null) {
+            this.totalBufferSize = conf.getLong(
+                    CosNConfigKeys.COSN_UPLOAD_BUFFER_SIZE_PREV_KEY,
+                    CosNConfigKeys.DEFAULT_UPLOAD_BUFFER_SIZE);
+        } else {
+            this.totalBufferSize = conf.getLong(
+                    CosNConfigKeys.COSN_UPLOAD_BUFFER_SIZE_KEY,
+                    CosNConfigKeys.DEFAULT_UPLOAD_BUFFER_SIZE);
+        }
+
+        if (this.totalBufferSize < 0 && -1 != this.totalBufferSize) {
+            String errMsg = String.format("Negative buffer size: %d",
+                    this.totalBufferSize);
+            throw new IllegalArgumentException(errMsg);
+        }
+
+        if (this.totalBufferSize == -1) {
+            LOG.info("{} is set to -1, so the 'mapped_disk' buffer will be " +
+                    "used by "
+                    + "default.", CosNConfigKeys.COSN_UPLOAD_BUFFER_SIZE_KEY);
+            this.bufferType = BufferType.MAPPED_DISK;
+        }
+
+        LOG.info("The type of the upload buffer pool is [{}].",
+                this.bufferType);
+        if (this.bufferType == BufferType.NON_DIRECT_MEMORY) {
+            this.bufferFactory = new CosNNonDirectBufferFactory();
+        } else if (this.bufferType == BufferType.DIRECT_MEMORY) {
+            this.bufferFactory = new CosNDirectBufferFactory();
+        } else if (this.bufferType == BufferType.MAPPED_DISK) {
+            String tmpDir = conf.get(CosNConfigKeys.COSN_TMP_DIR,
+                    CosNConfigKeys.DEFAULT_TMP_DIR);
+            this.bufferFactory = new CosNMappedBufferFactory(tmpDir);
+        } else {
+            String exceptionMsg = String.format("The type of the upload " +
+                    "buffer is "
+                    + "invalid. buffer type: %s", this.bufferType);
+            throw new IllegalArgumentException(exceptionMsg);
+        }
+
+        // If totalBufferSize is greater than 0, and the buffer type is direct
+        // memory
+        // or mapped memory, it need to be allocate in advance to reduce the
+        // overhead of repeated allocations and releases.
+        if (this.totalBufferSize > 0
+                && (BufferType.DIRECT_MEMORY == this.bufferType
+                || BufferType.MAPPED_DISK == this.bufferType)) {
+            int bufferNumber = (int) (totalBufferSize / blockSize);
+            if (bufferNumber == 0) {
+                String errMsg = String.format("The buffer size: [%d] is at " +
+                                "least "
+                                + "greater than or equal to the size of a " +
+                                "block: [%d]",
+                        this.totalBufferSize, this.blockSize);
+                throw new IllegalArgumentException(errMsg);
+            }
+
+            LOG.info("Initialize the {} buffer pool. size: {}", this.bufferType,
+                    bufferNumber);
+            this.bufferPool = new LinkedBlockingQueue<CosNByteBuffer>(bufferNumber);
+            for (int i = 0; i < bufferNumber; i++) {
+                this.bufferPool.add(this.bufferFactory.create((int) this.blockSize));
+            }
+        }
+
+        this.referCount++;
         this.isInitialize.set(true);
     }
 
-    void checkInitialize() throws IOException {
+    /**
+     * Check if the buffer pool has been initialized.
+     *
+     * @throws IOException if the buffer pool is not initialized
+     */
+    private void checkInitialize() throws IOException {
         if (!this.isInitialize.get()) {
-            throw new IOException("The buffer pool has not been initialized yet");
+            throw new IOException(
+                    "The buffer pool has not been initialized yet");
+        }
+
+        // If the buffer pool is null, but the buffer size is not -1, this is
+        // illegal.
+        if (-1 != this.totalBufferSize && null == this.bufferPool) {
+            throw new IOException("The buffer pool is null, but the size is " +
+                    "not -1"
+                    + "(unlimited).");
         }
     }
 
-    public ByteBufferWrapper getBuffer(int bufferSize) throws IOException, InterruptedException {
+    /**
+     * Obtain a buffer from this buffer pool through the method.
+     *
+     * @param bufferSize expected buffer size to get
+     * @return a buffer that satisfies the totalBufferSize.
+     * @throws IOException if the buffer pool not initialized,
+     *                     or the totalBufferSize parameter is not within
+     *                     the range[1MB to the single buffer size]
+     */
+    public CosNByteBuffer getBuffer(int bufferSize) throws IOException,
+            InterruptedException {
         this.checkInitialize();
-        if (bufferSize > 0 && bufferSize <= this.singleBufferSize) {
-            ByteBufferWrapper byteBufferWrapper = this.getByteBuffer();
-            if (null == byteBufferWrapper) {
-                // 内存缓冲区不够用了，则使用磁盘缓冲区
-                byteBufferWrapper = this.getMappedBuffer();
+        if (bufferSize > 0 && bufferSize <= this.blockSize) {
+            // unlimited
+            if (-1 == this.totalBufferSize) {
+                return bufferFactory.create(bufferSize);
             }
-            return byteBufferWrapper;
+            // limited
+            return this.bufferPool.poll(Long.MAX_VALUE, TimeUnit.SECONDS);
         } else {
-            throw new IOException("Parameter buffer size out of range: 1048576 " + " to "
-                    + this.singleBufferSize + " request buffer size: " + String.valueOf(bufferSize));
+            String exceptionMsg = String.format(
+                    "Parameter buffer size out of range: 1 to %d",
+                    this.blockSize
+            );
+            throw new IOException(exceptionMsg);
         }
     }
 
-    ByteBufferWrapper getByteBuffer() throws IOException, InterruptedException {
-        this.checkInitialize();
-        ByteBuffer buffer = this.bufferPool.poll();
-        return buffer == null ? null : new ByteBufferWrapper(buffer);
-    }
-
-    ByteBufferWrapper getMappedBuffer() throws IOException, InterruptedException {
-        this.checkInitialize();
-        File tmpFile = File.createTempFile(
-                Constants.BLOCK_TMP_FILE_PREFIX,
-                Constants.BLOCK_TMP_FILE_SUFFIX,
-                this.diskBufferDir
-        );
-        tmpFile.deleteOnExit();
-        RandomAccessFile raf = new RandomAccessFile(tmpFile, "rw");
-        raf.setLength(this.singleBufferSize);
-        MappedByteBuffer buf = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, this.singleBufferSize);
-        return new ByteBufferWrapper(buf, raf, tmpFile);
-    }
-
-    public void returnBuffer(ByteBufferWrapper byteBufferWrapper) throws IOException, InterruptedException {
-        if (null == this.bufferPool || null == byteBufferWrapper) {
+    /**
+     * return the byte buffer wrapper to the buffer pool.
+     *
+     * @param buffer the byte buffer wrapper getting from the pool
+     * @throws InterruptedException if interrupted while waiting
+     * @throws IOException          some io error occurs
+     */
+    public void returnBuffer(CosNByteBuffer buffer)
+            throws InterruptedException, IOException {
+        if (null == buffer) {
+            LOG.error("The buffer returned is null. Ignore it.");
             return;
         }
 
-        if (byteBufferWrapper.isDiskBuffer()) {
-            byteBufferWrapper.close();
+        this.checkInitialize();
+
+        if (-1 == this.totalBufferSize) {
+            LOG.debug("No buffer pool is maintained, and release the buffer "
+                    + "directly.");
+            this.bufferFactory.release(buffer);
         } else {
-            ByteBuffer byteBuffer = byteBufferWrapper.getByteBuffer();
-            if (null != byteBuffer) {
-                byteBuffer.clear();
-                this.bufferPool.put(byteBuffer);
+            LOG.debug("Return the buffer to the buffer pool.");
+            this.bufferPool.put(buffer);
+        }
+    }
+
+    public synchronized void close() {
+        LOG.debug("");
+        this.referCount--;
+        if (this.referCount > 0) {
+            return;
+        }
+
+        if (!this.isInitialize.get()) {
+            // Closed or not initialized, return directly.
+            LOG.warn("The buffer pool has been closed. no changes would be " +
+                    "execute.");
+            return;
+        }
+
+        // First, release the buffers in the buffer queue.
+        if (null != this.bufferPool) {
+            for (CosNByteBuffer buffer : this.bufferPool) {
+                this.bufferFactory.release(buffer);
             }
+            this.bufferPool.clear();
+        }
+
+        //
+        if (this.referCount == 0) {
+            this.isInitialize.set(false);
         }
     }
 }

@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class CosCopyFileContext {
+public class CosNCopyFileContext {
     private final ReentrantLock lock = new ReentrantLock();
     private Condition readyCondition = lock.newCondition();
 

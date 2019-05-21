@@ -13,8 +13,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-public class CosFileReadTask implements Runnable {
-    static final Logger LOG = LoggerFactory.getLogger(CosFileReadTask.class);
+public class CosNFileReadTask implements Runnable {
+    static final Logger LOG = LoggerFactory.getLogger(CosNFileReadTask.class);
 
     private final String key;
     private final NativeFileSystemStore store;
@@ -22,29 +22,34 @@ public class CosFileReadTask implements Runnable {
 
     private RetryPolicy retryPolicy = null;
 
-    public CosFileReadTask(
-            Configuration conf,
-            String key, NativeFileSystemStore store, CosFsInputStream.ReadBuffer readBuffer) {
+    public CosNFileReadTask(Configuration conf, String key,
+                            NativeFileSystemStore store,
+                            CosFsInputStream.ReadBuffer readBuffer) {
         this.key = key;
         this.store = store;
         this.readBuffer = readBuffer;
 
-        RetryPolicy defaultPolicy = RetryPolicies.retryUpToMaximumCountWithFixedSleep(
+        RetryPolicy defaultPolicy =
+                RetryPolicies.retryUpToMaximumCountWithFixedSleep(
                 conf.getInt(
-                        CosNativeFileSystemConfigKeys.COS_MAX_RETRIES_KEY,
-                        CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES),
+                        CosNConfigKeys.COSN_MAX_RETRIES_KEY,
+                        CosNConfigKeys.DEFAULT_MAX_RETRIES),
                 conf.getLong(
-                        CosNativeFileSystemConfigKeys.COS_RETRY_INTERVAL_KEY,
-                        CosNativeFileSystemConfigKeys.DEFAULT_RETRY_INTERVAL
+                        CosNConfigKeys.COSN_RETRY_INTERVAL_KEY,
+                        CosNConfigKeys.DEFAULT_RETRY_INTERVAL
                 ),
                 TimeUnit.SECONDS
         );
-        Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap = new HashMap<Class<? extends Exception>, RetryPolicy>();
+        Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap =
+                new HashMap<Class<? extends Exception>, RetryPolicy>();
         retryPolicyMap.put(IOException.class, defaultPolicy);
-        retryPolicyMap.put(IndexOutOfBoundsException.class, RetryPolicies.TRY_ONCE_THEN_FAIL);
-        retryPolicyMap.put(NullPointerException.class, RetryPolicies.TRY_ONCE_THEN_FAIL);
+        retryPolicyMap.put(IndexOutOfBoundsException.class,
+                RetryPolicies.TRY_ONCE_THEN_FAIL);
+        retryPolicyMap.put(NullPointerException.class,
+                RetryPolicies.TRY_ONCE_THEN_FAIL);
 
-        this.retryPolicy = RetryPolicies.retryByException(defaultPolicy, retryPolicyMap);
+        this.retryPolicy = RetryPolicies.retryByException(defaultPolicy,
+                retryPolicyMap);
     }
 
     @Override
@@ -56,24 +61,31 @@ public class CosFileReadTask implements Runnable {
             do {
                 try {
                     InputStream inputStream = this.store.retrieveBlock(
-                            this.key, this.readBuffer.getStart(), this.readBuffer.getEnd());
+                            this.key, this.readBuffer.getStart(),
+                            this.readBuffer.getEnd());
                     IOUtils.readFully(
-                            inputStream, this.readBuffer.getBuffer(), 0, readBuffer.getBuffer().length);
+                            inputStream, this.readBuffer.getBuffer(), 0,
+                            readBuffer.getBuffer().length);
                     inputStream.close();
                     this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.SUCCESS);
                     break;
                 } catch (IOException e) {
                     this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.ERROR);
-                    LOG.warn("Exception occurs when retrieve the block range start: "
-                            + String.valueOf(this.readBuffer.getStart()) + " end: " + this.readBuffer.getEnd());
+                    LOG.warn("Exception occurs when retrieve the block range " +
+                            "start: "
+                            + String.valueOf(this.readBuffer.getStart()) + " " +
+                            "end: " + this.readBuffer.getEnd());
                     try {
-                        retryAction = this.retryPolicy.shouldRetry(e, retries++, 0, true);
+                        retryAction = this.retryPolicy.shouldRetry(e,
+                                retries++, 0, true);
                         if (retryAction.action == RetryPolicy.RetryAction.RetryDecision.RETRY) {
                             Thread.sleep(retryAction.delayMillis);
                         }
                     } catch (Exception e1) {
-                        String errMsg = String.format("Exception occurs when retry[%s] "
-                                        + "to retrieve the block range start: %d, end:%d",
+                        String errMsg = String.format("Exception occurs when " +
+                                        "retry[%s] "
+                                        + "to retrieve the block range start:" +
+                                        " %d, end:%d",
                                 this.retryPolicy.toString(),
                                 String.valueOf(this.readBuffer.getStart()),
                                 String.valueOf(this.readBuffer.getEnd()));

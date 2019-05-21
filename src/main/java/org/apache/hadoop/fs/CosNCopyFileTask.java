@@ -5,17 +5,18 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-public class CosCopyFileTask implements Runnable {
-    private static Logger LOG = LoggerFactory.getLogger(CosCopyFileTask.class);
+public class CosNCopyFileTask implements Runnable {
+    private static Logger LOG = LoggerFactory.getLogger(CosNCopyFileTask.class);
 
     private NativeFileSystemStore store;
 
     private String srcKey;
     private String dstKey;
-    private CosCopyFileContext cosCopyFileContext;
+    private CosNCopyFileContext cosCopyFileContext;
 
-    public CosCopyFileTask(
-            NativeFileSystemStore store, String srcKey, String dstKey, CosCopyFileContext cosCopyFileContext) {
+    public CosNCopyFileTask(NativeFileSystemStore store, String srcKey,
+                            String dstKey,
+                            CosNCopyFileContext cosCopyFileContext) {
         this.store = store;
         this.srcKey = srcKey;
         this.dstKey = dstKey;
@@ -28,7 +29,8 @@ public class CosCopyFileTask implements Runnable {
         try {
             this.store.copy(srcKey, dstKey);
         } catch (IOException e) {
-            LOG.warn("Exception thrown when copy from {} to {}, exception:{}", this.srcKey, this.dstKey, e);
+            LOG.warn("Exception thrown when copy from {} to {}, exception:{}"
+                    , this.srcKey, this.dstKey, e);
             fail = true;
         } finally {
             this.cosCopyFileContext.lock();

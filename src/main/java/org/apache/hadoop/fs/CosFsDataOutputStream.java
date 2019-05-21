@@ -6,6 +6,7 @@ import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.qcloud.cos.model.PartETag;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.buffer.CosNByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +24,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
 public class CosFsDataOutputStream extends OutputStream {
-    static final Logger LOG = LoggerFactory.getLogger(CosFsDataOutputStream.class);
+    static final Logger LOG =
+            LoggerFactory.getLogger(CosFsDataOutputStream.class);
 
     private final Configuration conf;
     private final NativeFileSystemStore store;
@@ -31,12 +33,14 @@ public class CosFsDataOutputStream extends OutputStream {
     private long blockSize;
     private String key;
     private int currentBlockId = 0;
-    private final Set<ByteBufferWrapper> blockCacheByteBufferWrappers = new HashSet<ByteBufferWrapper>();
-    private ByteBufferWrapper currentBlockByteBufferWrapper = null;
-    private OutputStream currentBlockOutputStream = null;
+    private final Set<CosNByteBuffer> blockCacheByteBuffers =
+            new HashSet<CosNByteBuffer>();
+    private CosNByteBuffer currentBlockBuffer;
+    private OutputStream currentBlockOutputStream;
     private String uploadId = null;
     private final ListeningExecutorService executorService;
-    private final List<ListenableFuture<PartETag>> partEtagList = new LinkedList<ListenableFuture<PartETag>>();
+    private final List<ListenableFuture<PartETag>> partEtagList =
+            new LinkedList<ListenableFuture<PartETag>>();
     private int blockWritten = 0;
     private boolean closed = false;
 
@@ -50,28 +54,37 @@ public class CosFsDataOutputStream extends OutputStream {
         this.key = key;
         this.blockSize = blockSize;
         if (this.blockSize < Constants.MIN_PART_SIZE) {
-            LOG.warn(String.format("The minimum size of a single block is limited to %d.", Constants.MIN_PART_SIZE));
+            LOG.warn("The minimum size of a single block is limited to " +
+                    "greater than or equal to {}.", Constants.MIN_PART_SIZE);
             this.blockSize = Constants.MIN_PART_SIZE;
         }
         if (this.blockSize > Constants.MAX_PART_SIZE) {
-            LOG.warn(String.format("The maximum size of a single block is limited to %d.", Constants.MAX_PART_SIZE));
+            LOG.warn("The maximum size of a single block is limited to " +
+                    "smaller than or equal to {}.", Constants.MAX_PART_SIZE);
             this.blockSize = Constants.MAX_PART_SIZE;
         }
 
-        this.executorService = MoreExecutors.listeningDecorator(executorService);
+        this.executorService =
+                MoreExecutors.listeningDecorator(executorService);
 
         try {
-            this.currentBlockByteBufferWrapper = BufferPool.getInstance().getBuffer((int) this.blockSize);
+            this.currentBlockBuffer =
+                    BufferPool.getInstance().getBuffer((int) this.blockSize);
         } catch (InterruptedException e) {
-            throw new IOException("Getting a buffer size: " + String.valueOf(this.blockSize) + " from buffer pool occurs an exception: ", e);
+            String exceptionMsg = String.format("Getting a buffer size:[%d] " +
+                            "from the buffer pool occurs an exception.",
+                    this.blockSize);
+            throw new IOException(exceptionMsg);
         }
         try {
             this.digest = MessageDigest.getInstance("MD5");
             this.currentBlockOutputStream = new DigestOutputStream(
-                    new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer()), this.digest);
+                    new BufferOutputStream(this.currentBlockBuffer),
+                    this.digest);
         } catch (NoSuchAlgorithmException e) {
             this.digest = null;
-            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer());
+            this.currentBlockOutputStream =
+                    new BufferOutputStream(this.currentBlockBuffer);
         }
     }
 
@@ -87,98 +100,120 @@ public class CosFsDataOutputStream extends OutputStream {
         }
         this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
-        if (!this.blockCacheByteBufferWrappers.contains(this.currentBlockByteBufferWrapper)) {
-            this.blockCacheByteBufferWrappers.add(this.currentBlockByteBufferWrapper);
+        if (!this.blockCacheByteBuffers.contains(this.currentBlockBuffer)) {
+            this.blockCacheByteBuffers.add(this.currentBlockBuffer);
         }
         // 加到块列表中去
-        if (this.blockCacheByteBufferWrappers.size() == 1) {
+        if (this.blockCacheByteBuffers.size() == 1) {
             // 单个文件就可以上传完成
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-            store.storeFile(this.key, new ByteBufferInputStream(this.currentBlockByteBufferWrapper.getByteBuffer()), md5Hash,
-                    this.currentBlockByteBufferWrapper.getByteBuffer().remaining());
+            store.storeFile(this.key,
+                    new BufferInputStream(this.currentBlockBuffer),
+                    md5Hash,
+                    this.currentBlockBuffer.getByteBuffer().remaining());
         } else {
             PartETag partETag = null;
             if (this.blockWritten > 0) {
-                LOG.info("upload last part... blockId: " + this.currentBlockId + " written: " + this.blockWritten);
+                LOG.info("Upload the last part. blockId: [{}], written: [{}]",
+                        this.currentBlockBuffer, this.blockWritten);
                 partETag = store.uploadPart(
-                        new ByteBufferInputStream(currentBlockByteBufferWrapper.getByteBuffer()), key, uploadId,
-                        currentBlockId + 1, currentBlockByteBufferWrapper.getByteBuffer().remaining());
+                        new BufferInputStream(this.currentBlockBuffer), key,
+                        uploadId, currentBlockId + 1,
+                        currentBlockBuffer.getByteBuffer().remaining());
             }
-            final List<PartETag> futurePartEtagList = this.waitForFinishPartUploads();
+            final List<PartETag> futurePartEtagList =
+                    this.waitForFinishPartUploads();
             if (null == futurePartEtagList) {
-                throw new IOException("Failed to multipart upload to oss, abort it.");
+                throw new IOException("failed to multipart upload to cos, " +
+                        "abort it.");
             }
-            List<PartETag> tempPartETagList = new LinkedList<PartETag>(futurePartEtagList);
+            List<PartETag> tempPartETagList =
+                    new LinkedList<PartETag>(futurePartEtagList);
             if (null != partETag) {
                 tempPartETagList.add(partETag);
             }
-            store.completeMultipartUpload(this.key, this.uploadId, tempPartETagList);
+            store.completeMultipartUpload(this.key, this.uploadId,
+                    tempPartETagList);
         }
         try {
-            BufferPool.getInstance().returnBuffer(this.currentBlockByteBufferWrapper);
+            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
         } catch (InterruptedException e) {
-            LOG.error("Returning the buffer to BufferPool occurs an exception.", e);
+            LOG.error("Returning the buffer to BufferPool occurs an exception" +
+                    ".", e);
         }
-        LOG.info("OutputStream for key '{}' upload complete", key);
+        LOG.info("OutputStream for key [{}] upload complete", key);
         this.blockWritten = 0;
         this.closed = true;
     }
 
     private List<PartETag> waitForFinishPartUploads() throws IOException {
         try {
-            LOG.info("waiting for finish part uploads ....");
+            LOG.info("Waiting for finish part uploads...");
             return Futures.allAsList(this.partEtagList).get();
         } catch (InterruptedException e) {
-            LOG.error("Interrupt the part upload", e);
+            LOG.error("Interrupt the part upload...", e);
             return null;
         } catch (ExecutionException e) {
-            LOG.error("cancelling futures");
+            LOG.error("Cancelling futures...");
             for (ListenableFuture<PartETag> future : this.partEtagList) {
                 future.cancel(true);
             }
             (store).abortMultipartUpload(this.key, this.uploadId);
-            LOG.error("Multipart upload with id: " + this.uploadId + " to " + this.key, e);
-            throw new IOException("Multipart upload with id: " + this.uploadId + " to " + this.key, e);
+            LOG.error("Multipart upload with id: {} to {}.", this.uploadId,
+                    this.key);
+            String exceptionMsg = String.format("multipart upload with id: %s" +
+                    " to %s.", this.uploadId, this.key);
+            throw new IOException(exceptionMsg);
         }
     }
 
     private void uploadPart() throws IOException {
         this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
-        this.blockCacheByteBufferWrappers.add(this.currentBlockByteBufferWrapper);
+        this.blockCacheByteBuffers.add(this.currentBlockBuffer);
 
         if (this.currentBlockId == 0) {
             uploadId = (store).getUploadId(key);
         }
 
-        ListenableFuture<PartETag> partETagListenableFuture = this.executorService.submit(new Callable<PartETag>() {
-            private final ByteBufferWrapper byteBufferWrapper = currentBlockByteBufferWrapper;
-            private final String localKey = key;
-            private final String localUploadId = uploadId;
-            private final int blockId = currentBlockId;
+        ListenableFuture<PartETag> partETagListenableFuture =
+                this.executorService.submit(new Callable<PartETag>() {
+                    private final CosNByteBuffer buffer = currentBlockBuffer;
+                    private final String localKey = key;
+                    private final String localUploadId = uploadId;
+                    private final int blockId = currentBlockId;
 
-            @Override
-            public PartETag call() throws Exception {
-                PartETag partETag = (store).uploadPart(
-                        new ByteBufferInputStream(this.byteBufferWrapper.getByteBuffer()), this.localKey, this.localUploadId,
-                        this.blockId + 1, this.byteBufferWrapper.getByteBuffer().remaining());
-                BufferPool.getInstance().returnBuffer(this.byteBufferWrapper);
-                return partETag;
-            }
-        });
+                    @Override
+                    public PartETag call() throws Exception {
+                        PartETag partETag = (store).uploadPart(
+                                new BufferInputStream(this.buffer),
+                                this.localKey,
+                                this.localUploadId,
+                                this.blockId + 1,
+                                this.buffer.getByteBuffer().remaining());
+                        BufferPool.getInstance().returnBuffer(this.buffer);
+                        return partETag;
+                    }
+                });
         this.partEtagList.add(partETagListenableFuture);
         try {
-            this.currentBlockByteBufferWrapper = BufferPool.getInstance().getBuffer((int) this.blockSize);
+            this.currentBlockBuffer =
+                    BufferPool.getInstance().getBuffer((int) this.blockSize);
         } catch (InterruptedException e) {
-            throw new IOException("Getting a buffer size: " + String.valueOf(this.blockSize) + " from buffer pool occurs an exception: ", e);
+            String exceptionMsg = String.format("getting a buffer size: [%d] " +
+                            "from the buffer pool occurs an exception.",
+                    this.blockSize);
+            throw new IOException(exceptionMsg, e);
         }
         this.currentBlockId++;
         if (null != this.digest) {
             this.digest.reset();
             this.currentBlockOutputStream = new DigestOutputStream(
-                    new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer()), this.digest);
+                    new BufferOutputStream(this.currentBlockBuffer),
+                    this.digest);
         } else {
-            this.currentBlockOutputStream = new ByteBufferOutputStream(this.currentBlockByteBufferWrapper.getByteBuffer());
+            this.currentBlockOutputStream =
+                    new BufferOutputStream(this.currentBlockBuffer);
         }
     }
 

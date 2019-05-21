@@ -1,18 +1,3 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one or more contributor license
- * agreements. See the NOTICE file distributed with this work for additional information regarding
- * copyright ownership. The ASF licenses this file to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance with the License. You may obtain a
- * copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
- * Unless required by applicable law or agreed to in writing, software distributed under the License
- * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
- * or implied. See the License for the specific language governing permissions and limitations under
- * the License.
- */
-
 package org.apache.hadoop.fs;
 
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -35,7 +20,8 @@ import java.util.concurrent.*;
 
 /**
  * A {@link FileSystem} for reading and writing files stored on
- * <a href="https://www.qcloud.com/product/cos.html">Tencent Qcloud Cos</a>. Unlike
+ * <a href="https://www.qcloud.com/product/cos.html">Tencent Qcloud Cos</a>
+ * . Unlike
  * {@link CosFileSystem} this implementation stores files on COS in their
  * native form so they can be read by other cos tools.
  */
@@ -85,8 +71,9 @@ public class CosFileSystem extends FileSystem {
         this.store.initialize(uri, conf);
         setConf(conf);
         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
-        this.workingDir = new Path("/user", System.getProperty("user.name")).makeQualified(this.uri,
-                this.getWorkingDirectory());
+        this.workingDir =
+                new Path("/user", System.getProperty("user.name"))
+                        .makeQualified(this.uri, this.getWorkingDirectory());
         this.owner = getOwnerId();
         this.group = getGroupId();
         if (LOG.isDebugEnabled()) {
@@ -96,17 +83,17 @@ public class CosFileSystem extends FileSystem {
 
         // initialize the thread pool
         int uploadThreadPoolSize = this.getConf().getInt(
-                CosNativeFileSystemConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE
+                CosNConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE
         );
         int readAheadPoolSize = this.getConf().getInt(
-                CosNativeFileSystemConfigKeys.READ_AHEAD_QUEUE_SIZE,
-                CosNativeFileSystemConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE
+                CosNConfigKeys.READ_AHEAD_QUEUE_SIZE,
+                CosNConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE
         );
         int ioThreadPoolSize = uploadThreadPoolSize + readAheadPoolSize / 3;
         long threadKeepAlive = this.getConf().getLong(
-                CosNativeFileSystemConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME
+                CosNConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
+                CosNConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME
         );
         this.boundedIOThreadPool = new ThreadPoolExecutor(
                 ioThreadPoolSize / 2, ioThreadPoolSize,
@@ -114,12 +101,14 @@ public class CosFileSystem extends FileSystem {
                 new LinkedBlockingQueue<Runnable>(ioThreadPoolSize * 2),
                 new RejectedExecutionHandler() {
                     @Override
-                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                    public void rejectedExecution(Runnable r,
+                                                  ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
                             } catch (InterruptedException e) {
-                                LOG.error("put a io task into the download thread pool occurs an exception.", e);
+                                LOG.error("put a io task into the download " +
+                                        "thread pool occurs an exception.", e);
                             }
                         }
                     }
@@ -127,8 +116,8 @@ public class CosFileSystem extends FileSystem {
         );
 
         int copyThreadPoolSize = this.getConf().getInt(
-                CosNativeFileSystemConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
+                CosNConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
         );
         this.boundedCopyThreadPool = new ThreadPoolExecutor(
                 copyThreadPoolSize / 2, copyThreadPoolSize,
@@ -136,12 +125,14 @@ public class CosFileSystem extends FileSystem {
                 new LinkedBlockingQueue<Runnable>(copyThreadPoolSize * 2),
                 new RejectedExecutionHandler() {
                     @Override
-                    public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                    public void rejectedExecution(Runnable r,
+                                                  ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
                             } catch (InterruptedException e) {
-                                LOG.error("put a copy task into the download thread pool occurs an exception.", e);
+                                LOG.error("put a copy task into the download " +
+                                        "thread pool occurs an exception.", e);
                             }
                         }
                     }
@@ -151,19 +142,22 @@ public class CosFileSystem extends FileSystem {
 
     private static NativeFileSystemStore createDefaultStore(Configuration conf) {
         NativeFileSystemStore store = new CosNativeFileSystemStore();
-        RetryPolicy basePolicy = RetryPolicies.retryUpToMaximumCountWithFixedSleep(
-                conf.getInt(CosNativeFileSystemConfigKeys.COS_MAX_RETRIES_KEY,
-                        CosNativeFileSystemConfigKeys.DEFAULT_MAX_RETRIES),
-                conf.getLong(CosNativeFileSystemConfigKeys.COS_RETRY_INTERVAL_KEY,
-                        CosNativeFileSystemConfigKeys.DEFAULT_RETRY_INTERVAL),
-                TimeUnit.SECONDS);
+        RetryPolicy basePolicy =
+                RetryPolicies.retryUpToMaximumCountWithFixedSleep(
+                        conf.getInt(CosNConfigKeys.COSN_MAX_RETRIES_KEY,
+                                CosNConfigKeys.DEFAULT_MAX_RETRIES),
+                        conf.getLong(CosNConfigKeys.COSN_RETRY_INTERVAL_KEY,
+                                CosNConfigKeys.DEFAULT_RETRY_INTERVAL),
+                        TimeUnit.SECONDS);
         Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap =
                 new HashMap<Class<? extends Exception>, RetryPolicy>();
 
         exceptionToPolicyMap.put(IOException.class, basePolicy);
-        RetryPolicy methodPolicy = RetryPolicies.retryByException(RetryPolicies.TRY_ONCE_THEN_FAIL,
-                exceptionToPolicyMap);
-        Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String, RetryPolicy>();
+        RetryPolicy methodPolicy =
+                RetryPolicies.retryByException(RetryPolicies.TRY_ONCE_THEN_FAIL,
+                        exceptionToPolicyMap);
+        Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String,
+                RetryPolicy>();
         methodNameToPolicyMap.put("storeFile", methodPolicy);
         methodNameToPolicyMap.put("rename", methodPolicy);
 
@@ -242,14 +236,17 @@ public class CosFileSystem extends FileSystem {
      * This optional operation is not yet supported.
      */
     @Override
-    public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
+    public FSDataOutputStream append(Path f, int bufferSize,
+                                     Progressable progress)
             throws IOException {
         throw new IOException("Not supported");
     }
 
     @Override
-    public FSDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
-                                     int bufferSize, short replication, long blockSize, Progressable progress)
+    public FSDataOutputStream create(Path f, FsPermission permission,
+                                     boolean overwrite,
+                                     int bufferSize, short replication,
+                                     long blockSize, Progressable progress)
             throws IOException {
 
         if (exists(f) && !overwrite) {
@@ -262,11 +259,15 @@ public class CosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataOutputStream(
-                new CosFsDataOutputStream(getConf(), store, key, blockSize, this.boundedIOThreadPool),
+                new CosFsDataOutputStream(getConf(), store, key,
+                        this.getDefaultBlockSize(),
+                        this.boundedIOThreadPool),
                 statistics);
     }
 
-    private boolean rejectRootDirectoryDelete(boolean isEmptyDir, boolean recursive) throws PathIOException {
+    private boolean rejectRootDirectoryDelete(boolean isEmptyDir,
+                                              boolean recursive)
+            throws PathIOException {
         if (isEmptyDir) {
             return true;
         }
@@ -296,7 +297,8 @@ public class CosFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         if (key.compareToIgnoreCase("/") == 0) {
             FileStatus[] fileStatuses = listStatus(f);
-            return this.rejectRootDirectoryDelete(fileStatuses.length == 0, recursive);
+            return this.rejectRootDirectoryDelete(fileStatuses.length == 0,
+                    recursive);
         }
 
         if (status.isDirectory()) {
@@ -305,7 +307,8 @@ public class CosFileSystem extends FileSystem {
             }
             if (!recursive && listStatus(f).length > 0) {
                 throw new IOException("Can not delete " + f
-                        + " as is a not empty directory and recurse option is false");
+                        + " as is a not empty directory and recurse option is" +
+                        " false");
             }
 
             createParent(f);
@@ -313,12 +316,13 @@ public class CosFileSystem extends FileSystem {
             String priorLastKey = null;
             do {
                 PartialListing listing =
-                        store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey, true);
+                        store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey,
+                                true);
                 for (FileMetadata file : listing.getFiles()) {
                     store.delete(file.getKey());
                 }
-                for (FileMetadata commonprefix : listing.getCommonPrefixes()) {
-                    store.delete(commonprefix.getKey());
+                for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
+                    store.delete(commonPrefix.getKey());
                 }
                 priorLastKey = listing.getPriorLastKey();
             } while (priorLastKey != null);
@@ -350,7 +354,8 @@ public class CosFileSystem extends FileSystem {
         }
 
         if (LOG.isDebugEnabled()) {
-            LOG.debug("getFileStatus retrieving metadata for key '" + key + "'");
+            LOG.debug("getFileStatus retrieving metadata for key '" + key +
+                    "'");
         }
         FileMetadata meta = store.retrieveMetadata(key);
         if (meta != null) {
@@ -396,9 +401,12 @@ public class CosFileSystem extends FileSystem {
 
     /**
      * <p>
-     * If <code>f</code> is a file, this method will make a single call to COS. If <code>f</code> is
-     * a directory, this method will make a maximum of ( <i>n</i> / 199) + 2 calls to cos, where
-     * <i>n</i> is the total number of files and directories contained directly in <code>f</code>.
+     * If <code>f</code> is a file, this method will make a single call to
+     * COS. If <code>f</code> is
+     * a directory, this method will make a maximum of ( <i>n</i> / 199) + 2
+     * calls to cos, where
+     * <i>n</i> is the total number of files and directories contained
+     * directly in <code>f</code>.
      * </p>
      */
     @Override
@@ -423,24 +431,23 @@ public class CosFileSystem extends FileSystem {
         Set<FileStatus> status = new TreeSet<FileStatus>();
         String priorLastKey = null;
         do {
-            PartialListing listing = store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey, false);
+            PartialListing listing = store.list(key, COS_MAX_LISTING_LENGTH,
+                    priorLastKey, false);
             for (FileMetadata fileMetadata : listing.getFiles()) {
-                LOG.debug("fileMeta:" + fileMetadata.toString());
-                Path subpath = keyToPath(fileMetadata.getKey());
+                Path subPath = keyToPath(fileMetadata.getKey());
 
                 if (fileMetadata.getKey().equals(key)) {
                     // this is just the directory we have been asked to list
                 } else {
-                    status.add(newFile(fileMetadata, subpath));
+                    status.add(newFile(fileMetadata, subPath));
                 }
             }
             for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
                 Path subpath = keyToPath(commonPrefix.getKey());
-                LOG.debug("commprefix, subpath" + subpath);
-                String relativePath = pathUri.relativize(subpath.toUri()).getPath();
-                LOG.debug("commprefix, relativePath:" + relativePath);
-                LOG.debug("full path:" + new Path(absolutePath, relativePath));
-                status.add(newDirectory(commonPrefix, new Path(absolutePath, relativePath)));
+                String relativePath =
+                        pathUri.relativize(subpath.toUri()).getPath();
+                status.add(newDirectory(commonPrefix, new Path(absolutePath,
+                        relativePath)));
             }
             priorLastKey = listing.getPriorLastKey();
         } while (priorLastKey != null);
@@ -463,7 +470,8 @@ public class CosFileSystem extends FileSystem {
         if (meta == null) {
             return newDirectory(path);
         }
-        FileStatus status = new FileStatus(0, true, 1, 0, meta.getLastModified(), 0, null, this.owner, this.group,
+        FileStatus status = new FileStatus(0, true, 1, 0,
+                meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()));
         LOG.debug("status: " + status.toString());
         return status;
@@ -484,7 +492,8 @@ public class CosFileSystem extends FileSystem {
                     break;
                 } else {
                     throw new FileAlreadyExistsException(String.format(
-                            "Can't make directory for path '%s', it is a file.", parent));
+                            "Can't make directory for path '%s', it is a file" +
+                                    ".", parent));
                 }
             } catch (FileNotFoundException e) {
             }
@@ -536,7 +545,8 @@ public class CosFileSystem extends FileSystem {
                 if (fileStatus.isFile()) {
                     throw new FileAlreadyExistsException(
                             String.format(
-                                    "Can't make directory for path '%s' since it is a file.", f));
+                                    "Can't make directory for path '%s' since" +
+                                            " it is a file.", f));
                 }
                 if (fileStatus.isDirectory()) {
                     break;
@@ -563,7 +573,8 @@ public class CosFileSystem extends FileSystem {
             if (fileStatus.isFile()) {
                 throw new FileAlreadyExistsException(
                         String.format(
-                                "Can't make directory for path '%s' since it is a file.", f));
+                                "Can't make directory for path '%s' since it " +
+                                        "is a file.", f));
             }
         } catch (FileNotFoundException e) {
             if (LOG.isDebugEnabled()) {
@@ -591,7 +602,8 @@ public class CosFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         long fileSize = store.getFileLength(key);
         return new FSDataInputStream(new BufferedFSInputStream(
-                new CosFsInputStream(this.getConf(), store, statistics, key, fileSize, this.boundedIOThreadPool),
+                new CosFsInputStream(this.getConf(), store, statistics, key,
+                        fileSize, this.boundedIOThreadPool),
                 bufferSize));
     }
 
@@ -610,8 +622,10 @@ public class CosFileSystem extends FileSystem {
 
         // Source path and destination path are not allowed to be the same
         if (src.equals(dst)) {
-            LOG.debug("source path and dest path refer to the same file or directory: {}", dst);
-            throw new IOException("source path and dest path refer to the same file or directory");
+            LOG.debug("source path and dest path refer to the same file or " +
+                    "directory: {}", dst);
+            throw new IOException("source path and dest path refer to the " +
+                    "same file or directory");
         }
 
         // It is not allowed to rename a parent directory to its subdirectory
@@ -622,10 +636,12 @@ public class CosFileSystem extends FileSystem {
         }
 
         if (null != dstParentPath) {
-            LOG.debug("It is not allowed to rename a parent directory:{} to its subdirectory:{}.",
+            LOG.debug("It is not allowed to rename a parent directory:{} to " +
+                            "its subdirectory:{}.",
                     src, dst);
             throw new IOException(String.format(
-                    "It is not allowed to rename a parent directory:%s to its subdirectory:%s",
+                    "It is not allowed to rename a parent directory:%s to its" +
+                            " subdirectory:%s",
                     src, dst));
         }
 
@@ -641,7 +657,8 @@ public class CosFileSystem extends FileSystem {
             } else {
                 // The destination path is an existing directory,
                 // and it is checked whether there is a file or directory
-                // with the same name as the source path under the destination path
+                // with the same name as the source path under the
+                // destination path
                 dst = new Path(dst, src.getName());
                 FileStatus[] statuses;
                 try {
@@ -650,7 +667,8 @@ public class CosFileSystem extends FileSystem {
                     statuses = null;
                 }
                 if (null != statuses && statuses.length > 0) {
-                    LOG.debug("Cannot rename {} to {}, file already exists.", src, dst);
+                    LOG.debug("Cannot rename {} to {}, file already exists.",
+                            src, dst);
                     throw new FileAlreadyExistsException(
                             String.format(
                                     "File: %s already exists", dst
@@ -664,7 +682,8 @@ public class CosFileSystem extends FileSystem {
             FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
             if (!dstParentStatus.isDirectory()) {
                 throw new IOException(String.format(
-                        "Cannot rename %s to %s, %s is a file", src, dst, dst.getParent()
+                        "Cannot rename %s to %s, %s is a file", src, dst,
+                        dst.getParent()
                 ));
             }
             // The default root directory is definitely there.
@@ -679,7 +698,8 @@ public class CosFileSystem extends FileSystem {
 
         if (!result) {
             //Since rename is a non-atomic operation, after copy fails,
-            // it is not allowed to delete the data of the original path to ensure data security.
+            // it is not allowed to delete the data of the original path to
+            // ensure data security.
             return false;
         } else {
             return this.delete(src, true);
@@ -704,18 +724,20 @@ public class CosFileSystem extends FileSystem {
         }
 
         if (dstKey.startsWith(srcKey)) {
-            throw new IOException("can not copy a directory to a subdirectory of self");
+            throw new IOException("can not copy a directory to a subdirectory" +
+                    " of self");
         }
 
         this.store.storeEmptyFile(dstKey);
-        CosCopyFileContext copyFileContext = new CosCopyFileContext();
+        CosNCopyFileContext copyFileContext = new CosNCopyFileContext();
 
         int copiesToFinishes = 0;
         String priorLastKey = null;
         do {
-            PartialListing objectList = this.store.list(srcKey, COS_MAX_LISTING_LENGTH, priorLastKey, true);
+            PartialListing objectList = this.store.list(srcKey,
+                    COS_MAX_LISTING_LENGTH, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
-                this.boundedCopyThreadPool.execute(new CosCopyFileTask(
+                this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
                         this.store,
                         file.getKey(),
                         dstKey.concat(file.getKey().substring(srcKey.length())),
@@ -760,8 +782,8 @@ public class CosFileSystem extends FileSystem {
     @Override
     public long getDefaultBlockSize() {
         return getConf().getLong(
-                CosNativeFileSystemConfigKeys.COS_BLOCK_SIZE_KEY,
-                CosNativeFileSystemConfigKeys.DEFAULT_BLOCK_SIZE);
+                CosNConfigKeys.COSN_BLOCK_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_BLOCK_SIZE);
     }
 
     /**

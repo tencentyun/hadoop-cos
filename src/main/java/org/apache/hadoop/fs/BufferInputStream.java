@@ -5,20 +5,18 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
 
-public class ByteBufferInputStream extends InputStream {
+import org.apache.hadoop.fs.buffer.CosNByteBuffer;
+
+public class BufferInputStream extends InputStream {
     private ByteBuffer byteBuffer;
     private boolean isClosed = true;
 
-    public ByteBufferInputStream(ByteBuffer byteBuffer) throws IOException {
-        if (null == byteBuffer) {
+    public BufferInputStream(CosNByteBuffer buffer) throws IOException {
+        if (null == buffer) {
             throw new IOException("byte buffer is null");
         }
-        this.byteBuffer = byteBuffer;
+        this.byteBuffer = buffer.getByteBuffer();
         this.isClosed = false;
-    }
-
-    public ByteBufferInputStream(byte[] buffer) throws IOException {
-        this(ByteBuffer.wrap(buffer));
     }
 
     @Override
