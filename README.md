@@ -88,13 +88,13 @@ done
     </property>
 
     <property>
-        <name>fs.cosn.userinfo.region</name>
+        <name>fs.cosn.bucket.region</name>
         <value>ap-xxx</value>
         <description>The region where the bucket is located</description>
     </property>
 
     <property>
-        <name>fs.cosn.userinfo.endpoint_suffix</name>
+        <name>fs.cosn.bucket.endpoint_suffix</name>
         <value>cos.ap-xxx.myqcloud.com</value>
         <description>COS endpoint to connect to.
         For public cloud users, it is recommended not to set this option, and only the correct area field is required.</description>
