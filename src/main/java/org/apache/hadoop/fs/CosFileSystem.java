@@ -1,5 +1,6 @@
 package org.apache.hadoop.fs;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -99,6 +100,7 @@ public class CosFileSystem extends FileSystem {
                 ioThreadPoolSize / 2, ioThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(ioThreadPoolSize * 2),
+                new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared-%d").setDaemon(true).build(),
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
@@ -123,6 +125,7 @@ public class CosFileSystem extends FileSystem {
                 copyThreadPoolSize / 2, copyThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(copyThreadPoolSize * 2),
+                new ThreadFactoryBuilder().setNameFormat("cos-copy-%d").setDaemon(true).build(),
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,

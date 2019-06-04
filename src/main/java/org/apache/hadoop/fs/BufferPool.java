@@ -1,16 +1,15 @@
 package org.apache.hadoop.fs;
 
-import java.io.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.buffer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.hadoop.conf.Configuration;
+import java.io.IOException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * BufferPool class is used to manage the buffers during program execution.
@@ -229,7 +228,9 @@ public final class BufferPool {
             this.bufferFactory.release(buffer);
         } else {
             LOG.debug("Return the buffer to the buffer pool.");
-            this.bufferPool.put(buffer);
+            if (!this.bufferPool.offer(buffer)) {
+                LOG.error("Return the buffer to buffer pool failed.");
+            }
         }
     }
 
