@@ -1,15 +1,14 @@
 package org.apache.hadoop.fs.buffer;
 
+import org.apache.hadoop.fs.Constants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-
-
-import org.apache.hadoop.fs.Constants;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class CosNMappedBufferFactory implements CosNBufferFactory {
     private static final Logger LOG =
@@ -77,7 +76,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
                             , size);
             return new CosNMappedBuffer(buf, randomAccessFile, tmpFile);
         } catch (IOException e) {
-            LOG.error("create tmp file failed.", e);
+            LOG.error("Create tmp file failed. Tmp dir: {}", this.tmpDir, e);
             return null;
         }
     }

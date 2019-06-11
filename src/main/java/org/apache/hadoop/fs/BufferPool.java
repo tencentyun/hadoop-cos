@@ -150,6 +150,13 @@ public final class BufferPool {
                     bufferNumber);
             this.bufferPool = new LinkedBlockingQueue<CosNByteBuffer>(bufferNumber);
             for (int i = 0; i < bufferNumber; i++) {
+                CosNByteBuffer cosNByteBuffer = this.bufferFactory.create((int) this.blockSize);
+                if (null == cosNByteBuffer) {
+                    String exceptionMsg = String.format("create buffer failed. buffer type: %s, " +
+                                    "buffer factory: %s", this.bufferType.getName(),
+                            this.bufferFactory.getClass().getName());
+                    throw new IOException(exceptionMsg);
+                }
                 this.bufferPool.add(this.bufferFactory.create((int) this.blockSize));
             }
         }
