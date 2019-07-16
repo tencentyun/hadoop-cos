@@ -100,7 +100,8 @@ public class CosFileSystem extends FileSystem {
                 ioThreadPoolSize / 2, ioThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(ioThreadPoolSize * 2),
-                new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared-%d").setDaemon(true).build(),
+                new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared" +
+                        "-%d").setDaemon(true).build(),
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
@@ -814,6 +815,7 @@ public class CosFileSystem extends FileSystem {
             this.store.close();
             this.boundedIOThreadPool.shutdown();
             this.boundedCopyThreadPool.shutdown();
+            BufferPool.getInstance().close();
         } finally {
             super.close();
         }

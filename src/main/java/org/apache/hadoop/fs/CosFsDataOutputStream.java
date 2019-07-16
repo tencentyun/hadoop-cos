@@ -135,12 +135,7 @@ public class CosFsDataOutputStream extends OutputStream {
             store.completeMultipartUpload(this.key, this.uploadId,
                     tempPartETagList);
         }
-        try {
-            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
-        } catch (InterruptedException e) {
-            LOG.error("Returning the buffer to BufferPool occurs an exception" +
-                    ".", e);
-        }
+        BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
         LOG.info("OutputStream for key [{}] upload complete", key);
         this.blockWritten = 0;
         this.closed = true;

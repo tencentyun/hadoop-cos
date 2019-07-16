@@ -10,6 +10,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * BufferPool class is used to manage the buffers during program execution.
@@ -37,7 +38,7 @@ public final class BufferPool {
     private CosNBufferFactory bufferFactory;
     private BlockingQueue<CosNByteBuffer> bufferPool;
 
-    private int referCount = 0;
+    private AtomicInteger referCount = new AtomicInteger(0);
     private AtomicBoolean isInitialize = new AtomicBoolean(false);
 
     private BufferPool() {
@@ -54,10 +55,11 @@ public final class BufferPool {
      */
     public synchronized void initialize(Configuration conf)
             throws IOException {
+        LOG.debug("Initialize the buffer pool.");
         if (this.isInitialize.get()) {
             LOG.debug("Buffer pool: [{}] is initialized and referenced once. "
                     + "current reference count: [{}].", this, this.referCount);
-            this.referCount++;
+            this.referCount.incrementAndGet();
             return;
         }
 
@@ -112,8 +114,8 @@ public final class BufferPool {
             this.bufferType = BufferType.MAPPED_DISK;
         }
 
-        LOG.info("The type of the upload buffer pool is [{}].",
-                this.bufferType);
+        LOG.info("The type of the upload buffer pool is [{}]. Buffer size:[{}]",
+                this.bufferType, this.totalBufferSize);
         if (this.bufferType == BufferType.NON_DIRECT_MEMORY) {
             this.bufferFactory = new CosNNonDirectBufferFactory();
         } else if (this.bufferType == BufferType.DIRECT_MEMORY) {
@@ -148,12 +150,16 @@ public final class BufferPool {
 
             LOG.info("Initialize the {} buffer pool. size: {}", this.bufferType,
                     bufferNumber);
-            this.bufferPool = new LinkedBlockingQueue<CosNByteBuffer>(bufferNumber);
+            this.bufferPool =
+                    new LinkedBlockingQueue<CosNByteBuffer>(bufferNumber);
             for (int i = 0; i < bufferNumber; i++) {
-                CosNByteBuffer cosNByteBuffer = this.bufferFactory.create((int) this.blockSize);
+                CosNByteBuffer cosNByteBuffer =
+                        this.bufferFactory.create((int) this.blockSize);
                 if (null == cosNByteBuffer) {
-                    String exceptionMsg = String.format("create buffer failed. buffer type: %s, " +
-                                    "buffer factory: %s", this.bufferType.getName(),
+                    String exceptionMsg = String.format("create buffer failed" +
+                                    ". buffer type: %s, " +
+                                    "buffer factory: %s",
+                            this.bufferType.getName(),
                             this.bufferFactory.getClass().getName());
                     throw new IOException(exceptionMsg);
                 }
@@ -161,7 +167,7 @@ public final class BufferPool {
             }
         }
 
-        this.referCount++;
+        this.referCount.incrementAndGet();
         this.isInitialize.set(true);
     }
 
@@ -197,6 +203,13 @@ public final class BufferPool {
     public CosNByteBuffer getBuffer(int bufferSize) throws IOException,
             InterruptedException {
         this.checkInitialize();
+        LOG.debug("Get a buffer[size: {}, current buffer size: {}]. Thread " +
+                        "[id: {}, " +
+                        "name: {}].",
+                bufferSize,
+                this.totalBufferSize,
+                Thread.currentThread().getId(),
+                Thread.currentThread().getName());
         if (bufferSize > 0 && bufferSize <= this.blockSize) {
             // unlimited
             if (-1 == this.totalBufferSize) {
@@ -217,11 +230,13 @@ public final class BufferPool {
      * return the byte buffer wrapper to the buffer pool.
      *
      * @param buffer the byte buffer wrapper getting from the pool
-     * @throws InterruptedException if interrupted while waiting
-     * @throws IOException          some io error occurs
+     * @throws IOException some io error occurs
      */
     public void returnBuffer(CosNByteBuffer buffer)
-            throws InterruptedException, IOException {
+            throws IOException {
+        LOG.debug("Return a buffer. Thread[id: {}, name: {}].",
+                Thread.currentThread().getId(),
+                Thread.currentThread().getName());
         if (null == buffer) {
             LOG.error("The buffer returned is null. Ignore it.");
             return;
@@ -242,16 +257,16 @@ public final class BufferPool {
     }
 
     public synchronized void close() {
-        LOG.debug("");
-        this.referCount--;
-        if (this.referCount > 0) {
-            return;
-        }
+        LOG.debug("Close a buffer pool instance.");
 
         if (!this.isInitialize.get()) {
             // Closed or not initialized, return directly.
             LOG.warn("The buffer pool has been closed. no changes would be " +
                     "execute.");
+            return;
+        }
+
+        if (this.referCount.decrementAndGet() > 0) {
             return;
         }
 
@@ -263,8 +278,7 @@ public final class BufferPool {
             this.bufferPool.clear();
         }
 
-        //
-        if (this.referCount == 0) {
+        if (this.referCount.get() == 0) {
             this.isInitialize.set(false);
         }
     }
