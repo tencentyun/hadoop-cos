@@ -81,13 +81,13 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         ClientConfig config = null;
         if (null == region) {
             config = new ClientConfig(new Region(""));
+            config.setEndPointSuffix(endpoint_suffix);
         } else {
             config = new ClientConfig(new Region(region));
         }
         if (useHttps) {
             config.setHttpProtocol(HttpProtocol.https);
         }
-        config.setEndPointSuffix(endpoint_suffix);
 
         config.setUserAgent(conf.get(
                 CosNConfigKeys.USER_AGENT,

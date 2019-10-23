@@ -163,7 +163,7 @@ public final class BufferPool {
                             this.bufferFactory.getClass().getName());
                     throw new IOException(exceptionMsg);
                 }
-                this.bufferPool.add(this.bufferFactory.create((int) this.blockSize));
+                this.bufferPool.add(cosNByteBuffer);
             }
         }
 

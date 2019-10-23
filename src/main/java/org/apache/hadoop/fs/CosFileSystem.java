@@ -236,6 +236,16 @@ public class CosFileSystem extends FileSystem {
         return new Path(workingDir, path);
     }
 
+    @Override
+    public Path getHomeDirectory() {
+        String homePrefix = this.getConf().get("dfs.user.home.dir.prefix");
+        if (null != homePrefix) {
+            return makeQualified(new Path(homePrefix + "/" + System.getProperty("user.name")));
+        }
+
+        return super.getHomeDirectory();
+    }
+
     /**
      * This optional operation is not yet supported.
      */

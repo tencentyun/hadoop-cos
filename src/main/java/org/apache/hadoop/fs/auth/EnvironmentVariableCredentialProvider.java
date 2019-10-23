@@ -37,10 +37,6 @@ public class EnvironmentVariableCredentialProvider
     }
 
     @Override
-    public void refresh() {
-    }
-
-    @Override
     public String toString() {
         return "EnvironmentVariableCredentialProvider{}";
     }

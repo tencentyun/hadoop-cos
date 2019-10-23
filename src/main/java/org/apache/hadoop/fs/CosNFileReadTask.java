@@ -74,7 +74,7 @@ public class CosNFileReadTask implements Runnable {
                     LOG.warn("Exception occurs when retrieve the block range " +
                             "start: "
                             + String.valueOf(this.readBuffer.getStart()) + " " +
-                            "end: " + this.readBuffer.getEnd());
+                            "end: " + this.readBuffer.getEnd(), e);
                     try {
                         retryAction = this.retryPolicy.shouldRetry(e,
                                 retries++, 0, true);

@@ -96,11 +96,6 @@ public class COSCredentialProviderList implements
     }
 
     @Override
-    public void refresh() {
-
-    }
-
-    @Override
     public void close() throws Exception {
         if (this.closed()) {
             return;
