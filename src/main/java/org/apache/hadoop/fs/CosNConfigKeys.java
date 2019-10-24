@@ -38,7 +38,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_BLOCK_SIZE = 8 * Unit.MB;
 
     public static final String COSN_MAX_RETRIES_KEY = "fs.cosn.maxRetries";
-    public static final int DEFAULT_MAX_RETRIES = 5;
+    public static final int DEFAULT_MAX_RETRIES = 200;
     public static final String COSN_RETRY_INTERVAL_KEY = "fs.cosn.retry.interval.seconds";
     public static final long DEFAULT_RETRY_INTERVAL = 3;
 

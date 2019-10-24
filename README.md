@@ -190,7 +190,7 @@ done
 |fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | CPU核心数目*3 | 否 |
 |fs.cosn.read.ahead.block.size     | 预读块的大小                                 | ‭1048576‬（1MB） |  否 |
 |fs.cosn.read.ahead.queue.size     | 预读队列的长度                               | 8              | 否  |
-|fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 5 | 否 |
+|fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 200 | 否 |
 |fs.cosn.retry.interval.seconds    | 每次重试的时间间隔 | 3 | 否 |
 |fs.cosn.max.connection.num | 配置COS连接池中维持的最大连接数目，这个数目与单机读写COS的并发有关，建议至少大于或等于单机读写COS的并发数| 1024 | 否|
 
