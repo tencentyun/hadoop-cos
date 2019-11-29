@@ -175,7 +175,7 @@ done
      <property>
     	<name>fs.cosn.server-side-encryption.key</name>
         <value></value>
-        <description>The SSE_C server side encryption key.</description>
+        <description>The SSE-C server side encryption key.</description>
     </property>   	
 
 </configuration>
