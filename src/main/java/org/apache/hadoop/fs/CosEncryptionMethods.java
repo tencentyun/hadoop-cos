@@ -5,8 +5,8 @@ import org.apache.commons.lang3.StringUtils;
 
 public enum CosEncryptionMethods {
 
-    SSE_COS("SSE_COS", true),
-    SSE_C("SSE_C", true),
+    SSE_COS("SSE-COS", true),
+    SSE_C("SSE-C", true),
     NONE("", false);
 
     static final String UNKNOWN_ALGORITHM_MESSAGE
