@@ -167,13 +167,13 @@ done
     </property>
 	
     <property>
-    	<name>fs.cosn.server-side-encryption-algorithm</name>
+    	<name>fs.cosn.server_side_encryption.algorithm</name>
         <value></value>
         <description>The server side encryption algorithm.</description>
     </property>	
 	
      <property>
-    	<name>fs.cosn.server-side-encryption.key</name>
+    	<name>fs.cosn.server_side_encryption.key</name>
         <value></value>
         <description>The SSE-C server side encryption key.</description>
     </property>   	
@@ -205,8 +205,8 @@ done
 |fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 200 | 否 |
 |fs.cosn.retry.interval.seconds    | 每次重试的时间间隔 | 3 | 否 |
 |fs.cosn.max.connection.num | 配置COS连接池中维持的最大连接数目，这个数目与单机读写COS的并发有关，建议至少大于或等于单机读写COS的并发数| 1024 | 否|
-|fs.cosn.server-side-encryption-algorithm | 配置COS服务端加密算法，支持SSE-C和SSE-COS，默认为空，不加密| 无 | 否|
-|fs.cosn.server-side-encryption.key | 当开启COS的SSE-C服务端加密算法时，必须配置SSE-C的密钥，密钥格式为base64编码的AES-256密钥，默认为空，不加密| 无 | 否|
+|fs.cosn.server_side_encryption.algorithm | 配置COS服务端加密算法，支持SSE-C和SSE-COS，默认为空，不加密| 无 | 否|
+|fs.cosn.server_side_encryption.key | 当开启COS的SSE-C服务端加密算法时，必须配置SSE-C的密钥，密钥格式为base64编码的AES-256密钥，默认为空，不加密| 无 | 否|
 
 ### 开始使用
 
