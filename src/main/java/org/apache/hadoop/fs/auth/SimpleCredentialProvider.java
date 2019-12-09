@@ -39,4 +39,8 @@ public class SimpleCredentialProvider
         return null;
     }
 
+    @Override
+    public void refresh() {
+    }
+
 }

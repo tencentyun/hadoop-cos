@@ -542,7 +542,6 @@ public class CosFileSystem extends FileSystem {
      */
     public boolean mkDirRecursively(Path f, FsPermission permission)
             throws IOException {
-        System.out.println(f);
         Path absolutePath = makeAbsolute(f);
         List<Path> paths = new ArrayList<Path>();
         do {

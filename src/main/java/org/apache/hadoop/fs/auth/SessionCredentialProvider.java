@@ -51,4 +51,9 @@ public class SessionCredentialProvider
         return null;
     }
 
+    @Override
+    public void refresh() {
+
+    }
+
 }
