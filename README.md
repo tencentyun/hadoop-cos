@@ -167,13 +167,13 @@ done
     </property>
 	
     <property>
-    	<name>fs.cosn.server_side_encryption.algorithm</name>
+    	<name>fs.cosn.server-side-encryption.algorithm</name>
         <value></value>
         <description>The server side encryption algorithm.</description>
     </property>	
 	
      <property>
-    	<name>fs.cosn.server_side_encryption.key</name>
+    	<name>fs.cosn.server-side-encryption.key</name>
         <value></value>
         <description>The SSE-C server side encryption key.</description>
     </property>   	
