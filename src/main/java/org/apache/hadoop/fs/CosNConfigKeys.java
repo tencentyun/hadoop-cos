@@ -60,8 +60,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 
     // 服务器端加密
-    public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server_side_encryption.algorithm";
-    public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server_side_encryption.key";
+    public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
+    public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
     public static final String BASE64_Pattern = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$";
 
 }
