@@ -17,6 +17,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.COSCredentialProviderList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.*;
 import java.net.URI;
@@ -36,6 +37,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     private TransferManager transferManager;
     private String bucketName;
     private int maxRetryTimes;
+    private CosEncryptionSecrets encryptionSecrets;
 
     public static final Logger LOG =
             LoggerFactory.getLogger(CosNativeFileSystemStore.class);
@@ -105,7 +107,17 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 )
         );
 
+        // 设置是否进行服务器端加密
+        String ServerSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
+        CosEncryptionMethods CosSSE = CosEncryptionMethods.getMethod(
+                ServerSideEncryptionAlgorithm);
+        String SSEKey = conf.get(
+                CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY, "");
+        CheckEncryptionMethod(config, CosSSE, SSEKey);
+
+        this.encryptionSecrets = new CosEncryptionSecrets(CosSSE, SSEKey);
         this.cosClient = new COSClient(cosCred, config);
+
     }
 
     private void initTransferManager(Configuration conf) throws IOException {
@@ -148,6 +160,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             PutObjectRequest putObjectRequest =
                     new PutObjectRequest(bucketName, key, inputStream,
                             objectMetadata);
+            this.setEncryptionMetadata(putObjectRequest, objectMetadata);
 
             PutObjectResult putObjectResult =
                     (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
@@ -247,6 +260,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         return uploadPart(inputStream, key, uploadId, partNum, file.length());
     }
 
+
     @Override
     public PartETag uploadPart(
             InputStream inputStream,
@@ -258,6 +272,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         uploadPartRequest.setPartNumber(partNum);
         uploadPartRequest.setPartSize(partSize);
         uploadPartRequest.setKey(key);
+        this.setEncryptionMetadata(uploadPartRequest, new ObjectMetadata());
 
         try {
             UploadPartResult uploadPartResult =
@@ -290,6 +305,16 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
                 new InitiateMultipartUploadRequest(bucketName, key);
+        try {
+            this.setEncryptionMetadata(initiateMultipartUploadRequest, new ObjectMetadata());
+        } catch (Exception e) {
+            String errMsg =
+                    String.format("getUploadId failed, cos key: %s, " +
+                                    "exception: %s",
+                            key, e.toString());
+            LOG.error(errMsg);
+        }
+
         InitiateMultipartUploadResult initiateMultipartUploadResult =
                 cosClient.initiateMultipartUpload(initiateMultipartUploadRequest);           // This code does not
         // need to support retry
@@ -313,6 +338,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     private FileMetadata QueryObjectMetadata(String key) throws IOException {
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
+
+        this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
         try {
             ObjectMetadata objectMetadata =
                     (ObjectMetadata) callCOSClientWithRetry(getObjectMetadataRequest);
@@ -371,6 +398,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.debug("retrive key:{}", key);
         GetObjectRequest getObjectRequest =
                 new GetObjectRequest(this.bucketName, key);
+        this.setEncryptionMetadata(getObjectRequest, new ObjectMetadata());
+
+
         try {
             COSObject cosObject =
                     (COSObject) callCOSClientWithRetry(getObjectRequest);
@@ -400,6 +430,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             long byteRangeEnd = fileSize - 1;
             GetObjectRequest getObjectRequest =
                     new GetObjectRequest(this.bucketName, key);
+
+            this.setEncryptionMetadata(getObjectRequest, new ObjectMetadata());
+
             if (byteRangeEnd >= byteRangeStart) {
                 getObjectRequest.setRange(byteRangeStart, fileSize - 1);
             }
@@ -424,6 +457,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             GetObjectRequest request = new GetObjectRequest(this.bucketName,
                     key);
             request.setRange(byteRangeStart, byteRangeEnd);
+            this.setEncryptionMetadata(request, new ObjectMetadata());
             COSObject cosObject =
                     (COSObject) this.callCOSClientWithRetry(request);
             return cosObject.getObjectContent();
@@ -571,6 +605,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
+            this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
             callCOSClientWithRetry(copyObjectRequest);
             DeleteObjectRequest deleteObjectRequest =
                     new DeleteObjectRequest(bucketName, srcKey);
@@ -592,6 +627,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
+            this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
             callCOSClientWithRetry(copyObjectRequest);
         } catch (Exception e) {
             String errMsg = String.format(
@@ -636,6 +672,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             GetObjectRequest request = new GetObjectRequest(this.bucketName,
                     key);
+            this.setEncryptionMetadata(request, new ObjectMetadata());
             if (fileSize > 0) {
                 byteRangeEnd = Math.min(fileSize - 1,
                         byteRangeStart + blockSize - 1);
@@ -659,6 +696,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.debug("getFile Length, cos key: {}", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
+        this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
         try {
             ObjectMetadata objectMetadata =
                     (ObjectMetadata) callCOSClientWithRetry(getObjectMetadataRequest);
@@ -670,6 +708,111 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
             return 0; // never will get here
+        }
+    }
+
+    private <X> void callCOSClientWithSSECOS(X request, ObjectMetadata objectMetadata) {
+        try {
+            objectMetadata.setServerSideEncryption(SSEAlgorithm.AES256.getAlgorithm());
+            if (request instanceof PutObjectRequest) {
+                ((PutObjectRequest) request).setMetadata(objectMetadata);
+            } else if (request instanceof UploadPartRequest) {
+                ((UploadPartRequest) request).setObjectMetadata(objectMetadata);
+            } else if (request instanceof CopyObjectRequest) {
+                ((CopyObjectRequest) request).setNewObjectMetadata(objectMetadata);
+            } else if (request instanceof InitiateMultipartUploadRequest) {
+                ((InitiateMultipartUploadRequest) request).setObjectMetadata(objectMetadata);
+            } else {
+                throw new IOException("Set SSE_COS request no such method");
+            }
+        } catch (Exception e) {
+            String errMsg =
+                    String.format("callCOSClientWithSSECOS failed:" +
+                            " %s", e.toString());
+            LOG.error(errMsg);
+        }
+    }
+
+    private <X> void callCOSClientWithSSEC(X request, SSECustomerKey SSEKey) {
+        try {
+            if (request instanceof PutObjectRequest) {
+                ((PutObjectRequest) request).setSSECustomerKey(SSEKey);
+            } else if (request instanceof UploadPartRequest) {
+                ((UploadPartRequest) request).setSSECustomerKey(SSEKey);
+            } else if (request instanceof GetObjectMetadataRequest) {
+                ((GetObjectMetadataRequest) request).setSSECustomerKey(SSEKey);
+            } else if (request instanceof CopyObjectRequest) {
+                ((CopyObjectRequest) request).setDestinationSSECustomerKey(SSEKey);
+                ((CopyObjectRequest) request).setSourceSSECustomerKey(SSEKey);
+            } else if (request instanceof GetObjectRequest) {
+                ((GetObjectRequest) request).setSSECustomerKey(SSEKey);
+            } else if (request instanceof InitiateMultipartUploadRequest) {
+                ((InitiateMultipartUploadRequest) request).setSSECustomerKey(SSEKey);
+            } else {
+                throw new IOException("Set SSE_C request no such method");
+            }
+        } catch (Exception e) {
+            String errMsg =
+                    String.format("callCOSClientWithSSEC failed:" +
+                                    " %s", e.toString());
+            LOG.error(errMsg);
+        }
+    }
+
+    private <X> void setEncryptionMetadata(X request, ObjectMetadata objectMetadata) {
+        switch (encryptionSecrets.getEncryptionMethod()) {
+             case SSE_C:
+                callCOSClientWithSSEC(request, new SSECustomerKey(encryptionSecrets.getEncryptionKey()));
+                break;
+             case SSE_COS:
+                callCOSClientWithSSECOS(request, objectMetadata);
+                break;
+             case NONE:
+             default:
+                break;
+        }
+    }
+
+    private void CheckEncryptionMethod(ClientConfig config,
+                                       CosEncryptionMethods CosSSE, String SSEKey) throws IOException {
+        int sseKeyLen = StringUtils.isBlank(SSEKey) ? 0 : SSEKey.length();
+
+        String description = "Encryption key:";
+        if (SSEKey == null) {
+            description += "null ";
+        } else {
+            switch (sseKeyLen) {
+                case 0:
+                    description += " empty"; break;
+                case 1:
+                    description += " of length 1"; break;
+                default:
+                    description = description + " of length " + sseKeyLen + " ending with "
+                            + SSEKey.charAt(sseKeyLen - 1);
+            }
+        }
+
+        switch (CosSSE) {
+            case SSE_C:
+                LOG.debug("Using SSE_C with {}", description);
+                config.setHttpProtocol(HttpProtocol.https);
+                if (sseKeyLen == 0) {
+                    throw new IOException("missing encryption key for SSE_C ");
+                } else if(!SSEKey.matches(CosNConfigKeys.BASE64_Pattern)) {
+                    throw new IOException("encryption key need to Base64 encoding for SSE_C ");
+                }
+                break;
+            case SSE_COS:
+                if (sseKeyLen != 0) {
+                    LOG.debug("Using SSE_COS");
+                    throw new IOException("SSE_COS to encryption with key error: "
+                            + " (" + description + ")");
+                }
+                break;
+            case NONE:
+            default:
+                LOG.debug("Data is unencrypted");
+                break;
         }
     }
 
