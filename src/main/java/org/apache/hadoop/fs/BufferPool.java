@@ -136,7 +136,8 @@ public final class BufferPool {
         // or mapped memory, it need to be allocate in advance to reduce the
         // overhead of repeated allocations and releases.
         if (this.totalBufferSize > 0
-                && (BufferType.DIRECT_MEMORY == this.bufferType
+                && (BufferType.NON_DIRECT_MEMORY == this.bufferType
+                || BufferType.DIRECT_MEMORY == this.bufferType
                 || BufferType.MAPPED_DISK == this.bufferType)) {
             int bufferNumber = (int) (totalBufferSize / blockSize);
             if (bufferNumber == 0) {
@@ -151,7 +152,7 @@ public final class BufferPool {
             LOG.info("Initialize the {} buffer pool. size: {}", this.bufferType,
                     bufferNumber);
             this.bufferPool =
-                    new LinkedBlockingQueue<CosNByteBuffer>(bufferNumber);
+                    new LinkedBlockingQueue<>(bufferNumber);
             for (int i = 0; i < bufferNumber; i++) {
                 CosNByteBuffer cosNByteBuffer =
                         this.bufferFactory.create((int) this.blockSize);
@@ -250,6 +251,7 @@ public final class BufferPool {
             this.bufferFactory.release(buffer);
         } else {
             LOG.debug("Return the buffer to the buffer pool.");
+            buffer.getByteBuffer().clear();
             if (!this.bufferPool.offer(buffer)) {
                 LOG.error("Return the buffer to buffer pool failed.");
             }

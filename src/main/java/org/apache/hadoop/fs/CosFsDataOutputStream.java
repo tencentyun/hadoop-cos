@@ -15,10 +15,8 @@ import java.io.OutputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -33,8 +31,6 @@ public class CosFsDataOutputStream extends OutputStream {
     private long blockSize;
     private String key;
     private int currentBlockId = 0;
-    private final Set<CosNByteBuffer> blockCacheByteBuffers =
-            new HashSet<CosNByteBuffer>();
     private CosNByteBuffer currentBlockBuffer;
     private OutputStream currentBlockOutputStream;
     private String uploadId = null;
@@ -100,11 +96,8 @@ public class CosFsDataOutputStream extends OutputStream {
         }
         this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
-        if (!this.blockCacheByteBuffers.contains(this.currentBlockBuffer)) {
-            this.blockCacheByteBuffers.add(this.currentBlockBuffer);
-        }
         // 加到块列表中去
-        if (this.blockCacheByteBuffers.size() == 1) {
+        if (this.currentBlockId == 0) {
             // 单个文件就可以上传完成
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
             store.storeFile(this.key,
@@ -114,11 +107,12 @@ public class CosFsDataOutputStream extends OutputStream {
         } else {
             PartETag partETag = null;
             if (this.blockWritten > 0) {
+                this.currentBlockId++;
                 LOG.info("Upload the last part. blockId: [{}], written: [{}]",
-                        this.currentBlockBuffer, this.blockWritten);
+                        this.currentBlockId, this.blockWritten);
                 partETag = store.uploadPart(
                         new BufferInputStream(this.currentBlockBuffer), key,
-                        uploadId, currentBlockId + 1,
+                        uploadId, currentBlockId,
                         currentBlockBuffer.getByteBuffer().remaining());
             }
             final List<PartETag> futurePartEtagList =
@@ -165,12 +159,13 @@ public class CosFsDataOutputStream extends OutputStream {
     private void uploadPart() throws IOException {
         this.currentBlockOutputStream.flush();
         this.currentBlockOutputStream.close();
-        this.blockCacheByteBuffers.add(this.currentBlockBuffer);
 
         if (this.currentBlockId == 0) {
             uploadId = (store).getUploadId(key);
         }
 
+        this.currentBlockId++;
+        LOG.debug("upload part blockId: {}, uploadId: {}.", this.currentBlockId, this.uploadId);
         ListenableFuture<PartETag> partETagListenableFuture =
                 this.executorService.submit(new Callable<PartETag>() {
                     private final CosNByteBuffer buffer = currentBlockBuffer;
@@ -184,7 +179,7 @@ public class CosFsDataOutputStream extends OutputStream {
                                 new BufferInputStream(this.buffer),
                                 this.localKey,
                                 this.localUploadId,
-                                this.blockId + 1,
+                                this.blockId,
                                 this.buffer.getByteBuffer().remaining());
                         BufferPool.getInstance().returnBuffer(this.buffer);
                         return partETag;
@@ -200,7 +195,7 @@ public class CosFsDataOutputStream extends OutputStream {
                     this.blockSize);
             throw new IOException(exceptionMsg, e);
         }
-        this.currentBlockId++;
+
         if (null != this.digest) {
             this.digest.reset();
             this.currentBlockOutputStream = new DigestOutputStream(
