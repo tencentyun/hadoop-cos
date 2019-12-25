@@ -542,7 +542,6 @@ public class CosFileSystem extends FileSystem {
      */
     public boolean mkDirRecursively(Path f, FsPermission permission)
             throws IOException {
-        System.out.println(f);
         Path absolutePath = makeAbsolute(f);
         List<Path> paths = new ArrayList<Path>();
         do {
@@ -631,8 +630,14 @@ public class CosFileSystem extends FileSystem {
             return false;
         }
 
-        // check the source path whether exists or not
-        FileStatus srcFileStatus = this.getFileStatus(src);
+        // check the source path whether exists or not, if not return false.
+        FileStatus srcFileStatus;
+        try {
+            srcFileStatus = this.getFileStatus(src);
+        } catch (FileNotFoundException e) {
+            LOG.debug(e.getMessage());
+            return false;
+        }
 
         // Source path and destination path are not allowed to be the same
         if (src.equals(dst)) {
@@ -648,7 +653,6 @@ public class CosFileSystem extends FileSystem {
              null != dstParentPath && !src.equals(dstParentPath);
              dstParentPath = dstParentPath.getParent()) {
         }
-
         if (null != dstParentPath) {
             LOG.debug("It is not allowed to rename a parent directory:{} to " +
                             "its subdirectory:{}.",
@@ -665,9 +669,12 @@ public class CosFileSystem extends FileSystem {
 
             // The destination path exists and is a file,
             // and the rename operation is not allowed.
+            //
             if (dstFileStatus.isFile()) {
-                throw new FileAlreadyExistsException(String.format(
-                        "File:%s already exists", dstFileStatus.getPath()));
+//                throw new FileAlreadyExistsException(String.format(
+//                        "File:%s already exists", dstFileStatus.getPath()));
+                LOG.debug("File: {} already exists.", dstFileStatus.getPath());
+                return false;
             } else {
                 // The destination path is an existing directory,
                 // and it is checked whether there is a file or directory
@@ -683,11 +690,12 @@ public class CosFileSystem extends FileSystem {
                 if (null != statuses && statuses.length > 0) {
                     LOG.debug("Cannot rename {} to {}, file already exists.",
                             src, dst);
-                    throw new FileAlreadyExistsException(
-                            String.format(
-                                    "File: %s already exists", dst
-                            )
-                    );
+//                    throw new FileAlreadyExistsException(
+//                            String.format(
+//                                    "File: %s already exists", dst
+//                            )
+//                    );
+                    return false;
                 }
             }
         } catch (FileNotFoundException e) {
@@ -696,8 +704,7 @@ public class CosFileSystem extends FileSystem {
             FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
             if (!dstParentStatus.isDirectory()) {
                 throw new IOException(String.format(
-                        "Cannot rename %s to %s, %s is a file", src, dst,
-                        dst.getParent()
+                        "Cannot rename %s to %s, %s is a file", src, dst, dst.getParent()
                 ));
             }
             // The default root directory is definitely there.

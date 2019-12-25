@@ -1,12 +1,5 @@
 package org.apache.hadoop.fs.auth;
 
-import java.io.Closeable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.google.common.base.Preconditions;
 import com.qcloud.cos.auth.AnonymousCOSCredentials;
 import com.qcloud.cos.auth.COSCredentials;
@@ -14,6 +7,13 @@ import com.qcloud.cos.auth.COSCredentialsProvider;
 import com.qcloud.cos.utils.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * a list of cos credentials provider.
@@ -93,6 +93,17 @@ public class COSCredentialProviderList implements
 
         throw new NoAuthWithCOSException(
                 "No COS Credentials provided by " + this.providers.toString());
+    }
+
+    @Override
+    public void refresh() {
+        if (this.closed()) {
+            return;
+        }
+
+        for (COSCredentialsProvider cosCredentialsProvider : this.providers) {
+            cosCredentialsProvider.refresh();
+        }
     }
 
     @Override

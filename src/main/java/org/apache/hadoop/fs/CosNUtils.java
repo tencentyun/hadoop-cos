@@ -1,11 +1,9 @@
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.auth.COSCredentialsProvider;
+import com.qcloud.cos.auth.CVMInstanceProfileCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.auth.COSCredentialProviderList;
-import org.apache.hadoop.fs.auth.EnvironmentVariableCredentialProvider;
-import org.apache.hadoop.fs.auth.SessionCredentialProvider;
-import org.apache.hadoop.fs.auth.SimpleCredentialProvider;
+import org.apache.hadoop.fs.auth.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +40,8 @@ public final class CosNUtils {
                     conf));
             credentialProviderList.add(new SimpleCredentialProvider(uri, conf));
             credentialProviderList.add(new EnvironmentVariableCredentialProvider(uri, conf));
+            credentialProviderList.add(new CAMCVMInstanceCredentialsProvider());
+            credentialProviderList.add(new CAMCPMInstanceCredentialsProvider());
         } else {
             for (Class<?> credClass : cosClasses) {
                 credentialProviderList.add(createCOSCredentialProvider(uri,
