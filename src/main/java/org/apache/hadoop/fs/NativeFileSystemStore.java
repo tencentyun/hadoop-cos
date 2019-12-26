@@ -30,9 +30,7 @@ interface NativeFileSystemStore {
 
     void storeEmptyFile(String key) throws IOException;
 
-    CompleteMultipartUploadResult completeMultipartUpload(String key,
-                                                          String uploadId,
-                                                          List<PartETag> partETagList);
+    CompleteMultipartUploadResult  completeMultipartUpload(String key, String uploadId,  List<PartETag> partETagList);
 
     void abortMultipartUpload(String key, String uploadId);
 
