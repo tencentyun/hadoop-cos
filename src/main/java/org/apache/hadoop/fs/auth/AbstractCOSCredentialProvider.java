@@ -1,10 +1,10 @@
 package org.apache.hadoop.fs.auth;
 
-import java.net.URI;
-import javax.annotation.Nullable;
-
 import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
+
+import javax.annotation.Nullable;
+import java.net.URI;
 
 /**
  * The base class for COS credential providers which take a URI or

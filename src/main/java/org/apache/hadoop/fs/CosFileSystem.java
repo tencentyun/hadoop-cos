@@ -190,7 +190,7 @@ public class CosFileSystem extends FileSystem {
 
             // Get the input stream and read from it
             InputStream in = child.getInputStream();
-            StringBuffer strBuffer = new StringBuffer();
+            StringBuilder strBuffer = new StringBuilder();
             int c;
             while ((c = in.read()) != -1) {
                 strBuffer.append((char) c);
@@ -343,6 +343,7 @@ public class CosFileSystem extends FileSystem {
             try {
                 store.delete(key);
             } catch (Exception e) {
+                LOG.error("Delete the key failed.");
             }
 
         } else {
@@ -550,7 +551,7 @@ public class CosFileSystem extends FileSystem {
         } while (absolutePath != null);
 
         for (Path path : paths) {
-            if (path.equals(CosFileSystem.PATH_DELIMITER)) {
+            if (path.equals(new Path(CosFileSystem.PATH_DELIMITER))) {
                 break;
             }
             try {

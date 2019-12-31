@@ -259,7 +259,7 @@ public final class BufferPool {
     }
 
     public synchronized void close() {
-        LOG.debug("Close a buffer pool instance.");
+        LOG.info("Close a buffer pool instance.");
 
         if (!this.isInitialize.get()) {
             // Closed or not initialized, return directly.
@@ -272,6 +272,7 @@ public final class BufferPool {
             return;
         }
 
+        LOG.info("Begin to release the buffers.");
         // First, release the buffers in the buffer queue.
         if (null != this.bufferPool) {
             for (CosNByteBuffer buffer : this.bufferPool) {

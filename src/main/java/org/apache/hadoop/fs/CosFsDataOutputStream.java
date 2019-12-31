@@ -99,6 +99,8 @@ public class CosFsDataOutputStream extends OutputStream {
         // 加到块列表中去
         if (this.currentBlockId == 0) {
             // 单个文件就可以上传完成
+            LOG.info("Single file upload...  key: {}, blockId: {}, blockWritten: {}.", this.key, this.currentBlockId,
+                    this.blockWritten);
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
             store.storeFile(this.key,
                     new BufferInputStream(this.currentBlockBuffer),
@@ -108,8 +110,8 @@ public class CosFsDataOutputStream extends OutputStream {
             PartETag partETag = null;
             if (this.blockWritten > 0) {
                 this.currentBlockId++;
-                LOG.info("Upload the last part. blockId: [{}], written: [{}]",
-                        this.currentBlockId, this.blockWritten);
+                LOG.info("Upload the last part. key: {}, blockId: [{}], blockWritten: [{}]",
+                        this.key, this.currentBlockId, this.blockWritten);
                 partETag = store.uploadPart(
                         new BufferInputStream(this.currentBlockBuffer), key,
                         uploadId, currentBlockId,
