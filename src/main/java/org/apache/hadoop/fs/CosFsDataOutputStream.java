@@ -38,17 +38,26 @@ public class CosFsDataOutputStream extends OutputStream {
     private final List<ListenableFuture<PartETag>> partEtagList =
             new LinkedList<ListenableFuture<PartETag>>();
     private int blockWritten = 0;
+    private WriteConsistencyChecker writeConsistencyChecker = null;
     private boolean closed = false;
 
     public CosFsDataOutputStream(
             Configuration conf,
             NativeFileSystemStore store,
             String key, long blockSize,
-            ExecutorService executorService) throws IOException {
+            ExecutorService executorService, boolean checksEnabled) throws IOException {
         this.conf = conf;
         this.store = store;
         this.key = key;
         this.blockSize = blockSize;
+
+        if (checksEnabled) {
+            LOG.info("The consistency checker is enabled.");
+            this.writeConsistencyChecker = new WriteConsistencyChecker(this.store, this.key);
+        } else {
+            LOG.warn("The consistency checker is disabled.");
+        }
+
         if (this.blockSize < Constants.MIN_PART_SIZE) {
             LOG.warn("The minimum size of a single block is limited to " +
                     "greater than or equal to {}.", Constants.MIN_PART_SIZE);
@@ -102,29 +111,35 @@ public class CosFsDataOutputStream extends OutputStream {
             LOG.info("Single file upload...  key: {}, blockId: {}, blockWritten: {}.", this.key, this.currentBlockId,
                     this.blockWritten);
             byte[] md5Hash = this.digest == null ? null : this.digest.digest();
+            int size = this.currentBlockBuffer.getByteBuffer().remaining();
             store.storeFile(this.key,
                     new BufferInputStream(this.currentBlockBuffer),
                     md5Hash,
                     this.currentBlockBuffer.getByteBuffer().remaining());
+            if (null != this.writeConsistencyChecker) {
+                this.writeConsistencyChecker.incrementWrittenBytes(size);
+            }
         } else {
             PartETag partETag = null;
             if (this.blockWritten > 0) {
                 this.currentBlockId++;
                 LOG.info("Upload the last part. key: {}, blockId: [{}], blockWritten: [{}]",
                         this.key, this.currentBlockId, this.blockWritten);
+                int size = this.currentBlockBuffer.getByteBuffer().remaining();
                 partETag = store.uploadPart(
                         new BufferInputStream(this.currentBlockBuffer), key,
                         uploadId, currentBlockId,
                         currentBlockBuffer.getByteBuffer().remaining());
+                if (null != this.writeConsistencyChecker) {
+                    this.writeConsistencyChecker.incrementWrittenBytes(size);
+                }
             }
-            final List<PartETag> futurePartEtagList =
-                    this.waitForFinishPartUploads();
+            final List<PartETag> futurePartEtagList = this.waitForFinishPartUploads();
             if (null == futurePartEtagList) {
                 throw new IOException("failed to multipart upload to cos, " +
                         "abort it.");
             }
-            List<PartETag> tempPartETagList =
-                    new LinkedList<PartETag>(futurePartEtagList);
+            List<PartETag> tempPartETagList = new LinkedList<PartETag>(futurePartEtagList);
             if (null != partETag) {
                 tempPartETagList.add(partETag);
             }
@@ -135,6 +150,17 @@ public class CosFsDataOutputStream extends OutputStream {
         LOG.info("OutputStream for key [{}] upload complete", key);
         this.blockWritten = 0;
         this.closed = true;
+        if (null != this.writeConsistencyChecker) {
+            this.writeConsistencyChecker.finish();
+            if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
+                String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.", this.key,
+                        this.writeConsistencyChecker.getCheckResult().getDescription());
+                throw new IOException(exceptionMsg);
+            }
+            LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
+                    this.writeConsistencyChecker.getCheckResult().getDescription());
+        }
+        this.writeConsistencyChecker = null;
     }
 
     private List<PartETag> waitForFinishPartUploads() throws IOException {
@@ -227,6 +253,9 @@ public class CosFsDataOutputStream extends OutputStream {
             this.blockWritten += writeBytes;
             if (this.blockWritten >= this.blockSize) {
                 this.uploadPart();
+                if (null != this.writeConsistencyChecker) {
+                    this.writeConsistencyChecker.incrementWrittenBytes(blockWritten);
+                }
                 this.blockWritten = 0;
             }
             len -= writeBytes;
@@ -251,6 +280,9 @@ public class CosFsDataOutputStream extends OutputStream {
         this.blockWritten += 1;
         if (this.blockWritten >= this.blockSize) {
             this.uploadPart();
+            if (null != this.writeConsistencyChecker) {
+                this.writeConsistencyChecker.incrementWrittenBytes(blockWritten);
+            }
             this.blockWritten = 0;
         }
     }

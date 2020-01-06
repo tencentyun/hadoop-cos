@@ -272,10 +272,12 @@ public class CosFileSystem extends FileSystem {
         }
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
+        boolean uploadChecksEnabled = this.getConf().getBoolean(CosNConfigKeys.COSN_UPLOAD_CHECKS_ENABLE_KEY,
+                CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE);
         return new FSDataOutputStream(
                 new CosFsDataOutputStream(getConf(), store, key,
                         this.getDefaultBlockSize(),
-                        this.boundedIOThreadPool),
+                        this.boundedIOThreadPool, uploadChecksEnabled),
                 statistics);
     }
 

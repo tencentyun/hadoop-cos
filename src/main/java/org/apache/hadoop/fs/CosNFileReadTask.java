@@ -31,15 +31,15 @@ public class CosNFileReadTask implements Runnable {
 
         RetryPolicy defaultPolicy =
                 RetryPolicies.retryUpToMaximumCountWithFixedSleep(
-                conf.getInt(
-                        CosNConfigKeys.COSN_MAX_RETRIES_KEY,
-                        CosNConfigKeys.DEFAULT_MAX_RETRIES),
-                conf.getLong(
-                        CosNConfigKeys.COSN_RETRY_INTERVAL_KEY,
-                        CosNConfigKeys.DEFAULT_RETRY_INTERVAL
-                ),
-                TimeUnit.SECONDS
-        );
+                        conf.getInt(
+                                CosNConfigKeys.COSN_MAX_RETRIES_KEY,
+                                CosNConfigKeys.DEFAULT_MAX_RETRIES),
+                        conf.getLong(
+                                CosNConfigKeys.COSN_RETRY_INTERVAL_KEY,
+                                CosNConfigKeys.DEFAULT_RETRY_INTERVAL
+                        ),
+                        TimeUnit.SECONDS
+                );
         Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap =
                 new HashMap<Class<? extends Exception>, RetryPolicy>();
         retryPolicyMap.put(IOException.class, defaultPolicy);
@@ -78,7 +78,7 @@ public class CosNFileReadTask implements Runnable {
                     try {
                         retryAction = this.retryPolicy.shouldRetry(e,
                                 retries++, 0, true);
-                        if (retryAction.action == RetryPolicy.RetryAction.RetryDecision.RETRY) {
+                        if (null != retryAction && retryAction.action == RetryPolicy.RetryAction.RetryDecision.RETRY) {
                             Thread.sleep(retryAction.delayMillis);
                         }
                     } catch (Exception e1) {
@@ -87,8 +87,8 @@ public class CosNFileReadTask implements Runnable {
                                         + "to retrieve the block range start:" +
                                         " %d, end:%d",
                                 this.retryPolicy.toString(),
-                                String.valueOf(this.readBuffer.getStart()),
-                                String.valueOf(this.readBuffer.getEnd()));
+                                this.readBuffer.getStart(),
+                                this.readBuffer.getEnd());
                         LOG.error(errMsg, e1);
                         break;
                     }

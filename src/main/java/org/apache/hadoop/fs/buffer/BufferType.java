@@ -18,7 +18,7 @@ public enum BufferType {
         return name;
     }
 
-    public static BufferType TypeFactory(String typeName) {
+    public static BufferType typeFactory(String typeName) {
         if (typeName.compareToIgnoreCase(NON_DIRECT_MEMORY.getName()) == 0) {
             return NON_DIRECT_MEMORY;
         }

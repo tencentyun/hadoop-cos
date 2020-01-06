@@ -1,16 +1,12 @@
 package org.apache.hadoop.fs;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.Serializable;
-import java.util.Objects;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
+
+import java.io.*;
+import java.util.Objects;
 
 
 public class CosEncryptionSecrets implements Writable, Serializable {
@@ -45,23 +41,25 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * Create a pair of secrets.
+     *
      * @param encryptionAlgorithm algorithm enumeration.
-     * @param encryptionKey key/key reference.
+     * @param encryptionKey       key/key reference.
      * @throws IOException failure to initialize.
      */
     public CosEncryptionSecrets(final CosEncryptionMethods encryptionAlgorithm,
-                             final String encryptionKey) throws IOException {
+                                final String encryptionKey) throws IOException {
         this(encryptionAlgorithm.getMethod(), encryptionKey);
     }
 
     /**
      * Create a pair of secrets.
+     *
      * @param encryptionAlgorithm algorithm name
-     * @param encryptionKey key/key reference.
+     * @param encryptionKey       key/key reference.
      * @throws IOException failure to initialize.
      */
     public CosEncryptionSecrets(final String encryptionAlgorithm,
-                             final String encryptionKey) throws IOException {
+                                final String encryptionKey) throws IOException {
         this.encryptionAlgorithm = encryptionAlgorithm;
         this.encryptionKey = encryptionKey;
         init();
@@ -69,6 +67,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * Write out the encryption secrets.
+     *
      * @param out {@code DataOutput} to serialize this object into.
      * @throws IOException IO failure
      */
@@ -82,6 +81,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
     /**
      * Read in from the writable stream.
      * After reading, call {@link #init()}.
+     *
      * @param in {@code DataInput} to deserialize this object from.
      * @throws IOException failure to read/validate data.
      */
@@ -100,8 +100,9 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * For java serialization: read and then call {@link #init()}.
+     *
      * @param in input
-     * @throws IOException IO problem
+     * @throws IOException            IO problem
      * @throws ClassNotFoundException problem loading inner class.
      */
     private void readObject(ObjectInputStream in)
@@ -112,6 +113,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * Init all state, including after any read.
+     *
      * @throws IOException error rebuilding state.
      */
     private void init() throws IOException {
@@ -130,6 +132,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
     /**
      * Does this instance have encryption options?
      * That is: is the algorithm non-null.
+     *
      * @return true if there's an encryption algorithm.
      */
     public boolean hasEncryptionAlgorithm() {
@@ -138,6 +141,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * Does this instance have an encryption key?
+     *
      * @return true if there's an encryption key.
      */
     public boolean hasEncryptionKey() {
@@ -164,6 +168,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * Get the encryption method.
+     *
      * @return the encryption method
      */
     public CosEncryptionMethods getEncryptionMethod() {
@@ -173,6 +178,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
     /**
      * String function returns the encryption mode but not any other
      * secrets.
+     *
      * @return a string safe for logging.
      */
     @Override

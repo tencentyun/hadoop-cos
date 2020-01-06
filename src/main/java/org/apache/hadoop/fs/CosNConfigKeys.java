@@ -10,7 +10,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.8.0";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.8.1";
 
     public static final String COSN_CREDENTIALS_PROVIDER = "fs.cosn.credentials.provider";
     public static final String COSN_APPID_KEY = "fs.cosn.userinfo.appid";
@@ -26,6 +26,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_TMP_DIR = "fs.cosn.tmp.dir";
     public static final String DEFAULT_TMP_DIR = "/tmp/hadoop_cos";
+
+    // upload checks, turn on default.
+    public static final String COSN_UPLOAD_CHECKS_ENABLE_KEY = "fs.cosn.upload.checks.enable";
+    public static final boolean DEFAULT_COSN_UPLOAD_CHECKS_ENABLE = true;
 
     public static final String COSN_UPLOAD_BUFFER_TYPE_KEY = "fs.cosn.upload.buffer";
     public static final String DEFAULT_UPLOAD_BUFFER_TYPE = "mapped_disk";
@@ -62,6 +66,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // 服务器端加密
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
-    public static final String BASE64_Pattern = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$";
+    public static final String BASE64_Pattern = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9" +
+            "+/]{2}==)$";
 
 }

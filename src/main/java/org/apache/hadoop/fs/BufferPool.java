@@ -76,7 +76,7 @@ public final class BufferPool {
             throw new IllegalArgumentException(exceptionMsg);
         }
 
-        this.bufferType = BufferType.TypeFactory(conf.get(
+        this.bufferType = BufferType.typeFactory(conf.get(
                 CosNConfigKeys.COSN_UPLOAD_BUFFER_TYPE_KEY,
                 CosNConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE));
 

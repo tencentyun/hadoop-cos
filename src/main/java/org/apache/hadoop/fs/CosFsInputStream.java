@@ -17,7 +17,7 @@ public class CosFsInputStream extends FSInputStream {
     public static final Logger LOG =
             LoggerFactory.getLogger(CosFsInputStream.class);
 
-    public class ReadBuffer {
+    public static class ReadBuffer {
         public static final int INIT = 1;
         public static final int SUCCESS = 0;
         public static final int ERROR = -1;
