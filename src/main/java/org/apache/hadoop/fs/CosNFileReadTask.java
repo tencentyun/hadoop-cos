@@ -36,8 +36,7 @@ public class CosNFileReadTask implements Runnable {
                                 CosNConfigKeys.DEFAULT_MAX_RETRIES),
                         conf.getLong(
                                 CosNConfigKeys.COSN_RETRY_INTERVAL_KEY,
-                                CosNConfigKeys.DEFAULT_RETRY_INTERVAL
-                        ),
+                                CosNConfigKeys.DEFAULT_RETRY_INTERVAL),
                         TimeUnit.SECONDS
                 );
         Map<Class<? extends Exception>, RetryPolicy> retryPolicyMap =
@@ -66,6 +65,10 @@ public class CosNFileReadTask implements Runnable {
                     IOUtils.readFully(
                             inputStream, this.readBuffer.getBuffer(), 0,
                             readBuffer.getBuffer().length);
+                    int readEof = inputStream.read();
+                    if (readEof != -1) {
+                        LOG.error("Expect to read the eof, but the return is not -1. key: {}.", this.key);
+                    }
                     inputStream.close();
                     this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.SUCCESS);
                     break;
