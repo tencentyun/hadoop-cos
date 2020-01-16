@@ -30,11 +30,6 @@
     </properties>
 
     <dependencies>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>org.apache.hadoop</groupId>
@@ -42,20 +37,6 @@
             <version>${hadoop.version}</version>
             <scope>provided</scope>
             <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-log4j12</artifactId>
-                </exclusion>
-
-                <exclusion>
-                    <groupId>log4j</groupId>
-                    <artifactId>log4j</artifactId>
-                </exclusion>
 
                 <exclusion>
                     <groupId>commons-collections</groupId>
@@ -173,11 +154,6 @@
                                 </relocation>
 
                                 <relocation>
-                                    <pattern>org.slf4j</pattern>
-                                    <shadedPattern>cosn.${project.version}.org.slf4j</shadedPattern>
-                                </relocation>
-
-                                <relocation>
                                     <pattern>org.joda</pattern>
                                     <shadedPattern>cosn.${project.version}.org.joda</shadedPattern>
                                 </relocation>
@@ -210,7 +186,8 @@
 
                                 <relocation>
                                     <pattern>com.fasterxml.jackson.databind</pattern>
-                                    <shadedPattern>cosn.${project.version}.com.fasterxml.jackson.databind</shadedPattern>
+                                    <shadedPattern>cosn.${project.version}.com.fasterxml.jackson.databind
+                                    </shadedPattern>
                                 </relocation>
 
                                 <relocation>
