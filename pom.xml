@@ -175,8 +175,7 @@
 
                                 <relocation>
                                     <pattern>com.fasterxml.jackson.annotation</pattern>
-                                    <shadedPattern>cosn.${project.version}.com.fasterxml.jackson.annotation
-                                    </shadedPattern>
+                                    <shadedPattern>cosn.${project.version}.com.fasterxml.jackson.annotation</shadedPattern>
                                 </relocation>
 
                                 <relocation>
@@ -186,8 +185,7 @@
 
                                 <relocation>
                                     <pattern>com.fasterxml.jackson.databind</pattern>
-                                    <shadedPattern>cosn.${project.version}.com.fasterxml.jackson.databind
-                                    </shadedPattern>
+                                    <shadedPattern>cosn.${project.version}.com.fasterxml.jackson.databind</shadedPattern>
                                 </relocation>
 
                                 <relocation>
