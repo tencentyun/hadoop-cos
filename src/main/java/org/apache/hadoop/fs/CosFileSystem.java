@@ -392,6 +392,12 @@ public class CosFileSystem extends FileSystem {
         if (!key.endsWith(PATH_DELIMITER)) {
             key += PATH_DELIMITER;
         }
+
+        meta = store.retrieveMetadata(key);
+        if (null != meta) {
+            return newDirectory(absolutePath);
+        }
+
         if (LOG.isDebugEnabled()) {
             LOG.debug("getFileStatus listing key '" + key + "'");
         }

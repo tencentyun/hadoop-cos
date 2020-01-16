@@ -103,64 +103,81 @@ public class CosFsDataOutputStream extends OutputStream {
         if (this.closed) {
             return;
         }
-        this.currentBlockOutputStream.flush();
-        this.currentBlockOutputStream.close();
-        // 加到块列表中去
-        if (this.currentBlockId == 0) {
-            // 单个文件就可以上传完成
-            LOG.info("Single file upload...  key: {}, blockId: {}, blockWritten: {}.", this.key, this.currentBlockId,
-                    this.blockWritten);
-            byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-            int size = this.currentBlockBuffer.getByteBuffer().remaining();
-            store.storeFile(this.key,
-                    new BufferInputStream(this.currentBlockBuffer),
-                    md5Hash,
-                    this.currentBlockBuffer.getByteBuffer().remaining());
-            if (null != this.writeConsistencyChecker) {
-                this.writeConsistencyChecker.incrementWrittenBytes(size);
-            }
-        } else {
-            PartETag partETag = null;
-            if (this.blockWritten > 0) {
-                this.currentBlockId++;
-                LOG.info("Upload the last part. key: {}, blockId: [{}], blockWritten: [{}]",
-                        this.key, this.currentBlockId, this.blockWritten);
+        try {
+            this.currentBlockOutputStream.flush();
+            this.currentBlockOutputStream.close();
+            // 加到块列表中去
+            if (this.currentBlockId == 0) {
+                // 单个文件就可以上传完成
+                LOG.info("Single file upload...  key: {}, blockId: {}, blockWritten: {}.", this.key,
+                        this.currentBlockId,
+                        this.blockWritten);
+                byte[] md5Hash = this.digest == null ? null : this.digest.digest();
                 int size = this.currentBlockBuffer.getByteBuffer().remaining();
-                partETag = store.uploadPart(
-                        new BufferInputStream(this.currentBlockBuffer), key,
-                        uploadId, currentBlockId,
-                        currentBlockBuffer.getByteBuffer().remaining());
+                store.storeFile(this.key,
+                        new BufferInputStream(this.currentBlockBuffer),
+                        md5Hash,
+                        this.currentBlockBuffer.getByteBuffer().remaining());
                 if (null != this.writeConsistencyChecker) {
                     this.writeConsistencyChecker.incrementWrittenBytes(size);
                 }
+                LOG.info("OutputStream for key [{}] upload complete", key);
+                if (null != this.writeConsistencyChecker) {
+                    this.writeConsistencyChecker.finish();
+                    if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
+                        String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.",
+                                this.key,
+                                this.writeConsistencyChecker.getCheckResult().getDescription());
+                        throw new IOException(exceptionMsg);
+                    }
+                    LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
+                            this.writeConsistencyChecker.getCheckResult().getDescription());
+                }
+            } else {
+                PartETag partETag = null;
+                if (this.blockWritten > 0) {
+                    this.currentBlockId++;
+                    LOG.info("Upload the last part. key: {}, blockId: [{}], blockWritten: [{}]",
+                            this.key, this.currentBlockId, this.blockWritten);
+                    int size = this.currentBlockBuffer.getByteBuffer().remaining();
+                    partETag = store.uploadPart(
+                            new BufferInputStream(this.currentBlockBuffer), key,
+                            uploadId, currentBlockId,
+                            currentBlockBuffer.getByteBuffer().remaining());
+                    if (null != this.writeConsistencyChecker) {
+                        this.writeConsistencyChecker.incrementWrittenBytes(size);
+                    }
+                }
+                final List<PartETag> futurePartEtagList = this.waitForFinishPartUploads();
+                if (null == futurePartEtagList) {
+                    throw new IOException("failed to multipart upload to cos, " +
+                            "abort it.");
+                }
+                List<PartETag> tempPartETagList = new LinkedList<PartETag>(futurePartEtagList);
+                if (null != partETag) {
+                    tempPartETagList.add(partETag);
+                }
+                store.completeMultipartUpload(this.key, this.uploadId,
+                        tempPartETagList);
+                LOG.info("OutputStream for key [{}] upload complete", key);
+                if (null != this.writeConsistencyChecker) {
+                    this.writeConsistencyChecker.finish();
+                    if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
+                        String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.",
+                                this.key,
+                                this.writeConsistencyChecker.getCheckResult().getDescription());
+                        throw new IOException(exceptionMsg);
+                    }
+                    LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
+                            this.writeConsistencyChecker.getCheckResult().getDescription());
+                }
             }
-            final List<PartETag> futurePartEtagList = this.waitForFinishPartUploads();
-            if (null == futurePartEtagList) {
-                throw new IOException("failed to multipart upload to cos, " +
-                        "abort it.");
-            }
-            List<PartETag> tempPartETagList = new LinkedList<PartETag>(futurePartEtagList);
-            if (null != partETag) {
-                tempPartETagList.add(partETag);
-            }
-            store.completeMultipartUpload(this.key, this.uploadId,
-                    tempPartETagList);
+        } finally {
+            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
+            this.blockWritten = 0;
+            this.closed = true;
+            this.writeConsistencyChecker = null;
         }
-        BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
-        LOG.info("OutputStream for key [{}] upload complete", key);
-        this.blockWritten = 0;
-        this.closed = true;
-        if (null != this.writeConsistencyChecker) {
-            this.writeConsistencyChecker.finish();
-            if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
-                String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.", this.key,
-                        this.writeConsistencyChecker.getCheckResult().getDescription());
-                throw new IOException(exceptionMsg);
-            }
-            LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
-                    this.writeConsistencyChecker.getCheckResult().getDescription());
-        }
-        this.writeConsistencyChecker = null;
     }
 
     private List<PartETag> waitForFinishPartUploads() throws IOException {
@@ -203,14 +220,17 @@ public class CosFsDataOutputStream extends OutputStream {
 
                     @Override
                     public PartETag call() throws Exception {
-                        PartETag partETag = (store).uploadPart(
-                                new BufferInputStream(this.buffer),
-                                this.localKey,
-                                this.localUploadId,
-                                this.blockId,
-                                this.buffer.getByteBuffer().remaining());
-                        BufferPool.getInstance().returnBuffer(this.buffer);
-                        return partETag;
+                        try {
+                            PartETag partETag = (store).uploadPart(
+                                    new BufferInputStream(this.buffer),
+                                    this.localKey,
+                                    this.localUploadId,
+                                    this.blockId,
+                                    this.buffer.getByteBuffer().remaining());
+                            return partETag;
+                        } finally {
+                            BufferPool.getInstance().returnBuffer(this.buffer);
+                        }
                     }
                 });
         this.partEtagList.add(partETagListenableFuture);
