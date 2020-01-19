@@ -120,19 +120,19 @@ done
     </property>
 
     <property>
-    	<name>fs.cosn.upload.buffer</name>
+        <name>fs.cosn.upload.buffer</name>
         <value>mapped_disk</value>
         <description>The type of upload buffer. Available values: non_direct_memory, direct_memory, mapped_disk</description>
     </property>
 
     <property>
-    	<name>fs.cosn.upload.buffer.size</name>
+        <name>fs.cosn.upload.buffer.size</name>
         <value>33554432</value>
         <description>The total size of the upload buffer pool. -1 means unlimited.</description>
     </property>
 
     <property>
-    	<name>fs.cosn.block.size</name>
+        <name>fs.cosn.block.size</name>
         <value>8388608</value>
         <description>Block size to use cosn filesysten, which is the part size for MultipartUpload.
         Considering the COS supports up to 10000 blocks, user should estimate the maximum size of a single file.
@@ -140,44 +140,56 @@ done
     </property>
 
     <property>
-    	<name>fs.cosn.maxRetries</name>
+        <name>fs.cosn.maxRetries</name>
         <value>3</value>
         <description>The maximum number of retries for reading or writing files to
     COS, before we signal failure to the application.</description>
     </property>
 
     <property>
-    	<name>fs.cosn.retry.interval.seconds</name>
+        <name>fs.cosn.retry.interval.seconds</name>
         <value>3</value>
         <description>The number of seconds to sleep between each COS retry.</description>
     </property>
 
     <property>
-    	<name>fs.cosn.read.ahead.block.size</name>
+        <name>fs.cosn.read.ahead.block.size</name>
         <value>‭1048576‬</value>
         <description>
-        	Bytes to read ahead during a seek() before closing and
+            Bytes to read ahead during a seek() before closing and
             re-opening the cosn HTTP connection.
         </description>
     </property>
 
     <property>
-    	<name>fs.cosn.read.ahead.queue.size</name>
+        <name>fs.cosn.read.ahead.queue.size</name>
         <value>8</value>
         <description>The length of the pre-read queue.</description>
     </property>
-	
+
     <property>
-    	<name>fs.cosn.server-side-encryption.algorithm</name>
+        <name>fs.cosn.read.ahead.queue.size</name>
+        <value>8</value>
+        <description>The length of the pre-read queue.</description>
+    </property>
+
+    <property>
+        <name>fs.cosn.customer.domain</name>
+        <value></value>
+        <description>The customer domain.</description>
+    </property>
+
+    <property>
+        <name>fs.cosn.server-side-encryption.algorithm</name>
         <value></value>
         <description>The server side encryption algorithm.</description>
-    </property>	
-	
+    </property> 
+
      <property>
-    	<name>fs.cosn.server-side-encryption.key</name>
+        <name>fs.cosn.server-side-encryption.key</name>
         <value></value>
         <description>The SSE-C server side encryption key.</description>
-    </property>   	
+    </property>     
 
 </configuration>
 
@@ -200,12 +212,13 @@ done
 |fs.cosn.upload.buffer.size        | CosN文件系统上传时依赖的缓冲区大小，如果指定为-1，则表示不限制。若不限制缓冲区大小，则缓冲区类型必须为mapped_disk。如果指定大小大于0，则要求该值至少大于等于一个block的大小。兼容原配置项：fs.cosn.buffer.size。|-1|否|
 |fs.cosn.block.size                | CosN文件系统每个block的大小，也是分块上传的每个part size的大小。由于COS的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，block size为8MB时，最大能够支持78GB的单文件上传。 block size最大可以支持到2GB，即单文件最大可支持19TB | 8388608（8MB） | 否 |
 |fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | CPU核心数*5 | 否|
-|fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | CPU核心数目*3 | 否 |
+|fs.cosn.copy_thread_pool          | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | CPU核心数目*3 | 否 |
 |fs.cosn.read.ahead.block.size     | 预读块的大小                                 | ‭1048576‬（1MB） |  否 |
 |fs.cosn.read.ahead.queue.size     | 预读队列的长度                               | 8              | 否  |
-|fs.cosn.maxRetries				   | 访问COS出现错误时，最多重试的次数 | 200 | 否 |
+|fs.cosn.maxRetries                | 访问COS出现错误时，最多重试的次数 | 200 | 否 |
 |fs.cosn.retry.interval.seconds    | 每次重试的时间间隔 | 3 | 否 |
 |fs.cosn.max.connection.num | 配置COS连接池中维持的最大连接数目，这个数目与单机读写COS的并发有关，建议至少大于或等于单机读写COS的并发数| 1024 | 否|
+|fs.cosn.customer.domain | 配置COS的自定义域名，默认为空| 无 | 否|
 |fs.cosn.server-side-encryption.algorithm | 配置COS服务端加密算法，支持SSE-C和SSE-COS，默认为空，不加密| 无 | 否|
 |fs.cosn.server-side-encryption.key | 当开启COS的SSE-C服务端加密算法时，必须配置SSE-C的密钥，密钥格式为base64编码的AES-256密钥，默认为空，不加密| 无 | 否|
 

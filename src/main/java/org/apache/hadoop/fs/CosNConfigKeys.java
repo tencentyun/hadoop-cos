@@ -63,6 +63,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String MAX_CONNECTION_NUM = "fs.cosn.max.connection.num";
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 
+    // 自定义域名
+    public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
+
     // 服务器端加密
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
