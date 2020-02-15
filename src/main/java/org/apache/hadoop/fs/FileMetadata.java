@@ -15,6 +15,7 @@ class FileMetadata {
     private final long length;
     private final long lastModified;
     private final boolean isFile;
+    private final String crc64ecm;
 
     public FileMetadata(String key, long length, long lastModified) {
         this(key, length, lastModified, true);
@@ -22,10 +23,15 @@ class FileMetadata {
 
     public FileMetadata(String key, long length, long lastModified,
                         boolean isFile) {
+        this(key, length, lastModified, isFile, null);
+    }
+
+    public FileMetadata(String key, long length, long lastModified, boolean isFile, String crc64ecm) {
         this.key = key;
         this.length = length;
         this.lastModified = lastModified;
         this.isFile = isFile;
+        this.crc64ecm = crc64ecm;
     }
 
     public String getKey() {
@@ -38,6 +44,10 @@ class FileMetadata {
 
     public long getLastModified() {
         return lastModified;
+    }
+
+    public String getCrc64ecm() {
+        return crc64ecm;
     }
 
     @Override

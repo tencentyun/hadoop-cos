@@ -38,10 +38,10 @@ interface NativeFileSystemStore {
 
     String getUploadId(String key);
 
-    PartETag uploadPart(File file, String key, String uploadId, int partNum) throws IOException;
+    PartETag uploadPart(File file, String key, String uploadId, int partNum, byte[] md5hash) throws IOException;
 
     PartETag uploadPart(InputStream inputStream, String key, String uploadId,
-                        int partNum, long partSize) throws IOException;
+                        int partNum, long partSize, byte[] md5hash) throws IOException;
 
     FileMetadata retrieveMetadata(String key) throws IOException;
 

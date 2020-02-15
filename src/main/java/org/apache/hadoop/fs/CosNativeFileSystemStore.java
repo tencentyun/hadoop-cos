@@ -7,10 +7,9 @@ import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.model.*;
 import com.qcloud.cos.region.Region;
-import com.qcloud.cos.transfer.TransferManager;
 import com.qcloud.cos.utils.Base64;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.directory.api.util.Hex;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -24,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.apache.hadoop.fs.CosFileSystem.PATH_DELIMITER;
@@ -34,9 +32,9 @@ import static org.apache.hadoop.fs.CosFileSystem.PATH_DELIMITER;
 class CosNativeFileSystemStore implements NativeFileSystemStore {
     private COSClient cosClient;
     private COSCredentialProviderList cosCredentialProviderList;
-    private TransferManager transferManager;
     private String bucketName;
     private int maxRetryTimes;
+    private int trafficLimit;
     private CosEncryptionSecrets encryptionSecrets;
 
     public static final Logger LOG =
@@ -51,7 +49,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
         String endpoint_suffix =
                 conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
-        if (null == region) {
+        if (null == endpoint_suffix) {
             endpoint_suffix =
                     conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_PREV_KEY);
         }
@@ -77,6 +75,35 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             config.setHttpProtocol(HttpProtocol.https);
         }
 
+        // Proxy settings
+        String httpProxyIp = conf.getTrimmed(CosNConfigKeys.HTTP_PROXY_IP);
+        int httpProxyPort = conf.getInt(CosNConfigKeys.HTTP_PROXY_PORT, CosNConfigKeys.DEFAULT_HTTP_PROXY_PORT);
+        if (null != httpProxyIp && !httpProxyIp.isEmpty()) {
+            config.setHttpProxyIp(httpProxyIp);
+            if (httpProxyPort >= 0) {
+                config.setHttpProxyPort(httpProxyPort);
+            } else {
+                if (useHttps) {
+                    LOG.warn("Proxy IP set without port. Using HTTPS default port 443");
+                    config.setHttpProxyPort(443);
+                } else {
+                    LOG.warn("Proxy IP set without port, Using HTTP default port 80");
+                    config.setHttpProxyPort(80);
+                }
+            }
+            // setting the proxy username and password
+            String proxyUserName = conf.get(CosNConfigKeys.HTTP_PROXY_USERNAME);
+            String proxyPassword = conf.get(CosNConfigKeys.HTTP_PROXY_PASSWORD);
+            if ((null == proxyUserName || proxyUserName.isEmpty())
+                    != (null == proxyPassword || proxyPassword.isEmpty())) {
+                String exceptionMessage = String.format("Proxy error: '%s' or '%s' set without the other.",
+                        CosNConfigKeys.HTTP_PROXY_USERNAME, CosNConfigKeys.HTTP_PROXY_PASSWORD);
+                throw new IllegalArgumentException(exceptionMessage);
+            }
+            config.setProxyUsername(proxyUserName);
+            config.setProxyPassword(proxyPassword);
+        }
+
         config.setUserAgent(conf.get(
                 CosNConfigKeys.USER_AGENT,
                 CosNConfigKeys.DEFAULT_USER_AGENT));
@@ -100,37 +127,24 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         String SSEKey = conf.get(
                 CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY, "");
         CheckEncryptionMethod(config, CosSSE, SSEKey);
-
         this.encryptionSecrets = new CosEncryptionSecrets(CosSSE, SSEKey);
-        this.cosClient = new COSClient(this.cosCredentialProviderList, config);
-    }
 
-    private void initTransferManager(Configuration conf) throws IOException {
-        int threadCount = 0;
-        try {
-            threadCount = conf.getInt(
-                    CosNConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                    CosNConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE);
-        } catch (NumberFormatException e) {
-            String exceptionMessage = String.format("'%s' value is invalid number.",
-                    CosNConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY);
-            throw new IOException(exceptionMessage);
+        // Set the traffic limit
+        this.trafficLimit = conf.getInt(CosNConfigKeys.TRAFFIC_LIMIT, CosNConfigKeys.DEFAULT_TRAFFIC_LIMIT);
+        if (this.trafficLimit >= 0
+                && (this.trafficLimit < 100 * 1024 * 8 || this.trafficLimit > 100 * 1024 * 1024 * 8)) {
+            String exceptionMessage = String.format("The '%s' needs to be between %d and %d. but %d.",
+                    CosNConfigKeys.TRAFFIC_LIMIT, 100 * 1024 * 8, 100 * 1024 * 1024 * 8, this.trafficLimit);
+            throw new IllegalArgumentException(exceptionMessage);
         }
-        if (threadCount <= 0) {
-            String exceptionMessage = String.format("'%s' value must greater than 0.",
-                    CosNConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY);
-            throw new IOException(exceptionMessage);
-        }
-        this.transferManager =
-                new TransferManager(this.cosClient,
-                        Executors.newFixedThreadPool(threadCount));
+
+        this.cosClient = new COSClient(this.cosCredentialProviderList, config);
     }
 
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
         try {
             initCOSClient(uri, conf);
-            initTransferManager(conf);
             this.bucketName = uri.getHost();
         } catch (Exception e) {
             handleException(e, "");
@@ -147,6 +161,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             PutObjectRequest putObjectRequest =
                     new PutObjectRequest(bucketName, key, inputStream,
                             objectMetadata);
+            if (this.trafficLimit >= 0) {
+                putObjectRequest.setTrafficLimit(this.trafficLimit);
+            }
             this.setEncryptionMetadata(putObjectRequest, objectMetadata);
 
             PutObjectResult putObjectResult =
@@ -177,7 +194,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void storeFile(String key, File file, byte[] md5Hash) throws IOException {
-        LOG.info("Store the file, local path: {}, length: {}.", file.getCanonicalPath(), file.length());
+        LOG.debug("Store the file, local path: {}, length: {}, md5hash: {}.", file.getCanonicalPath(), file.length(),
+                Hex.encodeHexString(md5Hash));
         storeFileWithRetry(key,
                 new BufferedInputStream(new FileInputStream(file)), md5Hash,
                 file.length());
@@ -186,7 +204,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void storeFile(String key, InputStream inputStream, byte[] md5Hash
             , long contentLength) throws IOException {
-        LOG.info("Store the file input stream md5 hash: {}, content length: {}.", Hex.encodeHex(md5Hash),
+        LOG.debug("Store the file to key: {}, input stream md5 hash: {}, content length: {}.", key,
+                Hex.encodeHexString(md5Hash),
                 contentLength);
         storeFileWithRetry(key, inputStream, md5Hash, contentLength);
     }
@@ -231,23 +250,29 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     public PartETag uploadPart(File file, String key, String uploadId,
-                               int partNum) throws IOException {
+                               int partNum, byte[] md5Hash) throws IOException {
         InputStream inputStream = new FileInputStream(file);
-        return uploadPart(inputStream, key, uploadId, partNum, file.length());
+        return uploadPart(inputStream, key, uploadId, partNum, file.length(), md5Hash);
     }
 
 
     @Override
     public PartETag uploadPart(
             InputStream inputStream,
-            String key, String uploadId, int partNum, long partSize) throws IOException {
+            String key, String uploadId, int partNum, long partSize, byte[] md5Hash) throws IOException {
+        LOG.debug("Upload the part to the cos key [{}]. upload id: {}, part number: {}, part size: {}, md5Hash: {}.",
+                key, uploadId, partNum, partSize, Hex.encodeHexString(md5Hash));
         UploadPartRequest uploadPartRequest = new UploadPartRequest();
         uploadPartRequest.setBucketName(this.bucketName);
         uploadPartRequest.setUploadId(uploadId);
         uploadPartRequest.setInputStream(inputStream);
         uploadPartRequest.setPartNumber(partNum);
         uploadPartRequest.setPartSize(partSize);
+        uploadPartRequest.setMd5Digest(Base64.encodeAsString(md5Hash));
         uploadPartRequest.setKey(key);
+        if (this.trafficLimit >= 0) {
+            uploadPartRequest.setTrafficLimit(this.trafficLimit);
+        }
         this.setEncryptionMetadata(uploadPartRequest, new ObjectMetadata());
 
         try {
@@ -323,11 +348,13 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 mtime = objectMetadata.getLastModified().getTime();
             }
             fileSize = objectMetadata.getContentLength();
+
+            String crc64ecm = objectMetadata.getCrc64Ecma();
             FileMetadata fileMetadata =
                     new FileMetadata(key, fileSize, mtime,
-                            !key.endsWith(PATH_DELIMITER));
-            LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}", key,
-                    objectMetadata.getETag(), objectMetadata.getContentLength());
+                            !key.endsWith(PATH_DELIMITER), crc64ecm);
+            LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}, crc64ecm: {}.", key,
+                    objectMetadata.getETag(), objectMetadata.getContentLength(), objectMetadata.getCrc64Ecma());
             return fileMetadata;
         } catch (CosServiceException e) {
             if (e.getStatusCode() != 404) {
@@ -364,14 +391,15 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
      * @return This method returns null if the key is not found
      * @throws IOException
      */
-
     @Override
     public InputStream retrieve(String key) throws IOException {
         LOG.debug("Retrieve the key: {}.", key);
         GetObjectRequest getObjectRequest =
                 new GetObjectRequest(this.bucketName, key);
+        if (this.trafficLimit >= 0) {
+            getObjectRequest.setTrafficLimit(this.trafficLimit);
+        }
         this.setEncryptionMetadata(getObjectRequest, new ObjectMetadata());
-
 
         try {
             COSObject cosObject =
@@ -400,7 +428,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             long byteRangeEnd = fileSize - 1;
             GetObjectRequest getObjectRequest =
                     new GetObjectRequest(this.bucketName, key);
-
+            if (this.trafficLimit >= 0) {
+                getObjectRequest.setTrafficLimit(this.trafficLimit);
+            }
             this.setEncryptionMetadata(getObjectRequest, new ObjectMetadata());
 
             if (byteRangeEnd >= byteRangeStart) {
@@ -429,6 +459,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             GetObjectRequest request = new GetObjectRequest(this.bucketName,
                     key);
             request.setRange(byteRangeStart, byteRangeEnd);
+            if (this.trafficLimit >= 0) {
+                request.setTrafficLimit(this.trafficLimit);
+            }
             this.setEncryptionMetadata(request, new ObjectMetadata());
             COSObject cosObject =
                     (COSObject) this.callCOSClientWithRetry(request);
@@ -480,7 +513,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     private PartialListing list(String prefix, String delimiter,
                                 int maxListingLength,
                                 String priorLastKey) throws IOException {
-        LOG.debug("List the cos key prefix: {}, max listing length: {}, delimiter: {}, prior last key: {}.", prefix,
+        LOG.debug("List the cos key prefix: {}, max listing length: {}, delimiter: {}, prior last key: {}.",
+                prefix,
                 delimiter, maxListingLength, priorLastKey);
         if (!prefix.startsWith(PATH_DELIMITER)) {
             prefix += PATH_DELIMITER;
@@ -642,6 +676,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             GetObjectRequest request = new GetObjectRequest(this.bucketName,
                     key);
+            if (this.trafficLimit >= 0) {
+                request.setTrafficLimit(this.trafficLimit);
+            }
             this.setEncryptionMetadata(request, new ObjectMetadata());
             if (fileSize > 0) {
                 byteRangeEnd = Math.min(fileSize - 1,
@@ -795,11 +832,16 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             try {
                 if (request instanceof PutObjectRequest) {
                     sdkMethod = "putObject";
+                    if (((PutObjectRequest) request).getInputStream() instanceof BufferInputStream) {
+                        ((PutObjectRequest) request).getInputStream()
+                                .mark((int) ((PutObjectRequest) request).getMetadata().getContentLength());
+                    }
                     return this.cosClient.putObject((PutObjectRequest) request);
                 } else if (request instanceof UploadPartRequest) {
                     sdkMethod = "uploadPart";
                     if (((UploadPartRequest) request).getInputStream() instanceof BufferInputStream) {
-                        ((UploadPartRequest) request).getInputStream().mark((int) ((UploadPartRequest) request).getPartSize());
+                        ((UploadPartRequest) request).getInputStream()
+                                .mark((int) ((UploadPartRequest) request).getPartSize());
                     }
                     return this.cosClient.uploadPart((UploadPartRequest) request);
                 } else if (request instanceof GetObjectMetadataRequest) {
@@ -841,11 +883,26 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
+                            if (request instanceof PutObjectRequest) {
+                                LOG.info("Try to reset the put object request input stream.");
+                                if (((PutObjectRequest) request).getInputStream() instanceof BufferInputStream) {
+                                    ((PutObjectRequest) request).getInputStream().reset();
+                                } else {
+                                    LOG.error("The put object request input stream can not be reset, so it can not be" +
+                                            " retried.");
+                                    throw cse;
+                                }
+                            }
+
                             if (request instanceof UploadPartRequest) {
-                                LOG.info("upload part request input stream " +
-                                        "retry reset...");
+                                LOG.info("Try to reset the upload part request input stream.");
                                 if (((UploadPartRequest) request).getInputStream() instanceof BufferInputStream) {
                                     ((UploadPartRequest) request).getInputStream().reset();
+                                } else {
+                                    LOG.error("The upload part request input stream can not be reset, so it can not " +
+                                            "be retried" +
+                                            ".");
+                                    throw cse;
                                 }
                             }
                             Thread.sleep(
@@ -866,5 +923,4 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
         }
     }
-
 }
