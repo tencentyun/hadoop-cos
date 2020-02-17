@@ -36,41 +36,56 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     private int maxRetryTimes;
     private int trafficLimit;
     private CosEncryptionSecrets encryptionSecrets;
+    private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
     public static final Logger LOG =
             LoggerFactory.getLogger(CosNativeFileSystemStore.class);
 
+
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         this.cosCredentialProviderList =
                 CosNUtils.createCosCredentialsProviderSet(uri, conf);
-        String region = conf.get(CosNConfigKeys.COSN_REGION_KEY);
-        if (null == region) {
-            region = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
-        }
-        String endpoint_suffix =
-                conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
-        if (null == endpoint_suffix) {
-            endpoint_suffix =
-                    conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_PREV_KEY);
-        }
-        if (null == region && null == endpoint_suffix) {
-            String exceptionMsg = String.format("config '%s' and '%s' specify at least one.",
-                    CosNConfigKeys.COSN_REGION_KEY,
-                    CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
-            throw new IOException(exceptionMsg);
+
+        ClientConfig config;
+
+        String customerDomain = conf.get(CosNConfigKeys.CUSTOMER_DOMAIN);
+
+        if (null == customerDomain) {
+
+            String region = conf.get(CosNConfigKeys.COSN_REGION_KEY);
+            if (null == region) {
+                region = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
+            }
+            String endpoint_suffix =
+                    conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
+            if (null == endpoint_suffix) {
+                endpoint_suffix =
+                        conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_PREV_KEY);
+            }
+            if (null == region && null == endpoint_suffix) {
+                String exceptionMsg = String.format("config '%s' and '%s' specify at least one.",
+                        CosNConfigKeys.COSN_REGION_KEY,
+                        CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
+                throw new IOException(exceptionMsg);
+            }
+            if (null == region) {
+                config = new ClientConfig(new Region(""));
+                config.setEndPointSuffix(endpoint_suffix);
+            } else {
+                config = new ClientConfig(new Region(region));
+            }
+        } else {
+            config = new ClientConfig(new Region(""));
+            LOG.info("Use Customer Domain is {}", customerDomain);
+            this.customerDomainEndpointResolver = new CustomerDomainEndpointResolver();
+            customerDomainEndpointResolver.setEndpoint(customerDomain);
+            config.setEndpointBuilder(this.customerDomainEndpointResolver);
         }
 
         boolean useHttps = conf.getBoolean(
                 CosNConfigKeys.COSN_USE_HTTPS_KEY,
                 CosNConfigKeys.DEFAULT_USE_HTTPS);
 
-        ClientConfig config;
-        if (null == region) {
-            config = new ClientConfig(new Region(""));
-            config.setEndPointSuffix(endpoint_suffix);
-        } else {
-            config = new ClientConfig(new Region(region));
-        }
         if (useHttps) {
             config.setHttpProtocol(HttpProtocol.https);
         }
@@ -119,6 +134,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                         CosNConfigKeys.DEFAULT_MAX_CONNECTION_NUM
                 )
         );
+
 
         // 设置是否进行服务器端加密
         String ServerSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
@@ -610,6 +626,12 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
             this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
+
+            if (null != this.customerDomainEndpointResolver) {
+                if(null != this.customerDomainEndpointResolver.getEndpoint()) {
+                    copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);
+                }
+            }
             callCOSClientWithRetry(copyObjectRequest);
             DeleteObjectRequest deleteObjectRequest =
                     new DeleteObjectRequest(bucketName, srcKey);
@@ -632,6 +654,11 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
             this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
+            if (null != this.customerDomainEndpointResolver) {
+                if(null != this.customerDomainEndpointResolver.getEndpoint()) {
+                    copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);
+                }
+            }
             callCOSClientWithRetry(copyObjectRequest);
         } catch (Exception e) {
             String errMsg = String.format(
