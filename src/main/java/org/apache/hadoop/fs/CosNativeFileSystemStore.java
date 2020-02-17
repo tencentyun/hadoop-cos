@@ -349,10 +349,12 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
             fileSize = objectMetadata.getContentLength();
 
+            String ETag = objectMetadata.getETag();
             String crc64ecm = objectMetadata.getCrc64Ecma();
+            String versionId = objectMetadata.getVersionId();
             FileMetadata fileMetadata =
                     new FileMetadata(key, fileSize, mtime,
-                            !key.endsWith(PATH_DELIMITER), crc64ecm);
+                            !key.endsWith(PATH_DELIMITER), ETag, crc64ecm, versionId);
             LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}, crc64ecm: {}.", key,
                     objectMetadata.getETag(), objectMetadata.getContentLength(), objectMetadata.getCrc64Ecma());
             return fileMetadata;
@@ -558,8 +560,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 mtime = cosObjectSummary.getLastModified().getTime();
             }
             long fileLen = cosObjectSummary.getSize();
+            String fileEtag = cosObjectSummary.getETag();
             fileMetadataArray.add(new FileMetadata(filePath, fileLen, mtime,
-                    true));
+                    true, fileEtag));
         }
         List<String> commonPrefixes = objectListing.getCommonPrefixes();
         for (String commonPrefix : commonPrefixes) {

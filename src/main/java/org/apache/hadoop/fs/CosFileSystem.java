@@ -480,13 +480,14 @@ public class CosFileSystem extends FileSystem {
     }
 
     private FileStatus newFile(FileMetadata meta, Path path) {
-        return new FileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
+        return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
                 meta.getLastModified(), 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()));
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
+                meta.getVersionId());
     }
 
     private FileStatus newDirectory(Path path) {
-        return new FileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
+        return new CosNFileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()));
     }
 
@@ -494,10 +495,10 @@ public class CosFileSystem extends FileSystem {
         if (meta == null) {
             return newDirectory(path);
         }
-        FileStatus status = new FileStatus(0, true, 1, 0,
+        CosNFileStatus status = new CosNFileStatus(0, true, 1, 0,
                 meta.getLastModified(), 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()));
-        LOG.debug("status: " + status.toString());
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
+                meta.getVersionId());
         return status;
     }
 
