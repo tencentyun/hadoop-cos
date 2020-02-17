@@ -1,5 +1,6 @@
 package org.apache.hadoop.fs;
 
+import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -833,6 +834,24 @@ public class CosFileSystem extends FileSystem {
     public String getCanonicalServiceName() {
         // Does not support Token
         return null;
+    }
+
+    @Override
+    public FileChecksum getFileChecksum(Path f, long length) throws IOException {
+        Preconditions.checkArgument(length >= 0);
+        LOG.debug("call the checksum for the path: {}.", f);
+
+        if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
+                CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
+            Path absolutePath = makeAbsolute(f);
+            String key = pathToKey(absolutePath);
+            FileMetadata fileMetadata = this.store.retrieveMetadata(key);
+            String crc64ecm = fileMetadata.getCrc64ecm();
+            return crc64ecm != null ? new CRC64Checksum(crc64ecm) : super.getFileChecksum(f, length);
+        } else {
+            // disabled
+            return super.getFileChecksum(f, length);
+        }
     }
 
     @Override

@@ -10,7 +10,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.8.1";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.8.2";
 
     public static final String COSN_CREDENTIALS_PROVIDER = "fs.cosn.credentials.provider";
     public static final String COSN_APPID_KEY = "fs.cosn.userinfo.appid";
@@ -36,7 +36,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
     public static final String COSN_UPLOAD_BUFFER_SIZE_PREV_KEY = "fs.cosn.buffer.size";
-    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = -1;
+    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 1073741824;       // default is 1GB
 
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final long DEFAULT_BLOCK_SIZE = 8 * Unit.MB;
@@ -47,10 +47,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_RETRY_INTERVAL = 3;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
-    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 5;
+    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
 
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
-    public static final int DEFAULT_COPY_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors() * 3;
+    public static final int DEFAULT_COPY_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
 
     public static final String THREAD_KEEP_ALIVE_TIME_KEY = "fs.cosn.threads.keep_alive_time";
     public static final long DEFAULT_THREAD_KEEP_ALIVE_TIME = 60L;
@@ -63,13 +63,25 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String MAX_CONNECTION_NUM = "fs.cosn.max.connection.num";
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 
-    // 自定义域名
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
 
-    // 服务器端加密
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
     public static final String BASE64_Pattern = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9" +
             "+/]{2}==)$";
 
+    // traffic limit
+    public static final String TRAFFIC_LIMIT = "fs.cosn.traffic.limit";
+    // The default（-1）is unlimited. Considering the late expansion, the initial value is set -1.
+    public static final int DEFAULT_TRAFFIC_LIMIT = -1;
+
+    // checksum
+    public static final String CRC64_CHECKSUM_ENABLED = "fs.cosn.crc64.checksum.enabled";
+    public static final boolean DEFAULT_CRC64_CHECKSUM_ENABLED = false;
+
+    public static final String HTTP_PROXY_IP = "fs.cosn.http.proxy.ip";
+    public static final String HTTP_PROXY_PORT = "fs.cosn.http.proxy.port";
+    public static final int DEFAULT_HTTP_PROXY_PORT = -1;
+    public static final String HTTP_PROXY_USERNAME = "fs.cosn.http.proxy.username";
+    public static final String HTTP_PROXY_PASSWORD = "fs.cosn.http.proxy.password";
 }

@@ -139,11 +139,12 @@ public class CosFsDataOutputStream extends OutputStream {
                     this.currentBlockId++;
                     LOG.info("Upload the last part. key: {}, blockId: [{}], blockWritten: [{}]",
                             this.key, this.currentBlockId, this.blockWritten);
+                    byte[] md5Hash = this.digest == null ? null : this.digest.digest();
                     int size = this.currentBlockBuffer.getByteBuffer().remaining();
                     partETag = store.uploadPart(
                             new BufferInputStream(this.currentBlockBuffer), key,
                             uploadId, currentBlockId,
-                            currentBlockBuffer.getByteBuffer().remaining());
+                            currentBlockBuffer.getByteBuffer().remaining(), md5Hash);
                     if (null != this.writeConsistencyChecker) {
                         this.writeConsistencyChecker.incrementWrittenBytes(size);
                     }
@@ -211,12 +212,14 @@ public class CosFsDataOutputStream extends OutputStream {
 
         this.currentBlockId++;
         LOG.debug("upload part blockId: {}, uploadId: {}.", this.currentBlockId, this.uploadId);
+        byte[] md5Hash = this.digest == null ? null : this.digest.digest();
         ListenableFuture<PartETag> partETagListenableFuture =
                 this.executorService.submit(new Callable<PartETag>() {
                     private final CosNByteBuffer buffer = currentBlockBuffer;
                     private final String localKey = key;
                     private final String localUploadId = uploadId;
                     private final int blockId = currentBlockId;
+                    private final byte[] blockMD5Hash = md5Hash;
 
                     @Override
                     public PartETag call() throws Exception {
@@ -226,7 +229,7 @@ public class CosFsDataOutputStream extends OutputStream {
                                     this.localKey,
                                     this.localUploadId,
                                     this.blockId,
-                                    this.buffer.getByteBuffer().remaining());
+                                    this.buffer.getByteBuffer().remaining(), this.blockMD5Hash);
                             return partETag;
                         } finally {
                             BufferPool.getInstance().returnBuffer(this.buffer);
