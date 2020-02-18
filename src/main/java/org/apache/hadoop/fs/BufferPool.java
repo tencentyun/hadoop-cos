@@ -32,7 +32,7 @@ public final class BufferPool {
         return ourInstance;
     }
 
-    private long blockSize = 0;
+    private long partSize = 0;
     private long totalBufferSize = 0;
     private BufferType bufferType;
     private CosNBufferFactory bufferFactory;
@@ -63,16 +63,16 @@ public final class BufferPool {
             return;
         }
 
-        this.blockSize = conf.getLong(CosNConfigKeys.COSN_BLOCK_SIZE_KEY,
-                CosNConfigKeys.DEFAULT_BLOCK_SIZE);
-        // The block size of CosN can only support up to 2GB.
-        if (this.blockSize < Constants.MIN_PART_SIZE
-                || this.blockSize > Constants.MAX_PART_SIZE) {
+        this.partSize = conf.getLong(CosNConfigKeys.COSN_UPLOAD_PART_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_UPLOAD_PART_SIZE);
+        // The part size of CosN can only support up to 2GB.
+        if (this.partSize < Constants.MIN_PART_SIZE
+                || this.partSize > Constants.MAX_PART_SIZE) {
             String exceptionMsg = String.format(
                     "The block size of CosN is limited to %d to %d. current " +
                             "block size: %d",
                     Constants.MIN_PART_SIZE, Constants.MAX_PART_SIZE,
-                    this.blockSize);
+                    this.partSize);
             throw new IllegalArgumentException(exceptionMsg);
         }
 
@@ -139,13 +139,13 @@ public final class BufferPool {
                 && (BufferType.NON_DIRECT_MEMORY == this.bufferType
                 || BufferType.DIRECT_MEMORY == this.bufferType
                 || BufferType.MAPPED_DISK == this.bufferType)) {
-            int bufferNumber = (int) (totalBufferSize / blockSize);
+            int bufferNumber = (int) (totalBufferSize / partSize);
             if (bufferNumber == 0) {
                 String errMsg = String.format("The buffer size: [%d] is at " +
                                 "least "
                                 + "greater than or equal to the size of a " +
                                 "block: [%d]",
-                        this.totalBufferSize, this.blockSize);
+                        this.totalBufferSize, this.partSize);
                 throw new IllegalArgumentException(errMsg);
             }
 
@@ -155,7 +155,7 @@ public final class BufferPool {
                     new LinkedBlockingQueue<>(bufferNumber);
             for (int i = 0; i < bufferNumber; i++) {
                 CosNByteBuffer cosNByteBuffer =
-                        this.bufferFactory.create((int) this.blockSize);
+                        this.bufferFactory.create((int) this.partSize);
                 if (null == cosNByteBuffer) {
                     String exceptionMsg = String.format("create buffer failed" +
                                     ". buffer type: %s, " +
@@ -211,7 +211,7 @@ public final class BufferPool {
                 this.totalBufferSize,
                 Thread.currentThread().getId(),
                 Thread.currentThread().getName());
-        if (bufferSize > 0 && bufferSize <= this.blockSize) {
+        if (bufferSize > 0 && bufferSize <= this.partSize) {
             // unlimited
             if (-1 == this.totalBufferSize) {
                 return bufferFactory.create(bufferSize);
@@ -221,7 +221,7 @@ public final class BufferPool {
         } else {
             String exceptionMsg = String.format(
                     "Parameter buffer size out of range: 1 to %d",
-                    this.blockSize
+                    this.partSize
             );
             throw new IOException(exceptionMsg);
         }

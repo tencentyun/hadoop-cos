@@ -31,6 +31,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_UPLOAD_CHECKS_ENABLE_KEY = "fs.cosn.upload.checks.enable";
     public static final boolean DEFAULT_COSN_UPLOAD_CHECKS_ENABLE = true;
 
+    public static final String COSN_UPLOAD_PART_SIZE_KEY = "fs.cosn.upload.part.size";
+    public static final long DEFAULT_UPLOAD_PART_SIZE = 8 * Unit.MB;
+
     public static final String COSN_UPLOAD_BUFFER_TYPE_KEY = "fs.cosn.upload.buffer";
     public static final String DEFAULT_UPLOAD_BUFFER_TYPE = "mapped_disk";
 
@@ -39,7 +42,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 1073741824;       // default is 1GB
 
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
-    public static final long DEFAULT_BLOCK_SIZE = 8 * Unit.MB;
+    public static final long DEFAULT_BLOCK_SIZE = 128 * Unit.MB;
 
     public static final String COSN_MAX_RETRIES_KEY = "fs.cosn.maxRetries";
     public static final int DEFAULT_MAX_RETRIES = 200;
@@ -50,7 +53,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
 
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
-    public static final int DEFAULT_COPY_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
+    public static final int DEFAULT_COPY_THREAD_POOL_SIZE = 3;
 
     public static final String THREAD_KEEP_ALIVE_TIME_KEY = "fs.cosn.threads.keep_alive_time";
     public static final long DEFAULT_THREAD_KEEP_ALIVE_TIME = 60L;
