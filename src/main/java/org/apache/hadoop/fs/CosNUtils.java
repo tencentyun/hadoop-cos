@@ -75,7 +75,7 @@ public final class CosNUtils {
         if (Modifier.isAbstract(credClass.getModifiers())) {
             throw new IllegalArgumentException("class " + credClass + " " + ABSTRACT_CREDENTIAL_PROVIDER);
         }
-        LOG.info("Credential Provider class: " + credClass.getName());
+        LOG.debug("Credential Provider class: " + credClass.getName());
 
         try {
             // new credClass()

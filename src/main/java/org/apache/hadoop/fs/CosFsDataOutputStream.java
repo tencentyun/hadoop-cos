@@ -121,7 +121,6 @@ public class CosFsDataOutputStream extends OutputStream {
                 if (null != this.writeConsistencyChecker) {
                     this.writeConsistencyChecker.incrementWrittenBytes(size);
                 }
-                LOG.info("OutputStream for key [{}] upload complete", key);
                 if (null != this.writeConsistencyChecker) {
                     this.writeConsistencyChecker.finish();
                     if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
@@ -132,6 +131,8 @@ public class CosFsDataOutputStream extends OutputStream {
                     }
                     LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
                             this.writeConsistencyChecker.getCheckResult().getDescription());
+                } else {
+                    LOG.info("OutputStream for key [{}] upload complete. But it is not checked.", key);
                 }
             } else {
                 PartETag partETag = null;
@@ -160,7 +161,6 @@ public class CosFsDataOutputStream extends OutputStream {
                 }
                 store.completeMultipartUpload(this.key, this.uploadId,
                         tempPartETagList);
-                LOG.info("OutputStream for key [{}] upload complete", key);
                 if (null != this.writeConsistencyChecker) {
                     this.writeConsistencyChecker.finish();
                     if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
@@ -171,6 +171,8 @@ public class CosFsDataOutputStream extends OutputStream {
                     }
                     LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
                             this.writeConsistencyChecker.getCheckResult().getDescription());
+                } else {
+                    LOG.info("OutputStream for key [{}] upload complete. But it is not checked.", key);
                 }
             }
         } finally {

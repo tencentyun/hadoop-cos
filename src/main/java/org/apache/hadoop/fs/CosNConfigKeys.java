@@ -39,7 +39,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
     public static final String COSN_UPLOAD_BUFFER_SIZE_PREV_KEY = "fs.cosn.buffer.size";
-    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 1073741824;       // default is 1GB
+    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 134217728;       // default is 128MB
 
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final long DEFAULT_BLOCK_SIZE = 128 * Unit.MB;
@@ -50,7 +50,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_RETRY_INTERVAL = 3;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
-    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
+    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = 8;
 
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
     public static final int DEFAULT_COPY_THREAD_POOL_SIZE = 3;

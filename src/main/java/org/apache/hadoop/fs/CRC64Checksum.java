@@ -6,6 +6,7 @@ import org.apache.hadoop.util.StringUtils;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.math.BigInteger;
 
 /**
  * An etag as a checksum.
@@ -23,7 +24,8 @@ public class CRC64Checksum extends FileChecksum {
 
     public CRC64Checksum(String crc64ecma) {
         try {
-            this.crc64 = Long.parseLong(crc64ecma);
+            BigInteger bigInteger = new BigInteger(crc64ecma);
+            this.crc64 = bigInteger.longValue();
         } catch (NumberFormatException e) {
             this.crc64 = 0;
         }
