@@ -120,6 +120,13 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.tencent.jungle</groupId>
+            <artifactId>jungle-udp-l5</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
     </dependencies>
 
     <build>
