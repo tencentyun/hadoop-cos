@@ -184,6 +184,21 @@ done
         <value></value>
         <description>The SSE-C server side encryption key.</description>
     </property>
+   
+   <property>
+       <name>fs.cosn.use.l5.enable</name>
+       <value></value>
+   </property>
+   
+   <property>
+      <name>fs.cosn.bucket.l5</name>
+      <value>modid,cmdid</value>
+   </property>
+   
+   <property>
+      <name>fs.cosn.l5.update.maxRetries</name>
+      <value></value>
+   </property>
 
 </configuration>
 
@@ -218,6 +233,9 @@ done
 |fs.cosn.server-side-encryption.key | 当开启COS的SSE-C服务端加密算法时，必须配置SSE-C的密钥，密钥格式为base64编码的AES-256密钥，默认为空，不加密| 无 | 否|
 |fs.cosn.crc64.checksum.enabled    | 是否开启CRC64校验。默认不开启，此时无法使用`hadoop fs -checksum`命令获取文件的CRC64校验值。| false | 否 |
 |fs.cosn.traffic.limit | 上传下载带宽的控制选项，819200 ~ 838860800，单位为bits/s。默认值为-1，表示不限制。 | -1 | 否 |
+|fs.cosn.use.l5.enable | 配置是否使用L5。 | false | 否 |
+|fs.cosn.bucket.l5     | L5配置项，默认为空       | 无 | 否 |
+|fs.cosn.l5.update.maxRetries    | 请求重试多少次后，进行L5上报   | 5 | 否 |
 
 ### 开始使用
 
