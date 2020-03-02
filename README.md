@@ -184,6 +184,21 @@ done
         <value></value>
         <description>The SSE-C server side encryption key.</description>
     </property>
+   
+   <property>
+       <name>fs.cosn.use.l5.enable</name>
+       <value></value>
+   </property>
+   
+   <property>
+      <name>fs.cosn.bucket.l5</name>
+      <value>modid,cmdid</value>
+   </property>
+   
+   <property>
+      <name>fs.cosn.l5.update.maxRetries</name>
+      <value></value>
+   </property>
 
 </configuration>
 
