@@ -32,11 +32,11 @@ interface NativeFileSystemStore {
 
     CompleteMultipartUploadResult completeMultipartUpload(String key,
                                                           String uploadId,
-                                                          List<PartETag> partETagList);
+                                                          List<PartETag> partETagList) throws IOException;
 
-    void abortMultipartUpload(String key, String uploadId);
+    void abortMultipartUpload(String key, String uploadId) throws IOException;
 
-    String getUploadId(String key);
+    String getUploadId(String key) throws IOException;
 
     PartETag uploadPart(File file, String key, String uploadId, int partNum, byte[] md5hash) throws IOException;
 

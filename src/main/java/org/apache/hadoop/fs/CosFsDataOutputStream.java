@@ -196,8 +196,6 @@ public class CosFsDataOutputStream extends OutputStream {
                 future.cancel(true);
             }
             (store).abortMultipartUpload(this.key, this.uploadId);
-            LOG.error("Multipart upload with id: {} to {}.", this.uploadId,
-                    this.key);
             String exceptionMsg = String.format("multipart upload with id: %s" +
                     " to %s.", this.uploadId, this.key);
             throw new IOException(exceptionMsg);

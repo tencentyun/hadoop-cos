@@ -193,17 +193,16 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 FileMetadata fileMetadata = this.QueryObjectMetadata(key);
                 if (null == fileMetadata) {
                     // 如果文件不存在，则需要抛出异常
-                    throw cse;
+                    handleException(cse, key);
                 }
                 LOG.warn("Upload the cos key [{}] concurrently", key);
             } else {
                 // 其他错误都要抛出来
-                throw cse;
+                handleException(cse, key);
             }
         } catch (Exception e) {
             String errMsg =
                     String.format("Store the file failed, cos key: %s, exception: %s.", key, e.toString());
-            LOG.error("Store the file failed, cos key: {}, exception: {}.", key, e.toString());
             handleException(new Exception(errMsg), key);
         }
     }
@@ -220,7 +219,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void storeFile(String key, InputStream inputStream, byte[] md5Hash
             , long contentLength) throws IOException {
-        LOG.debug("Store the file to key: {}, input stream md5 hash: {}, content length: {}.", key,
+        LOG.debug("Store the file to the cos key: {}, input stream md5 hash: {}, content length: {}.", key,
                 Hex.encodeHexString(md5Hash),
                 contentLength);
         storeFileWithRetry(key, inputStream, md5Hash, contentLength);
@@ -232,6 +231,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         if (!key.endsWith(PATH_DELIMITER)) {
             key = key + PATH_DELIMITER;
         }
+
+        LOG.debug("Store a empty file to the key: {}.", key);
 
         ObjectMetadata objectMetadata = new ObjectMetadata();
         objectMetadata.setContentLength(0);
@@ -249,18 +250,17 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 FileMetadata fileMetadata = this.QueryObjectMetadata(key);
                 if (null == fileMetadata) {
                     // 文件还是不存在，必须要抛出异常
-                    throw cse;
+                    handleException(cse, key);
                 }
                 LOG.warn("Upload the file [{}] concurrently.", key);
             } else {
                 // 其他错误必须抛出
-                throw cse;
+                handleException(cse, key);
             }
         } catch (Exception e) {
             String errMsg =
                     String.format("Store the empty file failed, cos key: %s, " +
                             "exception: %s", key, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
         }
     }
@@ -306,48 +306,63 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         return null;
     }
 
-    public void abortMultipartUpload(String key, String uploadId) {
-        AbortMultipartUploadRequest abortMultipartUploadRequest =
-                new AbortMultipartUploadRequest(
-                        bucketName, key, uploadId
-                );
-        cosClient.abortMultipartUpload(abortMultipartUploadRequest);
+    public void abortMultipartUpload(String key, String uploadId) throws IOException {
+        LOG.info("Ready to abort the multipart upload. cos key: {}, upload id: {}.", key, uploadId);
+
+        try {
+            AbortMultipartUploadRequest abortMultipartUploadRequest =
+                    new AbortMultipartUploadRequest(
+                            bucketName, key, uploadId
+                    );
+            this.callCOSClientWithRetry(abortMultipartUploadRequest);
+        } catch (Exception e) {
+            String errMsg = String.format("Aborting the multipart upload failed. cos key: %s, upload id: %s. " +
+                    "exception: %s.", key, uploadId, e.toString());
+            handleException(new Exception(errMsg), key);
+        }
     }
 
-    public String getUploadId(String key) {
+    public String getUploadId(String key) throws IOException {
         if (null == key || key.length() == 0) {
             return "";
         }
 
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
                 new InitiateMultipartUploadRequest(bucketName, key);
+        this.setEncryptionMetadata(initiateMultipartUploadRequest, new ObjectMetadata());
         try {
-            this.setEncryptionMetadata(initiateMultipartUploadRequest, new ObjectMetadata());
+            InitiateMultipartUploadResult initiateMultipartUploadResult =
+                    (InitiateMultipartUploadResult) this.callCOSClientWithRetry(initiateMultipartUploadRequest);
+            return initiateMultipartUploadResult.getUploadId();
         } catch (Exception e) {
             String errMsg =
                     String.format("Get the upload id failed, cos key: %s, " +
                             "exception: %s", key, e.toString());
-            LOG.error(errMsg);
+            handleException(new Exception(errMsg), key);
         }
 
-        InitiateMultipartUploadResult initiateMultipartUploadResult =
-                cosClient.initiateMultipartUpload(initiateMultipartUploadRequest);           // This code does not
-        // need to support retry
-        return initiateMultipartUploadResult.getUploadId();
+        return null;
     }
 
     public CompleteMultipartUploadResult completeMultipartUpload(
-            String key, String uploadId, List<PartETag> partETagList) {
+            String key, String uploadId, List<PartETag> partETagList) throws IOException {
         Collections.sort(partETagList, new Comparator<PartETag>() {
             @Override
             public int compare(PartETag o1, PartETag o2) {
                 return o1.getPartNumber() - o2.getPartNumber();
             }
         });
-        CompleteMultipartUploadRequest completeMultipartUploadRequest =
-                new CompleteMultipartUploadRequest(bucketName, key, uploadId,
-                        partETagList);
-        return cosClient.completeMultipartUpload(completeMultipartUploadRequest);
+        try {
+            CompleteMultipartUploadRequest completeMultipartUploadRequest =
+                    new CompleteMultipartUploadRequest(bucketName, key, uploadId,
+                            partETagList);
+            return (CompleteMultipartUploadResult) this.callCOSClientWithRetry(completeMultipartUploadRequest);
+        } catch (Exception e) {
+            String errMsg = String.format("Complete the multipart upload failed. cos key: %s, upload id: %s, " +
+                    "exception: %s", key, uploadId, e.toString());
+            handleException(new Exception(errMsg), key);
+        }
+        return null;
     }
 
     private FileMetadata QueryObjectMetadata(String key) throws IOException {
@@ -379,7 +394,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 String errorMsg =
                         String.format("Retrieve the file metadata file failure. " +
                                 "cos key: %s, exception: %s", key, e.toString());
-                LOG.error(errorMsg);
                 handleException(new Exception(errorMsg), key);
             }
         }
@@ -425,10 +439,10 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             return cosObject.getObjectContent();
         } catch (Exception e) {
             String errMsg = String.format("Retrieving the cos key [%s] occurs an exception: %s", key, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
-            return null; // never will get here
         }
+
+        return null; // never will get here
     }
 
     /**
@@ -462,7 +476,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     String.format("Retrieving key [%s] with byteRangeStart [%d] " +
                                     "occurs an exception: %s.",
                             key, byteRangeStart, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
             return null; // never will get here
         }
@@ -489,18 +502,16 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     String.format("Retrieving the key %s with the byteRangeStart [%d] " +
                                     "occurs an exception: %s.",
                             key, byteRangeStart, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
-            return null;
         } catch (CosClientException e) {
             String errMsg =
                     String.format("Retrieving key %s with the byteRangeStart [%d] and the byteRangeEnd [%d] " +
                                     "occurs an exception: %s.",
                             key, byteRangeStart, byteRangeEnd, e.toString());
-            LOG.error("Retrieve the key [{}]'s block, start: {}, end: {}.", key, byteRangeStart, byteRangeEnd, e);
             handleException(new Exception(errMsg), key);
-            return null;
         }
+
+        return null;
     }
 
     @Override
@@ -617,7 +628,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         } catch (Exception e) {
             String errMsg = String.format("Deleting the cos key [%s] occurs an exception: " +
                     "%s", key, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
         }
     }
@@ -631,7 +641,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
 
             if (null != this.customerDomainEndpointResolver) {
-                if(null != this.customerDomainEndpointResolver.getEndpoint()) {
+                if (null != this.customerDomainEndpointResolver.getEndpoint()) {
                     copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);
                 }
             }
@@ -644,7 +654,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     "Rename object failed, source cos key: %s, dest cos key: %s, " +
                             "exception: %s", srcKey,
                     dstKey, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), srcKey);
         }
     }
@@ -658,7 +667,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                             dstKey);
             this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
             if (null != this.customerDomainEndpointResolver) {
-                if(null != this.customerDomainEndpointResolver.getEndpoint()) {
+                if (null != this.customerDomainEndpointResolver.getEndpoint()) {
                     copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);
                 }
             }
@@ -668,7 +677,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     "Copy the object failed, src cos key: %s, dst cos key: %s, " +
                             "exception: %s", srcKey,
                     dstKey, e.toString());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), srcKey);
         }
     }
@@ -722,7 +730,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     String.format("Retrieving block key [%s] with range [%d - %d] " +
                                     "occurs an exception: %s",
                             key, byteRangeStart, byteRangeEnd, e.getMessage());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
             return false; // never will get here
         }
@@ -742,7 +749,6 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             String errMsg = String.format("Getting the file length occurs an exception, " +
                             "cos key: %s, exception: %s",
                     key, e.getMessage());
-            LOG.error(errMsg);
             handleException(new Exception(errMsg), key);
             return 0; // never will get here
         }
@@ -896,6 +902,20 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     ObjectListing objectListing =
                             this.cosClient.listObjects((ListObjectsRequest) request);
                     return objectListing;
+                } else if (request instanceof InitiateMultipartUploadRequest) {
+                    sdkMethod = "initiateMultipartUpload";
+                    InitiateMultipartUploadResult initiateMultipartUploadResult =
+                            this.cosClient.initiateMultipartUpload((InitiateMultipartUploadRequest) request);
+                    return initiateMultipartUploadResult;
+                } else if (request instanceof CompleteMultipartUploadRequest) {
+                    sdkMethod = "completeMultipartUpload";
+                    CompleteMultipartUploadResult completeMultipartUploadResult =
+                            this.cosClient.completeMultipartUpload((CompleteMultipartUploadRequest) request);
+                    return completeMultipartUploadResult;
+                } else if (request instanceof AbortMultipartUploadRequest) {
+                    sdkMethod = "abortMultipartUpload";
+                    this.cosClient.abortMultipartUpload((AbortMultipartUploadRequest) request);
+                    return new Object();
                 } else {
                     throw new IOException("no such method");
                 }
