@@ -33,6 +33,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     private COSClient cosClient;
     private COSCredentialProviderList cosCredentialProviderList;
     private String bucketName;
+    private StorageClass storageClass;
     private int maxRetryTimes;
     private int trafficLimit;
     private CosEncryptionSecrets encryptionSecrets;
@@ -162,6 +163,23 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             initCOSClient(uri, conf);
             this.bucketName = uri.getHost();
+            String storageClass = conf.get(CosNConfigKeys.COSN_STORAGE_CLASS_KEY);
+            if (null != storageClass && !storageClass.isEmpty()) {
+                try {
+                    this.storageClass = StorageClass.fromValue(storageClass);
+                } catch (IllegalArgumentException e) {
+                    String exceptionMessage = String.format("The specified storage class [%s] is invalid. " +
+                                    "The supported storage classes are: %s, %s, %s, %s and %s.", storageClass,
+                            StorageClass.Standard.toString(), StorageClass.Standard_IA.toString(),
+                            StorageClass.Maz_Standard.toString(), StorageClass.Maz_Standard_IA.toString(),
+                            StorageClass.Archive.toString());
+                    throw new IllegalArgumentException(exceptionMessage);
+                }
+            }
+            if (null != this.storageClass && StorageClass.Archive == this.storageClass) {
+                LOG.warn("The storage class of the CosN FileSystem is set to {}. Some file operations may not be " +
+                        "supported.", this.storageClass);
+            }
         } catch (Exception e) {
             handleException(e, "");
         }
@@ -174,9 +192,13 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             ObjectMetadata objectMetadata = new ObjectMetadata();
             objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
             objectMetadata.setContentLength(length);
+
             PutObjectRequest putObjectRequest =
                     new PutObjectRequest(bucketName, key, inputStream,
                             objectMetadata);
+            if (null != this.storageClass) {
+                putObjectRequest.setStorageClass(this.storageClass);
+            }
             if (this.trafficLimit >= 0) {
                 putObjectRequest.setTrafficLimit(this.trafficLimit);
             }
@@ -239,6 +261,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
         InputStream input = new ByteArrayInputStream(new byte[0]);
         PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName,
                 key, input, objectMetadata);
+        if (null != this.storageClass) {
+            putObjectRequest.setStorageClass(this.storageClass);
+        }
         try {
             PutObjectResult putObjectResult =
                     (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
@@ -329,6 +354,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
                 new InitiateMultipartUploadRequest(bucketName, key);
+        if (null != this.storageClass) {
+            initiateMultipartUploadRequest.setStorageClass(this.storageClass);
+        }
         this.setEncryptionMetadata(initiateMultipartUploadRequest, new ObjectMetadata());
         try {
             InitiateMultipartUploadResult initiateMultipartUploadResult =
@@ -385,7 +413,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             String versionId = objectMetadata.getVersionId();
             FileMetadata fileMetadata =
                     new FileMetadata(key, fileSize, mtime,
-                            !key.endsWith(PATH_DELIMITER), ETag, crc64ecm, versionId);
+                            !key.endsWith(PATH_DELIMITER), ETag, crc64ecm, versionId, objectMetadata.getStorageClass());
             LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}, crc64ecm: {}.", key,
                     objectMetadata.getETag(), objectMetadata.getContentLength(), objectMetadata.getCrc64Ecma());
             return fileMetadata;
@@ -589,7 +617,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             long fileLen = cosObjectSummary.getSize();
             String fileEtag = cosObjectSummary.getETag();
             fileMetadataArray.add(new FileMetadata(filePath, fileLen, mtime,
-                    true, fileEtag));
+                    true, fileEtag, null, null, cosObjectSummary.getStorageClass()));
         }
         List<String> commonPrefixes = objectListing.getCommonPrefixes();
         for (String commonPrefix : commonPrefixes) {
@@ -638,6 +666,11 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
+            // get the storage class of the source file
+            FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
+            if (null != sourceFileMetadata.getStorageClass()) {
+                copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
+            }
             this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
 
             if (null != this.customerDomainEndpointResolver) {
@@ -665,6 +698,10 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
+            FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
+            if (null != sourceFileMetadata.getStorageClass()) {
+                copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
+            }
             this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
             if (null != this.customerDomainEndpointResolver) {
                 if (null != this.customerDomainEndpointResolver.getEndpoint()) {
@@ -889,29 +926,19 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                     return new Object();
                 } else if (request instanceof CopyObjectRequest) {
                     sdkMethod = "copyFile";
-                    CopyObjectResult copyObjectResult =
-                            this.cosClient.copyObject((CopyObjectRequest) request);
-                    return copyObjectResult;
+                    return this.cosClient.copyObject((CopyObjectRequest) request);
                 } else if (request instanceof GetObjectRequest) {
                     sdkMethod = "getObject";
-                    COSObject cosObject =
-                            this.cosClient.getObject((GetObjectRequest) request);
-                    return cosObject;
+                    return this.cosClient.getObject((GetObjectRequest) request);
                 } else if (request instanceof ListObjectsRequest) {
                     sdkMethod = "listObjects";
-                    ObjectListing objectListing =
-                            this.cosClient.listObjects((ListObjectsRequest) request);
-                    return objectListing;
+                    return this.cosClient.listObjects((ListObjectsRequest) request);
                 } else if (request instanceof InitiateMultipartUploadRequest) {
                     sdkMethod = "initiateMultipartUpload";
-                    InitiateMultipartUploadResult initiateMultipartUploadResult =
-                            this.cosClient.initiateMultipartUpload((InitiateMultipartUploadRequest) request);
-                    return initiateMultipartUploadResult;
+                    return this.cosClient.initiateMultipartUpload((InitiateMultipartUploadRequest) request);
                 } else if (request instanceof CompleteMultipartUploadRequest) {
                     sdkMethod = "completeMultipartUpload";
-                    CompleteMultipartUploadResult completeMultipartUploadResult =
-                            this.cosClient.completeMultipartUpload((CompleteMultipartUploadRequest) request);
-                    return completeMultipartUploadResult;
+                    return this.cosClient.completeMultipartUpload((CompleteMultipartUploadRequest) request);
                 } else if (request instanceof AbortMultipartUploadRequest) {
                     sdkMethod = "abortMultipartUpload";
                     this.cosClient.abortMultipartUpload((AbortMultipartUploadRequest) request);

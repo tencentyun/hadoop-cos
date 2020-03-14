@@ -18,6 +18,7 @@ class FileMetadata {
     private final String ETag;
     private final String crc64ecm;
     private final String versionId;
+    private final String storageClass;
 
     public FileMetadata(String key, long length, long lastModified) {
         this(key, length, lastModified, true);
@@ -34,13 +35,19 @@ class FileMetadata {
 
     public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
                         String versionId) {
+        this(key, length, lastModified, isFile, eTag, crc64ecm, versionId, null);
+    }
+
+    public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
+                        String versionId, String storageClass) {
         this.key = key;
         this.length = length;
         this.lastModified = lastModified;
         this.isFile = isFile;
-        ETag = eTag;
+        this.ETag = eTag;
         this.crc64ecm = crc64ecm;
         this.versionId = versionId;
+        this.storageClass = storageClass;
     }
 
     public String getKey() {
@@ -65,6 +72,10 @@ class FileMetadata {
 
     public String getCrc64ecm() {
         return crc64ecm;
+    }
+
+    public String getStorageClass() {
+        return storageClass;
     }
 
     @Override
