@@ -120,9 +120,14 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             config.setProxyPassword(proxyPassword);
         }
 
-        config.setUserAgent(conf.get(
+        String userAgent = conf.get(
                 CosNConfigKeys.USER_AGENT,
-                CosNConfigKeys.DEFAULT_USER_AGENT));
+                CosNConfigKeys.DEFAULT_USER_AGENT);
+        String emrVersion = conf.get(CosNConfigKeys.TENCENT_EMR_VERSION_KEY);
+        if (null != emrVersion && !emrVersion.isEmpty()) {
+            userAgent = String.format("%s on %s", userAgent, emrVersion);
+        }
+        config.setUserAgent(userAgent);
 
         this.maxRetryTimes = conf.getInt(
                 CosNConfigKeys.COSN_MAX_RETRIES_KEY,
@@ -693,7 +698,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void copy(String srcKey, String dstKey) throws IOException {
-        LOG.debug("Copy the source key [{}] to dest key [{}].", srcKey, dstKey);
+        LOG.info("Copy the source key [{}] to dest key [{}].", srcKey, dstKey);
         try {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
