@@ -958,8 +958,17 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                         retryIndex, this.maxRetryTimes, sdkMethod,
                         cse.toString());
                 int statusCode = cse.getStatusCode();
-                // 对5xx错误进行重试
-                if (statusCode / 100 == 5) {
+                String errorCode = cse.getErrorCode();
+                // for copy 200 error, chunk request, body may contain error
+                if (statusCode == 200 && !errorCode.isEmpty() && request instanceof CopyObjectRequest) {
+                    if (retryIndex <= this.maxRetryTimes) {
+                            LOG.info(errMsg, cse);
+                            ++retryIndex;
+                    } else {
+                        LOG.error(errMsg, cse);
+                        throw new IOException(errMsg);
+                    }
+                } else if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg, cse);
                         long sleepLeast = retryIndex * 300L;
