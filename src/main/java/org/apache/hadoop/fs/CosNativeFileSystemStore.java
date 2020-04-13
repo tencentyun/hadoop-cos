@@ -960,7 +960,8 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
                 int statusCode = cse.getStatusCode();
                 String errorCode = cse.getErrorCode();
                 // for copy 200 error, chunk request, body may contain error
-                if (statusCode == 200 && !errorCode.isEmpty() && request instanceof CopyObjectRequest) {
+                if (request instanceof CopyObjectRequest && statusCode / 100 == 2 &&
+                    errorCode != null && !errorCode.isEmpty()){
                     if (retryIndex <= this.maxRetryTimes) {
                             LOG.info(errMsg, cse);
                             ++retryIndex;
