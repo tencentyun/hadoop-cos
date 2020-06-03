@@ -45,6 +45,7 @@ public class CosFileSystem extends FileSystem {
 
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
+    private ExecutorService boundedDeleteThreadPool;
 
     public CosFileSystem() {
     }
@@ -137,6 +138,31 @@ public class CosFileSystem extends FileSystem {
                                 executor.getQueue().put(r);
                             } catch (InterruptedException e) {
                                 LOG.error("put a copy task into the download " +
+                                        "thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                }
+        );
+
+        int deleteThreadPoolSize = this.getConf().getInt(
+               CosNConfigKeys.DELETE_THREAD_POOL_SIZE_KEY,
+               CosNConfigKeys.DEFAULT_DELETE_THREAD_POOL_SIZE
+        );
+        this.boundedDeleteThreadPool = new ThreadPoolExecutor(
+                deleteThreadPoolSize / 2, deleteThreadPoolSize,
+                threadKeepAlive, TimeUnit.SECONDS,
+                new LinkedBlockingDeque<Runnable>(deleteThreadPoolSize * 2),
+                new ThreadFactoryBuilder().setNameFormat("cos-delete-%d").setDaemon(true).build(),
+                new RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r,
+                                                  ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a delete task into the download " +
                                         "thread pool occurs an exception.", e);
                             }
                         }
@@ -331,6 +357,8 @@ public class CosFileSystem extends FileSystem {
             }
 
             createParent(f);
+            CosNDeleteFileContext deleteFileContext = new CosNDeleteFileContext();
+            int deleteToFinishes = 0;
 
             String priorLastKey = null;
             do {
@@ -338,13 +366,38 @@ public class CosFileSystem extends FileSystem {
                         store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey,
                                 true);
                 for (FileMetadata file : listing.getFiles()) {
-                    store.delete(file.getKey());
+                    this.boundedDeleteThreadPool.execute(new CosNDeleteFileTask(
+                           this.store, file.getKey(), deleteFileContext));
+                    deleteToFinishes++;
+                    if (!deleteFileContext.isDeleteSuccess()) {
+                        break;
+                    }
                 }
                 for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
-                    store.delete(commonPrefix.getKey());
+                    this.boundedDeleteThreadPool.execute(new CosNDeleteFileTask(
+                           this.store, commonPrefix.getKey(), deleteFileContext));
+                    deleteToFinishes++;
+                    if (!deleteFileContext.isDeleteSuccess()) {
+                        break;
+                    }
                 }
                 priorLastKey = listing.getPriorLastKey();
             } while (priorLastKey != null);
+
+            deleteFileContext.lock();
+            try {
+                deleteFileContext.awaitAllFinish(deleteToFinishes);
+            } catch (InterruptedException e) {
+                LOG.warn("interrupted when wait delete to finish");
+            } finally {
+                deleteFileContext.unlock();
+            }
+
+            // according the flag and exception in thread opr to throw this out
+            if (!deleteFileContext.isDeleteSuccess() && deleteFileContext.hasException()) {
+                throw deleteFileContext.getIOException();
+            }
+
             try {
                 store.delete(key);
             } catch (Exception e) {
