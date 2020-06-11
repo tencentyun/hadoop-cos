@@ -19,7 +19,7 @@ import org.apache.hadoop.classification.InterfaceStability;
  */
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
-class PartialListing {
+public class PartialListing {
 
     private final String priorLastKey;
     private final FileMetadata[] files;

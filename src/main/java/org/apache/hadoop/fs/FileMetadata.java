@@ -10,7 +10,7 @@ import org.apache.hadoop.classification.InterfaceStability;
  */
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
-class FileMetadata {
+public class FileMetadata {
     private final String key;
     private final long length;
     private final long lastModified;

@@ -19,7 +19,7 @@ import java.util.List;
  */
 @InterfaceAudience.Private
 @InterfaceStability.Stable
-interface NativeFileSystemStore {
+public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
 

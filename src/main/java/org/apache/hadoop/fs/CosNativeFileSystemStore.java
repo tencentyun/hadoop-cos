@@ -29,7 +29,7 @@ import static org.apache.hadoop.fs.CosFileSystem.PATH_DELIMITER;
 
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
-class CosNativeFileSystemStore implements NativeFileSystemStore {
+public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private COSClient cosClient;
     private COSCredentialProviderList cosCredentialProviderList;
     private String bucketName;
@@ -195,7 +195,9 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
             throws IOException {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
-            objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
+            if(null != md5Hash){
+                objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
+            }
             objectMetadata.setContentLength(length);
 
             PutObjectRequest putObjectRequest =
@@ -236,8 +238,10 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void storeFile(String key, File file, byte[] md5Hash) throws IOException {
-        LOG.debug("Store the file, local path: {}, length: {}, md5hash: {}.", file.getCanonicalPath(), file.length(),
-                Hex.encodeHexString(md5Hash));
+        if(null != md5Hash){
+            LOG.debug("Store the file, local path: {}, length: {}, md5hash: {}.", file.getCanonicalPath(), file.length(),
+                    Hex.encodeHexString(md5Hash));
+        }
         storeFileWithRetry(key,
                 new BufferedInputStream(new FileInputStream(file)), md5Hash,
                 file.length());
@@ -246,9 +250,11 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void storeFile(String key, InputStream inputStream, byte[] md5Hash
             , long contentLength) throws IOException {
-        LOG.debug("Store the file to the cos key: {}, input stream md5 hash: {}, content length: {}.", key,
-                Hex.encodeHexString(md5Hash),
-                contentLength);
+        if(null != md5Hash){
+            LOG.debug("Store the file to the cos key: {}, input stream md5 hash: {}, content length: {}.", key,
+                    Hex.encodeHexString(md5Hash),
+                    contentLength);
+        }
         storeFileWithRetry(key, inputStream, md5Hash, contentLength);
     }
 
@@ -306,15 +312,17 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     public PartETag uploadPart(
             InputStream inputStream,
             String key, String uploadId, int partNum, long partSize, byte[] md5Hash) throws IOException {
-        LOG.debug("Upload the part to the cos key [{}]. upload id: {}, part number: {}, part size: {}, md5Hash: {}.",
-                key, uploadId, partNum, partSize, Hex.encodeHexString(md5Hash));
+        LOG.debug("Upload the part to the cos key [{}]. upload id: {}, part number: {}, part size: {}",
+                key, uploadId, partNum, partSize);
         UploadPartRequest uploadPartRequest = new UploadPartRequest();
         uploadPartRequest.setBucketName(this.bucketName);
         uploadPartRequest.setUploadId(uploadId);
         uploadPartRequest.setInputStream(inputStream);
         uploadPartRequest.setPartNumber(partNum);
         uploadPartRequest.setPartSize(partSize);
-        uploadPartRequest.setMd5Digest(Base64.encodeAsString(md5Hash));
+        if(null != md5Hash){
+            uploadPartRequest.setMd5Digest(Base64.encodeAsString(md5Hash));
+        }
         uploadPartRequest.setKey(key);
         if (this.trafficLimit >= 0) {
             uploadPartRequest.setTrafficLimit(this.trafficLimit);
@@ -399,6 +407,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     private FileMetadata QueryObjectMetadata(String key) throws IOException {
+        LOG.info("Query Object metadata....");
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
 
@@ -779,7 +788,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public long getFileLength(String key) throws IOException {
-        LOG.debug("getFile Length, cos key: {}", key);
+        LOG.info("getFile Length, cos key: {}", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
         this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());

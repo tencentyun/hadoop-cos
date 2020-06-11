@@ -868,4 +868,8 @@ public class CosFileSystem extends FileSystem {
             super.close();
         }
     }
+
+    public NativeFileSystemStore getStore() {
+        return this.store;
+    }
 }
