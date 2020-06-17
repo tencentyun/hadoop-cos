@@ -59,9 +59,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
     public static final int DEFAULT_COPY_THREAD_POOL_SIZE = 3;
 
-    public static final String DELETE_THREAD_POOL_SIZE_KEY = "fs.cosn.delete_thread_pool";
-    public static final int DEFAULT_DELETE_THREAD_POOL_SIZE = 3;
-
     public static final String THREAD_KEEP_ALIVE_TIME_KEY = "fs.cosn.threads.keep_alive_time";
     public static final long DEFAULT_THREAD_KEEP_ALIVE_TIME = 60L;
 
