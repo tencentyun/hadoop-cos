@@ -331,6 +331,8 @@ public class CosFileSystem extends FileSystem {
             }
 
             createParent(f);
+            CosNDeleteFileContext deleteFileContext = new CosNDeleteFileContext();
+            int deleteToFinishes = 0;
 
             String priorLastKey = null;
             do {
@@ -338,13 +340,38 @@ public class CosFileSystem extends FileSystem {
                         store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey,
                                 true);
                 for (FileMetadata file : listing.getFiles()) {
-                    store.delete(file.getKey());
+                    this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
+                           this.store, file.getKey(), deleteFileContext));
+                    deleteToFinishes++;
+                    if (!deleteFileContext.isDeleteSuccess()) {
+                        break;
+                    }
                 }
                 for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
-                    store.delete(commonPrefix.getKey());
+                    this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
+                           this.store, commonPrefix.getKey(), deleteFileContext));
+                    deleteToFinishes++;
+                    if (!deleteFileContext.isDeleteSuccess()) {
+                        break;
+                    }
                 }
                 priorLastKey = listing.getPriorLastKey();
             } while (priorLastKey != null);
+
+            deleteFileContext.lock();
+            try {
+                deleteFileContext.awaitAllFinish(deleteToFinishes);
+            } catch (InterruptedException e) {
+                LOG.warn("interrupted when wait delete to finish");
+            } finally {
+                deleteFileContext.unlock();
+            }
+
+            // according the flag and exception in thread opr to throw this out
+            if (!deleteFileContext.isDeleteSuccess() && deleteFileContext.hasException()) {
+                throw deleteFileContext.getIOException();
+            }
+
             try {
                 store.delete(key);
             } catch (Exception e) {
