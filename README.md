@@ -207,7 +207,7 @@ done
 |fs.cosn.upload.buffer.size        | CosN文件系统上传时依赖的缓冲区大小，如果指定为-1，则表示不限制。若不限制缓冲区大小，则缓冲区类型必须为mapped_disk。如果指定大小大于0，则要求该值至少大于等于一个block的大小。兼容原配置项：fs.cosn.buffer.size。| 134217728（128MB）|否|
 |fs.cosn.upload.part.size          | 分块上传时每个part的大小。由于 COS 的分块上传最多只能支持10000块，因此需要预估最大可能使用到的单文件大小。例如，part size 为8MB时，最大能够支持78GB的单文件上传。 part size 最大可以支持到2GB，即单文件最大可支持19TB。| 8388608（8MB）| 否 |
 |fs.cosn.upload_thread_pool        | 文件流式上传到COS时，并发上传的线程数目 | 8 | 否|
-|fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝文件的线程数目 | 3 | 否 |
+|fs.cosn.copy_thread_pool 		   | 目录拷贝操作时，可用于并发拷贝和删除文件的线程数目 | 3 | 否 |
 |fs.cosn.read.ahead.block.size     | 预读块的大小                                 | ‭1048576‬（1MB） |  否 |
 |fs.cosn.read.ahead.queue.size     | 预读队列的长度                               | 8              | 否  |
 |fs.cosn.maxRetries                | 访问COS出现错误时，最多重试的次数 | 200 | 否 |
