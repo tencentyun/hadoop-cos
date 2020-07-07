@@ -85,6 +85,8 @@ public class CosFsInputStream extends FSInputStream {
     private long lastByteStart = -1;
     private long fileSize;
     private long partRemaining;
+    private long bufferStart;
+    private long bufferEnd;
     private final long PreReadPartSize;
     private final int maxReadPartNumber;
     private byte[] buffer;
@@ -106,6 +108,8 @@ public class CosFsInputStream extends FSInputStream {
         this.statistics = statistics;
         this.key = key;
         this.fileSize = fileSize;
+        this.bufferStart = -1;
+        this.bufferEnd = -1;
         this.PreReadPartSize = conf.getLong(
                 CosNConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY,
                 CosNConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
@@ -134,6 +138,8 @@ public class CosFsInputStream extends FSInputStream {
         }
 
         this.buffer = null;
+        this.bufferStart = -1;
+        this.bufferEnd = -1;
 
         boolean isRandomIO = true;
         if (pos == this.nextPos) {
@@ -193,8 +199,12 @@ public class CosFsInputStream extends FSInputStream {
             readBuffer.await(ReadBuffer.INIT);
             if (readBuffer.getStatus() == ReadBuffer.ERROR) {
                 this.buffer = null;
+                this.bufferStart = -1;
+                this.bufferEnd = -1;
             } else {
                 this.buffer = readBuffer.getBuffer();
+                this.bufferStart = readBuffer.getStart();
+                this.bufferEnd = readBuffer.getEnd();
             }
         } catch (InterruptedException e) {
             LOG.warn("interrupted exception occurs when wait a read buffer.");
@@ -222,12 +232,14 @@ public class CosFsInputStream extends FSInputStream {
         if (this.position == pos) {
             return;
         }
-        if (pos > position && pos < this.position + partRemaining) {
-            long len = pos - this.position;
+        if (pos >= this.bufferStart &&  pos <= this.bufferEnd) {
+            LOG.debug("seek cache hit lastpos {}, pos {}, this buffer start {}, end {}",
+                    this.position, pos, this.bufferStart, this.bufferEnd);
             this.position = pos;
-            this.partRemaining -= len;
+            this.partRemaining = this.bufferEnd - pos + 1;
         } else {
-            this.reopen(pos);
+            this.position = pos;
+            this.partRemaining = -1;
         }
     }
 
