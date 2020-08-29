@@ -43,7 +43,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
     public static final String COSN_UPLOAD_BUFFER_SIZE_PREV_KEY = "fs.cosn.buffer.size";
-    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = 134217728;       // default is 128MB
+    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = -1;       // default is 128MB
 
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final long DEFAULT_BLOCK_SIZE = 128 * Unit.MB;
