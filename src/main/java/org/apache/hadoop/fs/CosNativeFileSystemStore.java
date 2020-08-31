@@ -407,7 +407,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     private FileMetadata QueryObjectMetadata(String key) throws IOException {
-        LOG.info("Query Object metadata....");
+        LOG.debug("Query Object metadata. cos key: {}.", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
 

@@ -16,12 +16,12 @@ Hadoop-2.6.0及以上版本
 ## 安装方法
 
 ### 获取 hadoop-cos 插件
-下载地址：[hadoop-cos 插件](https://github.com/tencentyun/hadoop-cos)
+下载地址：[hadoop-cos 插件](https://github.com/tencentyun/hadoop-cos/releases)
 
 
 ### 安装hadoop-cos插件
 
-1. 将dep目录下的hadoop-cos-X.X.X-shaded.jar 拷贝到 `$HADOOP_HOME/share/hadoop/tools/lib`下。
+1. 将hadoop-cos-{hadoop.version}-x.x.x.jar和cos_api-bundle-5.x.x.jar 拷贝到 `$HADOOP_HOME/share/hadoop/tools/lib`下。
 
 NOTE: 根据hadoop的具体版本选择对应的jar包，若dep目录中没有提供匹配版本的jar包，可自行通过修改pom文件中hadoop版本号，重新编译生成。
 
