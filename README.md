@@ -17,11 +17,11 @@ Hadoop-2.6.0及以上版本
 
 ## 安装方法
 
-### 获取 hadoop-cos 插件
-下载地址：[hadoop-cos 插件](https://github.com/tencentyun/hadoop-cos/releases)
+### 获取 hadoop-cos 分发包及其依赖
+下载地址：[hadoop-cos release](https://github.com/tencentyun/hadoop-cos/releases)
 
 
-### 安装hadoop-cos插件
+### 安装hadoop-cos
 
 1. 将hadoop-cos-{hadoop.version}-x.x.x.jar和cos_api-bundle-5.x.x.jar 拷贝到 `$HADOOP_HOME/share/hadoop/tools/lib`下。
 
