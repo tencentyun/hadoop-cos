@@ -8,8 +8,8 @@ import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.model.*;
 import com.qcloud.cos.region.Region;
 import com.qcloud.cos.utils.Base64;
+import com.qcloud.cos.utils.StringUtils;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -869,7 +869,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private void CheckEncryptionMethod(ClientConfig config,
                                        CosEncryptionMethods CosSSE, String SSEKey) throws IOException {
-        int sseKeyLen = StringUtils.isBlank(SSEKey) ? 0 : SSEKey.length();
+        int sseKeyLen = StringUtils.isNullOrEmpty(SSEKey) ? 0 : SSEKey.length();
 
         String description = "Encryption key:";
         if (SSEKey == null) {

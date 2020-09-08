@@ -1,7 +1,8 @@
 package org.apache.hadoop.fs;
 
+import com.qcloud.cos.utils.StringUtils;
+
 import java.io.IOException;
-import org.apache.commons.lang3.StringUtils;
 
 public enum CosEncryptionMethods {
 
@@ -39,7 +40,7 @@ public enum CosEncryptionMethods {
      * @throws IOException if the algorithm is unknown
      */
     public static CosEncryptionMethods getMethod(String name) throws IOException {
-        if(StringUtils.isBlank(name)) {
+        if(StringUtils.isNullOrEmpty(name)) {
             return NONE;
         }
         for (CosEncryptionMethods v : values()) {

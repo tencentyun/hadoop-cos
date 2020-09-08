@@ -1,6 +1,6 @@
 package org.apache.hadoop.fs;
 
-import org.apache.commons.lang3.StringUtils;
+import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
@@ -136,7 +136,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      * @return true if there's an encryption algorithm.
      */
     public boolean hasEncryptionAlgorithm() {
-        return StringUtils.isNotEmpty(encryptionAlgorithm);
+        return !StringUtils.isNullOrEmpty(encryptionAlgorithm);
     }
 
     /**
@@ -145,7 +145,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      * @return true if there's an encryption key.
      */
     public boolean hasEncryptionKey() {
-        return StringUtils.isNotEmpty(encryptionKey);
+        return !StringUtils.isNullOrEmpty(encryptionKey);
     }
 
     @Override
