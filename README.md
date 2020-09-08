@@ -13,17 +13,19 @@ Linux 或 Windows 系统
 ### 软件依赖
 Hadoop-2.6.0及以上版本
 
+**备注**：目前hadoop-cos已经正式被Apache Hadoop-3.3.0官方集成：https://hadoop.apache.org/docs/r3.3.0/hadoop-cos/cloud-storage/index.html
+
 ## 安装方法
 
-### 获取 hadoop-cos 插件
-下载地址：[hadoop-cos 插件](https://github.com/tencentyun/hadoop-cos/releases)
+### 获取 hadoop-cos 分发包及其依赖
+下载地址：[hadoop-cos release](https://github.com/tencentyun/hadoop-cos/releases)
 
 
-### 安装hadoop-cos插件
+### 安装hadoop-cos
 
 1. 将hadoop-cos-{hadoop.version}-x.x.x.jar和cos_api-bundle-5.x.x.jar 拷贝到 `$HADOOP_HOME/share/hadoop/tools/lib`下。
 
-NOTE: 根据hadoop的具体版本选择对应的jar包，若dep目录中没有提供匹配版本的jar包，可自行通过修改pom文件中hadoop版本号，重新编译生成。
+NOTE: 根据hadoop的具体版本选择对应的jar包，若release中没有提供匹配版本的jar包，可自行通过修改pom文件中hadoop版本号，重新编译生成。
 
 2. 修改 hadoop_env.sh
 在 `$HADOOP_HOME/etc/hadoop`目录下，进入 hadoop_env.sh，增加如下内容，将 cosn 相关 jar 包加入 Hadoop 环境变量：
