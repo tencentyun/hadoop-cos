@@ -45,6 +45,14 @@ public interface NativeFileSystemStore {
 
     FileMetadata retrieveMetadata(String key) throws IOException;
 
+    byte[] retrieveAttribute(String key, String attribute) throws IOException;
+
+    void storeDirAttribute(String key, String attribute, byte[] value) throws IOException;
+    void storeFileAttribute(String key, String attribute, byte[] value) throws IOException;
+
+    void removeDirAttribute(String key, String attribute) throws IOException;
+    void removeFileAttribute(String key, String attribute) throws IOException;
+
     InputStream retrieve(String key) throws IOException;
 
     InputStream retrieve(String key, long byteRangeStart) throws IOException;

@@ -6,13 +6,13 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 
 public class CosNCopyFileTask implements Runnable {
-    private static Logger LOG = LoggerFactory.getLogger(CosNCopyFileTask.class);
+    private static final Logger LOG = LoggerFactory.getLogger(CosNCopyFileTask.class);
 
-    private NativeFileSystemStore store;
+    private final NativeFileSystemStore store;
 
-    private String srcKey;
-    private String dstKey;
-    private CosNCopyFileContext cosCopyFileContext;
+    private final String srcKey;
+    private final String dstKey;
+    private final CosNCopyFileContext cosCopyFileContext;
 
     public CosNCopyFileTask(NativeFileSystemStore store, String srcKey,
                             String dstKey,

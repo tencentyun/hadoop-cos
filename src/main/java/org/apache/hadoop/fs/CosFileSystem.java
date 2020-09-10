@@ -2,6 +2,8 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.qcloud.cos.utils.StringUtils;
+import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -17,6 +19,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -35,6 +39,10 @@ public class CosFileSystem extends FileSystem {
     static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
     static final int COS_MAX_LISTING_LENGTH = 999;
+
+    static final Charset METADATA_ENCODING = StandardCharsets.UTF_8;
+    // The length of name:value pair should be less than or equal to 1024 bytes.
+    static final int MAX_XATTR_SIZE = 1024;
 
     private URI uri;
     String bucket;
@@ -78,9 +86,9 @@ public class CosFileSystem extends FileSystem {
                         .makeQualified(this.uri, this.getWorkingDirectory());
         this.owner = getOwnerId();
         this.group = getGroupId();
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("owner:" + owner + ", group:" + group);
-        }
+        LOG.debug("uri: {}, bucket: {}, working dir: {}, owner: {}, group: {}.\n" +
+                        "configuration: {}.",
+                uri, bucket, workingDir, owner, group, conf);
         BufferPool.getInstance().initialize(getConf());
 
         // initialize the thread pool
@@ -101,8 +109,7 @@ public class CosFileSystem extends FileSystem {
                 ioThreadPoolSize / 2, ioThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(ioThreadPoolSize * 2),
-                new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared" +
-                        "-%d").setDaemon(true).build(),
+                new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared-%d").setDaemon(true).build(),
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
@@ -161,8 +168,7 @@ public class CosFileSystem extends FileSystem {
         RetryPolicy methodPolicy =
                 RetryPolicies.retryByException(RetryPolicies.TRY_ONCE_THEN_FAIL,
                         exceptionToPolicyMap);
-        Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String,
-                RetryPolicy>();
+        Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String, RetryPolicy>();
         methodNameToPolicyMap.put("storeFile", methodPolicy);
         methodNameToPolicyMap.put("rename", methodPolicy);
 
@@ -252,9 +258,8 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public FSDataOutputStream append(Path f, int bufferSize,
-                                     Progressable progress)
-            throws IOException {
-        throw new IOException("Not supported");
+                                     Progressable progress) {
+        throw new UnsupportedOperationException("Not supported currently");
     }
 
     @Override
@@ -263,14 +268,12 @@ public class CosFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
-
         if (exists(f) && !overwrite) {
             throw new FileAlreadyExistsException("File already exists: " + f);
         }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Creating new file '" + f + "' in COS");
-        }
+        LOG.debug("Creating a new file [{}] in COS.", f);
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         long uploadPartSize = this.getConf().getLong(
@@ -280,8 +283,7 @@ public class CosFileSystem extends FileSystem {
         return new FSDataOutputStream(
                 new CosFsDataOutputStream(getConf(), store, key,
                         uploadPartSize,
-                        this.boundedIOThreadPool, uploadChecksEnabled),
-                statistics);
+                        this.boundedIOThreadPool, uploadChecksEnabled), statistics);
     }
 
     private boolean rejectRootDirectoryDelete(boolean isEmptyDir,
@@ -299,17 +301,12 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("ready to delete path:" + f + ", recursive:" + recursive);
-        }
+        LOG.debug("Ready to delete path: {}. recursive: {}.", f, recursive);
         FileStatus status;
         try {
             status = getFileStatus(f);
         } catch (FileNotFoundException e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Delete called for '" + f
-                        + "' but file does not exist, so returning false");
-            }
+            LOG.debug("Delete called for '{}', but the file does not exist and returning the false.", f);
             return false;
         }
         Path absolutePath = makeAbsolute(f);
@@ -330,18 +327,16 @@ public class CosFileSystem extends FileSystem {
                         " false");
             }
 
-            createParent(f);
             CosNDeleteFileContext deleteFileContext = new CosNDeleteFileContext();
             int deleteToFinishes = 0;
 
             String priorLastKey = null;
             do {
                 PartialListing listing =
-                        store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey,
-                                true);
+                        store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey, true);
                 for (FileMetadata file : listing.getFiles()) {
                     this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                           this.store, file.getKey(), deleteFileContext));
+                            this.store, file.getKey(), deleteFileContext));
                     deleteToFinishes++;
                     if (!deleteFileContext.isDeleteSuccess()) {
                         break;
@@ -349,7 +344,7 @@ public class CosFileSystem extends FileSystem {
                 }
                 for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
                     this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                           this.store, commonPrefix.getKey(), deleteFileContext));
+                            this.store, commonPrefix.getKey(), deleteFileContext));
                     deleteToFinishes++;
                     if (!deleteFileContext.isDeleteSuccess()) {
                         break;
@@ -373,26 +368,24 @@ public class CosFileSystem extends FileSystem {
             }
 
             try {
+                LOG.debug("Delete the cos key [{}].", key);
                 store.delete(key);
             } catch (Exception e) {
                 LOG.error("Delete the key failed.");
             }
 
         } else {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Deleting file '" + f + "'");
-            }
-            createParent(f);
+            LOG.debug("Delete the cos key [{}].", key);
             store.delete(key);
         }
+
+        createParentDirectoryIfNecessary(f);
         return true;
     }
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("getFileStatus: " + f);
-        }
+        LOG.debug("Get file status: {}.", f);
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -400,21 +393,13 @@ public class CosFileSystem extends FileSystem {
             return newDirectory(absolutePath);
         }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("getFileStatus retrieving metadata for key '" + key +
-                    "'");
-        }
         FileMetadata meta = store.retrieveMetadata(key);
         if (meta != null) {
             if (meta.isFile()) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("getFileStatus returning 'file' for key '" + key + "'");
-                }
+                LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
                 return newFile(meta, absolutePath);
             } else {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("getFileStatus returning 'dir' for key '" + key + "'");
-                }
+                LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
                 return newDirectory(meta, absolutePath);
             }
         }
@@ -422,27 +407,14 @@ public class CosFileSystem extends FileSystem {
         if (!key.endsWith(PATH_DELIMITER)) {
             key += PATH_DELIMITER;
         }
-
-        meta = store.retrieveMetadata(key);
-        if (null != meta) {
-            return newDirectory(absolutePath);
-        }
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("getFileStatus listing key '" + key + "'");
-        }
+        LOG.debug("List the cos key [{}] to judge whether it is a directory or not.", key);
         PartialListing listing = store.list(key, 1);
         if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("getFileStatus returning 'directory' for key '" + key
-                        + "' as it has contents");
-            }
+            LOG.debug("List the cos key [{}] to find that it is a directory.", key);
             return newDirectory(absolutePath);
         }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("getFileStatus could not find key '" + key + "'");
-        }
+        LOG.debug("Can not find the cos key [{}] on COS.", key);
 
         throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
     }
@@ -488,9 +460,10 @@ public class CosFileSystem extends FileSystem {
                     priorLastKey, false);
             for (FileMetadata fileMetadata : listing.getFiles()) {
                 Path subPath = keyToPath(fileMetadata.getKey());
-
                 if (fileMetadata.getKey().equals(key)) {
                     // this is just the directory we have been asked to list
+                    LOG.debug("This is just the directory we have been asked to list. cos key: {}.",
+                            fileMetadata.getKey());
                 } else {
                     status.add(newFile(fileMetadata, subPath));
                 }
@@ -524,18 +497,17 @@ public class CosFileSystem extends FileSystem {
         if (meta == null) {
             return newDirectory(path);
         }
-        CosNFileStatus status = new CosNFileStatus(0, true, 1, 0,
+        return new CosNFileStatus(0, true, 1, 0,
                 meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
                 meta.getVersionId());
-        return status;
     }
 
     /**
      * Validate the path from the bottom up.
      *
-     * @param path
-     * @throws IOException
+     * @param path the absolute path to check.
+     * @throws IOException an IOException occurred when getting the path's metadata.
      */
     private void validatePath(Path path) throws IOException {
         Path parent = path.getParent();
@@ -549,7 +521,7 @@ public class CosFileSystem extends FileSystem {
                             "Can't make directory for path '%s', it is a file" +
                                     ".", parent));
                 }
-            } catch (FileNotFoundException e) {
+            } catch (FileNotFoundException ignored) {
             }
             parent = parent.getParent();
         } while (parent != null);
@@ -558,6 +530,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
+        LOG.debug("mkdirs path: {}.", f);
         try {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isDirectory()) {
@@ -567,21 +540,21 @@ public class CosFileSystem extends FileSystem {
             }
         } catch (FileNotFoundException e) {
             validatePath(f);
+            return mkDirRecursively(f, permission);
         }
-
-        return mkDirRecursively(f, permission);
     }
 
     /**
-     * Recursively create a directory.
+     * Create a directory recursively.
      *
      * @param f          Absolute path to the directory
      * @param permission Directory permissions
      * @return Return true if the creation was successful,  throw a IOException.
-     * @throws IOException
+     * @throws IOException An IOException occurred when creating a directory object on COS.
      */
     public boolean mkDirRecursively(Path f, FsPermission permission)
             throws IOException {
+        LOG.debug("Make the directory recursively. Path: {}, FsPermission: {}.", f, permission);
         Path absolutePath = makeAbsolute(f);
         List<Path> paths = new ArrayList<Path>();
         do {
@@ -590,7 +563,7 @@ public class CosFileSystem extends FileSystem {
         } while (absolutePath != null);
 
         for (Path path : paths) {
-            if (path.equals(new Path(CosFileSystem.PATH_DELIMITER))) {
+            if (path.isRoot()) {
                 break;
             }
             try {
@@ -602,14 +575,15 @@ public class CosFileSystem extends FileSystem {
                                             " it is a file.", f));
                 }
                 if (fileStatus.isDirectory()) {
-                    break;
+                    if (fileStatus.getModificationTime() > 0) {
+                        break;
+                    } else {
+                        throw new FileNotFoundException("Dir '" + path + "' doesn't exist in COS");
+                    }
                 }
             } catch (FileNotFoundException e) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("Making dir '" + f + "' in COS");
-                }
-
-                String folderPath = pathToKey(makeAbsolute(f));
+                LOG.debug("Make the directory [{}] on COS.", path);
+                String folderPath = pathToKey(makeAbsolute(path));
                 if (!folderPath.endsWith(PATH_DELIMITER)) {
                     folderPath += PATH_DELIMITER;
                 }
@@ -619,50 +593,25 @@ public class CosFileSystem extends FileSystem {
         return true;
     }
 
-    private boolean mkdir(Path f) throws IOException {
-        LOG.debug("mkdir " + f);
-        try {
-            FileStatus fileStatus = getFileStatus(f);
-            if (fileStatus.isFile()) {
-                throw new FileAlreadyExistsException(
-                        String.format(
-                                "Can't make directory for path '%s' since it " +
-                                        "is a file.", f));
-            }
-        } catch (FileNotFoundException e) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Making dir '" + f + "' in COS");
-            }
-
-            String folderPath = pathToKey(makeAbsolute(f));
-            if (!folderPath.endsWith(PATH_DELIMITER)) {
-                folderPath += PATH_DELIMITER;
-            }
-            store.storeEmptyFile(folderPath);
-        }
-        return true;
-    }
-
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
-        FileStatus fs = getFileStatus(f); // will throw if the file doesn't
+        FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
-        if (fs.isDirectory()) {
+        if (fileStatus.isDirectory()) {
             throw new FileNotFoundException("'" + f + "' is a directory");
         }
         LOG.info("Opening '" + f + "' for reading");
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        long fileSize = store.getFileLength(key);
         return new FSDataInputStream(new BufferedFSInputStream(
                 new CosFsInputStream(this.getConf(), store, statistics, key,
-                        fileSize, this.boundedIOThreadPool),
+                        fileStatus.getLen(), this.boundedIOThreadPool),
                 bufferSize));
     }
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
-        LOG.debug("input rename: src:" + src + " , dst:" + dst);
+        LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
 
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
@@ -675,28 +624,27 @@ public class CosFileSystem extends FileSystem {
         try {
             srcFileStatus = this.getFileStatus(src);
         } catch (FileNotFoundException e) {
-            LOG.debug(e.getMessage());
+            LOG.debug("The source path [{}] is not exist.", src);
             return false;
         }
 
         // Source path and destination path are not allowed to be the same
         if (src.equals(dst)) {
-            LOG.debug("source path and dest path refer to the same file or " +
+            LOG.debug("The source path and the dest path refer to the same file or " +
                     "directory: {}", dst);
-            throw new IOException("source path and dest path refer to the " +
+            throw new IOException("the source path and dest path refer to the " +
                     "same file or directory");
         }
 
         // It is not allowed to rename a parent directory to its subdirectory
         Path dstParentPath;
-        for (dstParentPath = dst.getParent();
-             null != dstParentPath && !src.equals(dstParentPath);
-             dstParentPath = dstParentPath.getParent()) {
+        dstParentPath = dst.getParent();
+        while (null != dstParentPath && !src.equals(dstParentPath)) {
+            dstParentPath = dstParentPath.getParent();
         }
         if (null != dstParentPath) {
             LOG.debug("It is not allowed to rename a parent directory:{} to " +
-                            "its subdirectory:{}.",
-                    src, dst);
+                    "its subdirectory:{}.", src, dst);
             throw new IOException(String.format(
                     "It is not allowed to rename a parent directory:%s to its" +
                             " subdirectory:%s",
@@ -789,7 +737,12 @@ public class CosFileSystem extends FileSystem {
                     " of self");
         }
 
-        this.store.storeEmptyFile(dstKey);
+        if (this.store.retrieveMetadata(srcKey) == null) {
+            this.store.storeEmptyFile(srcKey);
+        } else {
+            this.store.copy(srcKey, dstKey);
+        }
+
         CosNCopyFileContext copyFileContext = new CosNCopyFileContext();
 
         int copiesToFinishes = 0;
@@ -822,20 +775,16 @@ public class CosFileSystem extends FileSystem {
         return copyFileContext.isCopySuccess();
     }
 
-    private void createParent(Path path) throws IOException {
+    private void createParentDirectoryIfNecessary(Path path) throws IOException {
         Path parent = path.getParent();
-        if (parent != null) {
+        if (null != parent && !parent.isRoot()) {
             String parentKey = pathToKey(parent);
-            LOG.debug("createParent parentKey:" + parentKey);
-            if (!parentKey.equals(PATH_DELIMITER)) {
-                String key = pathToKey(makeAbsolute(parent));
-                if (key.length() > 0) {
-                    try {
-                        store.storeEmptyFile(key + PATH_DELIMITER);
-                    } catch (Exception e) {
-                        LOG.debug("storeEmptyFile exception: " + e.toString());
-                    }
+            if (!StringUtils.isNullOrEmpty(parentKey) && !exists(parent)) {
+                LOG.debug("Create a parent directory [{}] for the path [{}].", parent, path);
+                if (!parentKey.endsWith("/")) {
+                    parentKey += "/";
                 }
+                store.storeEmptyFile(parentKey);
             }
         }
     }
@@ -869,7 +818,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         Preconditions.checkArgument(length >= 0);
-        LOG.debug("call the checksum for the path: {}.", f);
+        LOG.debug("Call the checksum for the path: {}.", f);
 
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
@@ -882,6 +831,164 @@ public class CosFileSystem extends FileSystem {
             // disabled
             return super.getFileChecksum(f, length);
         }
+    }
+
+    /**
+     * Set the value of an attribute for a path
+     *
+     * @param f     The path on which to set the attribute
+     * @param name  The attribute to set
+     * @param value The byte value of the attribute to set (encoded in utf-8)
+     * @param flag  The mode in which to set the attribute
+     * @throws IOException If there was an issue setting the attributing on COS
+     */
+    @Override
+    public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
+        LOG.debug("set XAttr: {}.", f);
+
+        // First, determine whether the length of the name and value exceeds the limit.
+        if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
+            throw new HadoopIllegalArgumentException("The maximum combined size of " +
+                    "the name and value of an extended attribute in bytes should be less than or equal to 32768.");
+        }
+
+        Path absolutePath = makeAbsolute(f);
+
+        String key = pathToKey(absolutePath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+        boolean xAttrExists = (null != fileMetadata.getUserAttributes()
+                && fileMetadata.getUserAttributes().containsKey(name));
+        XAttrSetFlag.validate(name, xAttrExists, flag);
+        if (fileMetadata.isFile()) {
+            store.storeFileAttribute(key, name, value);
+        } else {
+            store.storeDirAttribute(key, name, value);
+        }
+    }
+
+    /**
+     * get the value of an attribute for a path
+     *
+     * @param f    The path on which to set the attribute
+     * @param name The attribute to set
+     * @return The byte value of the attribute to set (encoded in utf-8)
+     * @throws IOException If there was an issue setting the attribute on COS
+     */
+    @Override
+    public byte[] getXAttr(Path f, String name) throws IOException {
+        LOG.debug("get XAttr: {}.", f);
+
+        Path absolutePath = makeAbsolute(f);
+
+        String key = pathToKey(absolutePath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+
+        if (null != fileMetadata.getUserAttributes()) {
+            return fileMetadata.getUserAttributes().get(name);
+        }
+
+        return null;
+    }
+
+    /**
+     * Get all of the xattrs name/value pairs for a cosn file or directory.
+     *
+     * @param f     Path to get extended attributes
+     * @param names XAttr names.
+     * @return Map describing the XAttrs of the file or directory
+     * @throws IOException If there was an issue gettting the attribute on COS
+     */
+    @Override
+    public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
+        LOG.debug("get XAttrs: {}.", f);
+
+        Path absolutePath = makeAbsolute(f);
+
+        String key = pathToKey(absolutePath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+
+        Map<String, byte[]> attrs = null;
+        if (null != fileMetadata.getUserAttributes()) {
+            attrs = new HashMap<>();
+            for (String name : names) {
+                if (fileMetadata.getUserAttributes().containsKey(name)) {
+                    attrs.put(name, fileMetadata.getUserAttributes().get(name));
+                }
+            }
+        }
+
+        return attrs;
+    }
+
+    /**
+     * Removes an xattr of a cosn file or directory.
+     *
+     * @param f    Path to remove extended attribute
+     * @param name xattr name
+     * @throws IOException If there was an issue setting the attribute on COS
+     */
+    @Override
+    public void removeXAttr(Path f, String name) throws IOException {
+        LOG.debug("remove XAttr: {}.", f);
+
+        Path absolutPath = makeAbsolute(f);
+
+        String key = pathToKey(absolutPath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+
+        boolean xAttrExists = (null != fileMetadata.getUserAttributes()
+                && fileMetadata.getUserAttributes().containsKey(name));
+        if (xAttrExists) {
+            if (fileMetadata.isFile()) {
+                store.removeFileAttribute(key, name);
+            } else {
+                store.removeDirAttribute(key, name);
+            }
+        }
+
+        // Nothing to do if the specified attribute is not found.
+    }
+
+    @Override
+    public Map<String, byte[]> getXAttrs(Path f) throws IOException {
+        LOG.debug("get XAttrs: {}.", f);
+
+        Path absolutePath = makeAbsolute(f);
+
+        String key = pathToKey(absolutePath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+
+        return fileMetadata.getUserAttributes();
+    }
+
+    @Override
+    public List<String> listXAttrs(Path f) throws IOException {
+        LOG.debug("list XAttrs: {}.", f);
+
+        Path absolutePath = makeAbsolute(f);
+
+        String key = pathToKey(absolutePath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+
+        return new ArrayList<>(fileMetadata.getUserAttributes().keySet());
     }
 
     @Override

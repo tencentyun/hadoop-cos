@@ -10,7 +10,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.8.4";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.8.5";
 
     public static final String TENCENT_EMR_VERSION_KEY = "fs.emr.version";
 
@@ -43,7 +43,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
     public static final String COSN_UPLOAD_BUFFER_SIZE_PREV_KEY = "fs.cosn.buffer.size";
-    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = -1;       // default is 128MB
+    public static final int DEFAULT_UPLOAD_BUFFER_SIZE = -1;
 
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final long DEFAULT_BLOCK_SIZE = 128 * Unit.MB;

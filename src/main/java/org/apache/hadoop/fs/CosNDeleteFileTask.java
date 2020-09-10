@@ -6,12 +6,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 
 public class CosNDeleteFileTask implements Runnable {
-    private static Logger LOG = LoggerFactory.getLogger(CosNCopyFileTask.class);
+    private static final Logger LOG = LoggerFactory.getLogger(CosNCopyFileTask.class);
 
-    private NativeFileSystemStore store;
+    private final NativeFileSystemStore store;
 
-    private String srcKey;
-    private CosNDeleteFileContext cosDeleteFileContext;
+    private final String srcKey;
+    private final CosNDeleteFileContext cosDeleteFileContext;
 
     public CosNDeleteFileTask(NativeFileSystemStore store, String srcKey,
                               CosNDeleteFileContext cosDeleteFileContext) {
@@ -24,10 +24,10 @@ public class CosNDeleteFileTask implements Runnable {
     public void run() {
         boolean fail = false;
         try {
+            LOG.debug("Delete the cos key: {}.", srcKey);
             this.store.delete(srcKey);
         } catch (IOException e) {
-            LOG.warn("Exception thrown when delete file{}, exception:{}"
-                    , this.srcKey, e);
+            LOG.warn("Exception thrown when delete file [{}], exception: ", this.srcKey, e);
             fail = true;
             cosDeleteFileContext.setIOException(e);
         } finally {

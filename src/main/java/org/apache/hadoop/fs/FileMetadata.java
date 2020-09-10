@@ -3,6 +3,8 @@ package org.apache.hadoop.fs;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 
+import java.util.Map;
+
 /**
  * <p>
  * Holds basic metadata for a file stored in a {@link NativeFileSystemStore}.
@@ -19,6 +21,7 @@ public class FileMetadata {
     private final String crc64ecm;
     private final String versionId;
     private final String storageClass;
+    private final Map<String, byte[]> userAttributes;
 
     public FileMetadata(String key, long length, long lastModified) {
         this(key, length, lastModified, true);
@@ -35,11 +38,16 @@ public class FileMetadata {
 
     public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
                         String versionId) {
-        this(key, length, lastModified, isFile, eTag, crc64ecm, versionId, null);
+        this(key, length, lastModified, isFile, eTag, crc64ecm, versionId, null, null);
     }
 
     public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
                         String versionId, String storageClass) {
+        this(key, length, lastModified, isFile, eTag, crc64ecm, versionId, storageClass, null);
+    }
+
+    public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
+                        String versionId, String storageClass, Map<String, byte[]> userAttributes) {
         this.key = key;
         this.length = length;
         this.lastModified = lastModified;
@@ -48,6 +56,7 @@ public class FileMetadata {
         this.crc64ecm = crc64ecm;
         this.versionId = versionId;
         this.storageClass = storageClass;
+        this.userAttributes = userAttributes;
     }
 
     public String getKey() {
@@ -76,6 +85,10 @@ public class FileMetadata {
 
     public String getStorageClass() {
         return storageClass;
+    }
+
+    public Map<String, byte[]> getUserAttributes() {
+        return userAttributes;
     }
 
     @Override
