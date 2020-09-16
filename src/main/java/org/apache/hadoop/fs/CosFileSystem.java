@@ -848,8 +848,9 @@ public class CosFileSystem extends FileSystem {
 
         // First, determine whether the length of the name and value exceeds the limit.
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
-            throw new HadoopIllegalArgumentException("The maximum combined size of " +
-                    "the name and value of an extended attribute in bytes should be less than or equal to 32768.");
+            throw new HadoopIllegalArgumentException(String.format("The maximum combined size of " +
+                    "the name and value of an extended attribute in bytes should be less than or equal to %d",
+                    MAX_XATTR_SIZE));
         }
 
         Path absolutePath = makeAbsolute(f);
