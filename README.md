@@ -13,7 +13,7 @@ Linux 或 Windows 系统
 ### 软件依赖
 Hadoop-2.6.0及以上版本
 
-**备注**：目前hadoop-cos已经正式被Apache Hadoop-3.3.0官方集成：https://hadoop.apache.org/docs/r3.3.0/hadoop-cos/cloud-storage/index.html
+**NOTE**：目前hadoop-cos已经正式被Apache Hadoop-3.3.0官方集成：https://hadoop.apache.org/docs/r3.3.0/hadoop-cos/cloud-storage/index.html
 
 ## 安装方法
 
