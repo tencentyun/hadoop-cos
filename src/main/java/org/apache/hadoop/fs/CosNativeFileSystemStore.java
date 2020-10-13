@@ -86,7 +86,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         boolean useHttps = conf.getBoolean(
                 CosNConfigKeys.COSN_USE_HTTPS_KEY,
                 CosNConfigKeys.DEFAULT_USE_HTTPS);
-
         if (useHttps) {
             config.setHttpProtocol(HttpProtocol.https);
         }
@@ -133,6 +132,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.COSN_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_MAX_RETRIES);
 
+        // 设置cosn的最大重试次数跟COS SDK的保持一致
+        config.setMaxErrorRetry(this.maxRetryTimes);
+
         // 设置连接池的最大连接数目
         config.setMaxConnectionsCount(
                 conf.getInt(
@@ -140,7 +142,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         CosNConfigKeys.DEFAULT_MAX_CONNECTION_NUM
                 )
         );
-
 
         // 设置是否进行服务器端加密
         String ServerSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
