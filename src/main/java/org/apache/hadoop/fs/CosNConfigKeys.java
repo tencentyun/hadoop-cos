@@ -83,8 +83,12 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_TRAFFIC_LIMIT = -1;
 
     // checksum
+    // crc64
     public static final String CRC64_CHECKSUM_ENABLED = "fs.cosn.crc64.checksum.enabled";
     public static final boolean DEFAULT_CRC64_CHECKSUM_ENABLED = false;
+    // crc32c
+    public static final String CRC32C_CHECKSUM_ENABLED = "fs.cosn.crc32c.checksum.enabled";
+    public static final boolean DEFAULT_CRC32C_CHECKSUM_ENABLED = false;
 
     public static final String HTTP_PROXY_IP = "fs.cosn.http.proxy.ip";
     public static final String HTTP_PROXY_PORT = "fs.cosn.http.proxy.port";

@@ -10,6 +10,13 @@ public final class Constants {
     // Suffix for local cache file name
     public static final String BLOCK_TMP_FILE_SUFFIX = "_local_block_cache";
 
+    // Crc32c server response header key
+    public static final String CRC32C_RESP_HEADER = "x-cos-hash-crc32c";
+    // Crc32c agent request header key
+    public static final String CRC32C_REQ_HEADER = "x-cos-crc32c-flag";
+    // Crc32c agent request header value
+    public static final String CRC32C_REQ_HEADER_VAL = "cosn";
+
     // Maximum number of blocks uploaded in trunks.
     public static final int MAX_PART_NUM = 10000;
     // The maximum size of a single block.

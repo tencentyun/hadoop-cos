@@ -11,6 +11,7 @@ import com.qcloud.cos.utils.Base64;
 import com.qcloud.cos.utils.Jackson;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.math3.analysis.function.Constant;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -41,6 +42,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private StorageClass storageClass;
     private int maxRetryTimes;
     private int trafficLimit;
+    private boolean openCrc32c;
     private CosEncryptionSecrets encryptionSecrets;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
@@ -89,6 +91,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         if (useHttps) {
             config.setHttpProtocol(HttpProtocol.https);
         }
+
+        this.openCrc32c = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
+                CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
 
         // Proxy settings
         String httpProxyIp = conf.getTrimmed(CosNConfigKeys.HTTP_PROXY_IP);
@@ -200,6 +205,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
             }
             objectMetadata.setContentLength(length);
+            if (openCrc32c) {
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            }
 
             PutObjectRequest putObjectRequest =
                     new PutObjectRequest(bucketName, key, inputStream,
@@ -265,6 +273,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         ObjectMetadata objectMetadata = new ObjectMetadata();
         objectMetadata.setContentLength(0);
+        if (openCrc32c) {
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+        }
+
         InputStream input = new ByteArrayInputStream(new byte[0]);
         PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName,
                 key, input, objectMetadata);
@@ -310,12 +322,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             String key, String uploadId, int partNum, long partSize, byte[] md5Hash) throws IOException {
         LOG.debug("Upload the part to the cos key [{}]. upload id: {}, part number: {}, part size: {}",
                 key, uploadId, partNum, partSize);
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        if (openCrc32c) {
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+        }
+
         UploadPartRequest uploadPartRequest = new UploadPartRequest();
         uploadPartRequest.setBucketName(this.bucketName);
         uploadPartRequest.setUploadId(uploadId);
         uploadPartRequest.setInputStream(inputStream);
         uploadPartRequest.setPartNumber(partNum);
         uploadPartRequest.setPartSize(partSize);
+        uploadPartRequest.setObjectMetadata(objectMetadata);
         if (null != md5Hash) {
             uploadPartRequest.setMd5Digest(Base64.encodeAsString(md5Hash));
         }
@@ -323,7 +341,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         if (this.trafficLimit >= 0) {
             uploadPartRequest.setTrafficLimit(this.trafficLimit);
         }
-        this.setEncryptionMetadata(uploadPartRequest, new ObjectMetadata());
+        this.setEncryptionMetadata(uploadPartRequest, objectMetadata);
 
         try {
             UploadPartResult uploadPartResult =
@@ -360,12 +378,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             return "";
         }
 
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        if (openCrc32c) {
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+        }
+
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
                 new InitiateMultipartUploadRequest(bucketName, key);
         if (null != this.storageClass) {
             initiateMultipartUploadRequest.setStorageClass(this.storageClass);
         }
-        this.setEncryptionMetadata(initiateMultipartUploadRequest, new ObjectMetadata());
+        initiateMultipartUploadRequest.setObjectMetadata(objectMetadata);
+        this.setEncryptionMetadata(initiateMultipartUploadRequest, objectMetadata);
         try {
             InitiateMultipartUploadResult initiateMultipartUploadResult =
                     (InitiateMultipartUploadResult) this.callCOSClientWithRetry(initiateMultipartUploadRequest);
@@ -389,6 +413,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
         });
         try {
+            // TODO TMD complete multi part java sdk how to add the meta header?
             CompleteMultipartUploadRequest completeMultipartUploadRequest =
                     new CompleteMultipartUploadRequest(bucketName, key, uploadId,
                             partETagList);
@@ -419,6 +444,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
             String ETag = objectMetadata.getETag();
             String crc64ecm = objectMetadata.getCrc64Ecma();
+            String crc32cm = (String)objectMetadata.getRawMetadataValue(Constants.CRC32C_RESP_HEADER);
             String versionId = objectMetadata.getVersionId();
             Map<String, byte[]> userMetadata = null;
             if (objectMetadata.getUserMetadata() != null) {
@@ -443,7 +469,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
             FileMetadata fileMetadata =
                     new FileMetadata(key, fileSize, mtime,
-                            !key.endsWith(PATH_DELIMITER), ETag, crc64ecm, versionId, objectMetadata.getStorageClass(),
+                            !key.endsWith(PATH_DELIMITER), ETag, crc64ecm, crc32cm, versionId, objectMetadata.getStorageClass(),
                             userMetadata);
             LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}, crc64ecm: {}.", key,
                     objectMetadata.getETag(), objectMetadata.getContentLength(), objectMetadata.getCrc64Ecma());
@@ -573,6 +599,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             objectMetadata.setUserMetadata(userMetadata);
 
             // 构造原地copy请求来设置用户自定义属性
+            if (openCrc32c) {
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            }
+
             CopyObjectRequest copyObjectRequest = new CopyObjectRequest(bucketName, key, bucketName, key);
             if (null != objectMetadata.getStorageClass()) {
                 copyObjectRequest.setStorageClass(objectMetadata.getStorageClass());
@@ -776,10 +806,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             long fileLen = cosObjectSummary.getSize();
             String fileEtag = cosObjectSummary.getETag();
             if (cosObjectSummary.getKey().endsWith(PATH_DELIMITER) && cosObjectSummary.getSize() == 0) {
-                fileMetadataArray.add(new FileMetadata(filePath, fileLen, mtime, false, fileEtag, null, null, cosObjectSummary.getStorageClass()));
+                fileMetadataArray.add(new FileMetadata(filePath, fileLen, mtime, false, fileEtag, null, null, null, cosObjectSummary.getStorageClass()));
             } else {
                 fileMetadataArray.add(new FileMetadata(filePath, fileLen, mtime,
-                        true, fileEtag, null, null, cosObjectSummary.getStorageClass()));
+                        true, fileEtag, null, null, null, cosObjectSummary.getStorageClass()));
             }
         }
         List<String> commonPrefixes = objectListing.getCommonPrefixes();
@@ -826,6 +856,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     public void rename(String srcKey, String dstKey) throws IOException {
         LOG.debug("Rename the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
         try {
+            ObjectMetadata objectMetadata = new ObjectMetadata();
+            if (openCrc32c) {
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            }
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName,
                             dstKey);
@@ -834,7 +868,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (null != sourceFileMetadata.getStorageClass()) {
                 copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
             }
-            this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
+            copyObjectRequest.setNewObjectMetadata(objectMetadata);
+            this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
 
             if (null != this.customerDomainEndpointResolver) {
                 if (null != this.customerDomainEndpointResolver.getEndpoint()) {
@@ -857,13 +892,19 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void copy(String srcKey, String dstKey) throws IOException {
         try {
+            ObjectMetadata objectMetadata = new ObjectMetadata();
+            if (openCrc32c) {
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            }
+
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName, dstKey);
             FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
             if (null != sourceFileMetadata.getStorageClass()) {
                 copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
             }
-            this.setEncryptionMetadata(copyObjectRequest, new ObjectMetadata());
+            copyObjectRequest.setNewObjectMetadata(objectMetadata);
+            this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
             if (null != this.customerDomainEndpointResolver) {
                 if (null != this.customerDomainEndpointResolver.getEndpoint()) {
                     copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);

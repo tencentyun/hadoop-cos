@@ -820,6 +820,7 @@ public class CosFileSystem extends FileSystem {
         Preconditions.checkArgument(length >= 0);
         LOG.debug("Call the checksum for the path: {}.", f);
 
+        // The order of each file, must support both crc at same time, how to tell the difference crc request?
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
             Path absolutePath = makeAbsolute(f);
@@ -827,6 +828,13 @@ public class CosFileSystem extends FileSystem {
             FileMetadata fileMetadata = this.store.retrieveMetadata(key);
             String crc64ecm = fileMetadata.getCrc64ecm();
             return crc64ecm != null ? new CRC64Checksum(crc64ecm) : super.getFileChecksum(f, length);
+        } else if (this.getConf().getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
+                CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED)) {
+            Path absolutePath = makeAbsolute(f);
+            String key = pathToKey(absolutePath);
+            FileMetadata fileMetadata = this.store.retrieveMetadata(key);
+            String crc32cm = fileMetadata.getCrc32cm();
+            return crc32cm != null ? new CRC32CCheckSum(crc32cm) : super.getFileChecksum(f, length);
         } else {
             // disabled
             return super.getFileChecksum(f, length);
