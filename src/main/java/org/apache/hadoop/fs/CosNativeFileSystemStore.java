@@ -413,10 +413,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
         });
         try {
-            // TODO TMD complete multi part java sdk how to add the meta header?
+            ObjectMetadata objectMetadata = new ObjectMetadata();
+            if (openCrc32c) {
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            }
             CompleteMultipartUploadRequest completeMultipartUploadRequest =
                     new CompleteMultipartUploadRequest(bucketName, key, uploadId,
                             partETagList);
+            completeMultipartUploadRequest.setObjectMetadata(objectMetadata);
             return (CompleteMultipartUploadResult) this.callCOSClientWithRetry(completeMultipartUploadRequest);
         } catch (Exception e) {
             String errMsg = String.format("Complete the multipart upload failed. cos key: %s, upload id: %s, " +

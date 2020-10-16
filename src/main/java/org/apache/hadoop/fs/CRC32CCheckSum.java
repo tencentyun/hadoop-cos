@@ -15,17 +15,18 @@ import java.math.BigInteger;
  * especially between hadoop compatible filesystem.
  */
 public class CRC32CCheckSum extends FileChecksum {
-    private static final String ALGORITHM_NAME = "CRC32C";
+    private static final String ALGORITHM_NAME = "COMPOSITE-CRC32C";
 
-    private long crc32c = 0;
+    private int crc32c = 0;
 
     public CRC32CCheckSum() {
     }
 
+
     public CRC32CCheckSum(String crc32cecma) {
         try {
-            BigInteger bigInteger = new BigInteger(crc32cecma);
-            this.crc32c = bigInteger.longValue();
+            Integer integer = new Integer(crc32cecma);
+            this.crc32c = integer.intValue();
         } catch (NumberFormatException e) {
             this.crc32c = 0;
         }
@@ -38,28 +39,26 @@ public class CRC32CCheckSum extends FileChecksum {
 
     @Override
     public int getLength() {
-        return Long.SIZE / Byte.SIZE;
+        return Integer.SIZE / Byte.SIZE;
     }
 
     @Override
     public byte[] getBytes() {
-        return this.crc32c != 0 ? WritableUtils.toByteArray(this) : new byte[0];
+        return CrcUtil.intToBytes(crc32c);
     }
 
     @Override
     public void write(DataOutput dataOutput) throws IOException {
-        dataOutput.writeLong(this.crc32c);
+        dataOutput.writeInt(this.crc32c);
     }
 
     @Override
     public void readFields(DataInput dataInput) throws IOException {
-        this.crc32c = dataInput.readLong();
+        this.crc32c = dataInput.readInt();
     }
 
     @Override
     public String toString() {
-        return "CRC32CChecksum{" +
-                "crc32c=" + crc32c +
-                '}';
+        return getAlgorithmName() + ":" + String.format("0x%08x", crc32c);
     }
 }
