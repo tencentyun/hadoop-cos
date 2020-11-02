@@ -25,8 +25,8 @@ public class CRC32CCheckSum extends FileChecksum {
 
     public CRC32CCheckSum(String crc32cecma) {
         try {
-            Integer integer = new Integer(crc32cecma);
-            this.crc32c = integer.intValue();
+            BigInteger bigInteger = new BigInteger(crc32cecma);
+            this.crc32c = bigInteger.intValue();
         } catch (NumberFormatException e) {
             this.crc32c = 0;
         }

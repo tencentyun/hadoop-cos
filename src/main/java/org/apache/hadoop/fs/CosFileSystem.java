@@ -826,6 +826,9 @@ public class CosFileSystem extends FileSystem {
             Path absolutePath = makeAbsolute(f);
             String key = pathToKey(absolutePath);
             FileMetadata fileMetadata = this.store.retrieveMetadata(key);
+            if (null == fileMetadata) {
+                throw new FileNotFoundException("File or directory doesn't exist: " + f);
+            }
             String crc64ecm = fileMetadata.getCrc64ecm();
             return crc64ecm != null ? new CRC64Checksum(crc64ecm) : super.getFileChecksum(f, length);
         } else if (this.getConf().getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
@@ -833,6 +836,9 @@ public class CosFileSystem extends FileSystem {
             Path absolutePath = makeAbsolute(f);
             String key = pathToKey(absolutePath);
             FileMetadata fileMetadata = this.store.retrieveMetadata(key);
+            if (null == fileMetadata) {
+                throw new FileNotFoundException("File or directory doesn't exist: " + f);
+            }
             String crc32cm = fileMetadata.getCrc32cm();
             return crc32cm != null ? new CRC32CCheckSum(crc32cm) : super.getFileChecksum(f, length);
         } else {
