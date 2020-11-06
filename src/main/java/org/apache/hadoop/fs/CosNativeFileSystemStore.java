@@ -42,7 +42,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private StorageClass storageClass;
     private int maxRetryTimes;
     private int trafficLimit;
-    private boolean openCrc32c;
+    private boolean crc32cEnabled;
     private CosEncryptionSecrets encryptionSecrets;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
@@ -92,7 +92,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             config.setHttpProtocol(HttpProtocol.https);
         }
 
-        this.openCrc32c = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
+        this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
 
         // Proxy settings
@@ -205,7 +205,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 objectMetadata.setContentMD5(Base64.encodeAsString(md5Hash));
             }
             objectMetadata.setContentLength(length);
-            if (openCrc32c) {
+            if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
             }
 
@@ -273,7 +273,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         ObjectMetadata objectMetadata = new ObjectMetadata();
         objectMetadata.setContentLength(0);
-        if (openCrc32c) {
+        if (crc32cEnabled) {
             objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
         }
 
@@ -323,7 +323,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.debug("Upload the part to the cos key [{}]. upload id: {}, part number: {}, part size: {}",
                 key, uploadId, partNum, partSize);
         ObjectMetadata objectMetadata = new ObjectMetadata();
-        if (openCrc32c) {
+        if (crc32cEnabled) {
             objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
         }
 
@@ -379,7 +379,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
 
         ObjectMetadata objectMetadata = new ObjectMetadata();
-        if (openCrc32c) {
+        if (crc32cEnabled) {
             objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
         }
 
@@ -414,7 +414,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         });
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
-            if (openCrc32c) {
+            if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
             }
             CompleteMultipartUploadRequest completeMultipartUploadRequest =
@@ -603,7 +603,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             objectMetadata.setUserMetadata(userMetadata);
 
             // 构造原地copy请求来设置用户自定义属性
-            if (openCrc32c) {
+            if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
             }
 
@@ -861,7 +861,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.debug("Rename the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
-            if (openCrc32c) {
+            if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
             }
             CopyObjectRequest copyObjectRequest =
@@ -897,7 +897,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     public void copy(String srcKey, String dstKey) throws IOException {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
-            if (openCrc32c) {
+            if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
             }
 
