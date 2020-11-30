@@ -252,7 +252,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     Hex.encodeHexString(md5Hash));
         }
         storeFileWithRetry(key,
-                new BufferedInputStream(new FileInputStream(file)), md5Hash, file.length());
+                new ResettableFileInputStream(file), md5Hash, file.length());
     }
 
     @Override
@@ -311,7 +311,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     public PartETag uploadPart(File file, String key, String uploadId,
                                int partNum, byte[] md5Hash) throws IOException {
-        InputStream inputStream = new FileInputStream(file);
+        InputStream inputStream = new ResettableFileInputStream(file);
         return uploadPart(inputStream, key, uploadId, partNum, file.length(), md5Hash);
     }
 
@@ -1109,14 +1109,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             try {
                 if (request instanceof PutObjectRequest) {
                     sdkMethod = "putObject";
-                    if (((PutObjectRequest) request).getInputStream() instanceof BufferInputStream) {
+                    if (((PutObjectRequest) request).getInputStream().markSupported()) {
                         ((PutObjectRequest) request).getInputStream()
                                 .mark((int) ((PutObjectRequest) request).getMetadata().getContentLength());
                     }
                     return this.cosClient.putObject((PutObjectRequest) request);
                 } else if (request instanceof UploadPartRequest) {
                     sdkMethod = "uploadPart";
-                    if (((UploadPartRequest) request).getInputStream() instanceof BufferInputStream) {
+                    if (((UploadPartRequest) request).getInputStream().markSupported()) {
                         ((UploadPartRequest) request).getInputStream()
                                 .mark((int) ((UploadPartRequest) request).getPartSize());
                     }
@@ -1177,7 +1177,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         try {
                             if (request instanceof PutObjectRequest) {
                                 LOG.info("Try to reset the put object request input stream.");
-                                if (((PutObjectRequest) request).getInputStream() instanceof BufferInputStream) {
+                                if (((PutObjectRequest) request).getInputStream().markSupported()) {
                                     ((PutObjectRequest) request).getInputStream().reset();
                                 } else {
                                     LOG.error("The put object request input stream can not be reset, so it can not be" +
@@ -1188,7 +1188,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
                             if (request instanceof UploadPartRequest) {
                                 LOG.info("Try to reset the upload part request input stream.");
-                                if (((UploadPartRequest) request).getInputStream() instanceof BufferInputStream) {
+                                if (((UploadPartRequest) request).getInputStream().markSupported()) {
                                     ((UploadPartRequest) request).getInputStream().reset();
                                 } else {
                                     LOG.error("The upload part request input stream can not be reset, so it can not " +
