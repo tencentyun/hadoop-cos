@@ -52,6 +52,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_MAX_RETRIES = 200;
     public static final String COSN_RETRY_INTERVAL_KEY = "fs.cosn.retry.interval.seconds";
     public static final long DEFAULT_RETRY_INTERVAL = 3;
+    public static final String CLIENT_MAX_RETRIES_KEY = "fs.client.maxRetries";
+    public static final int DEFAULT_CLIENT_MAX_RETRIES = 5;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
     public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = 8;

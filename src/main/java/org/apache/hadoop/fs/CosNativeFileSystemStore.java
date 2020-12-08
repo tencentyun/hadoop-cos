@@ -138,15 +138,16 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.DEFAULT_MAX_RETRIES);
 
         // 设置cosn的最大重试次数跟COS SDK的保持一致
-        config.setMaxErrorRetry(this.maxRetryTimes);
+        int clientMaxRetryTimes = conf.getInt(
+                CosNConfigKeys.CLIENT_MAX_RETRIES_KEY,
+                CosNConfigKeys.DEFAULT_CLIENT_MAX_RETRIES);
+        config.setMaxErrorRetry(clientMaxRetryTimes);
 
         // 设置连接池的最大连接数目
         config.setMaxConnectionsCount(
                 conf.getInt(
                         CosNConfigKeys.MAX_CONNECTION_NUM,
-                        CosNConfigKeys.DEFAULT_MAX_CONNECTION_NUM
-                )
-        );
+                        CosNConfigKeys.DEFAULT_MAX_CONNECTION_NUM));
 
         // 设置是否进行服务器端加密
         String ServerSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
