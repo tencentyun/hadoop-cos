@@ -26,21 +26,13 @@ public enum CosEncryptionMethods {
     }
 
     /**
-     * Flag to indicate this is a server-side encryption option.
-     * @return true if this is server side.
-     */
-    public boolean isServerSide() {
-        return serverSide;
-    }
-
-    /**
      * Get the encryption mechanism from the value provided.
      * @param name algorithm name
      * @return the method
      * @throws IOException if the algorithm is unknown
      */
     public static CosEncryptionMethods getMethod(String name) throws IOException {
-        if(StringUtils.isNullOrEmpty(name)) {
+        if (StringUtils.isNullOrEmpty(name)) {
             return NONE;
         }
         for (CosEncryptionMethods v : values()) {
@@ -50,4 +42,13 @@ public enum CosEncryptionMethods {
         }
         throw new IOException(UNKNOWN_ALGORITHM_MESSAGE + name);
     }
+
+    /**
+     * Flag to indicate this is a server-side encryption option.
+     * @return true if this is server side.
+     */
+    public boolean isServerSide() {
+        return serverSide;
+    }
+
 }

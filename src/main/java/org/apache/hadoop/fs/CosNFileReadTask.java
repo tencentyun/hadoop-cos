@@ -22,6 +22,13 @@ public class CosNFileReadTask implements Runnable {
 
     private RetryPolicy retryPolicy = null;
 
+    /**
+     * cos file read task
+     * @param conf config
+     * @param key cos key
+     * @param store native file system
+     * @param readBuffer read buffer
+     */
     public CosNFileReadTask(Configuration conf, String key,
                             NativeFileSystemStore store,
                             CosFsInputStream.ReadBuffer readBuffer) {

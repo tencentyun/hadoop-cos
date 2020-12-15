@@ -7,10 +7,17 @@ import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
+import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.ServiceType;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.io.retry.RetryPolicies;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.io.retry.RetryProxy;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +30,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
+
 
 /**
  * A {@link FileSystem} for reading and writing files stored on
@@ -45,7 +53,7 @@ public class CosFileSystem extends FileSystem {
     static final int MAX_XATTR_SIZE = 1024;
 
     private URI uri;
-    String bucket;
+    private String bucket;
     private NativeFileSystemStore store;
     private Path workingDir;
     private String owner = "Unknown";
@@ -53,6 +61,11 @@ public class CosFileSystem extends FileSystem {
 
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
+
+    private UserGroupInformation currentUser;
+
+    private boolean enableRangerPluginPermissionCheck = false;
+    public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
 
     public CosFileSystem() {
     }
@@ -74,12 +87,20 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
         super.initialize(uri, conf);
+        setConf(conf);
+
+        UserGroupInformation.setConfiguration(conf);
+        this.currentUser = UserGroupInformation.getCurrentUser();
+
+        initRangerClientImpl(conf);
+
         this.bucket = uri.getHost();
+
         if (this.store == null) {
             this.store = createDefaultStore(conf);
         }
+
         this.store.initialize(uri, conf);
-        setConf(conf);
         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
         this.workingDir =
                 new Path("/user", System.getProperty("user.name"))
@@ -268,6 +289,9 @@ public class CosFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
+
+        checkPermission(f, AccessType.WRITE);
+
         if (exists(f) && !overwrite) {
             throw new FileAlreadyExistsException("File already exists: " + f);
         }
@@ -302,6 +326,9 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
         LOG.debug("Ready to delete path: {}. recursive: {}.", f, recursive);
+
+        checkPermission(f, AccessType.DELETE);
+
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -437,6 +464,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FileStatus[] listStatus(Path f) throws IOException {
         LOG.debug("list status:" + f);
+        checkPermission(f, AccessType.LIST);
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
@@ -531,6 +559,7 @@ public class CosFileSystem extends FileSystem {
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
         LOG.debug("mkdirs path: {}.", f);
+        checkPermission(f, AccessType.WRITE);
         try {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isDirectory()) {
@@ -595,6 +624,8 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
+        checkPermission(f, AccessType.READ);
+
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
         if (fileStatus.isDirectory()) {
@@ -612,6 +643,9 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
         LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
+
+        checkPermission(src, AccessType.DELETE);
+        checkPermission(dst, AccessType.WRITE);
 
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
@@ -809,22 +843,77 @@ public class CosFileSystem extends FileSystem {
         return workingDir;
     }
 
+
+    private void initRangerClientImpl(Configuration conf) throws IOException {
+        Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
+                conf,
+                CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
+
+        if (cosClasses.length == 0) {
+            this.enableRangerPluginPermissionCheck = false;
+            return;
+        }
+
+        for (Class<?> credClass : cosClasses) {
+            if (credClass.getName().contains(RangerCredentialsProvider.class.getName())) {
+                this.enableRangerPluginPermissionCheck = true;
+                break;
+            }
+        }
+
+        if (!this.enableRangerPluginPermissionCheck) {
+            return;
+        }
+
+        Class<?> rangerClientImplClass = conf.getClass(CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL, null);
+        if (rangerClientImplClass == null) {
+            try {
+                rangerClientImplClass = conf.getClassByName(CosNConfigKeys.DEFAULT_COSN_RANGER_PLUGIN_CLIENT_IMPL);
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        if (rangerQcloudObjectStorageStorageClient == null) {
+            synchronized (CosFileSystem.class) {
+                if (rangerQcloudObjectStorageStorageClient == null) {
+                    try {
+                        RangerQcloudObjectStorageClient tmpClient  =
+                                (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
+                        tmpClient.init(conf);
+                        rangerQcloudObjectStorageStorageClient = tmpClient;
+                    } catch (Exception e) {
+                        LOG.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
+                        throw new IOException(String.format("init %s failed",
+                                CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
+                    }
+                }
+            }
+        }
+
+    }
+
     @Override
     public String getCanonicalServiceName() {
-        // Does not support Token
+        if (rangerQcloudObjectStorageStorageClient != null) {
+            return rangerQcloudObjectStorageStorageClient.getCanonicalServiceName();
+        }
         return null;
     }
 
     @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         Preconditions.checkArgument(length >= 0);
-        LOG.debug("Call the checksum for the path: {}.", f);
+        LOG.debug("call the checksum for the path: {}.", f);
 
         // The order of each file, must support both crc at same time, how to tell the difference crc request?
+        checkPermission(f, AccessType.READ);
+
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
             Path absolutePath = makeAbsolute(f);
             String key = pathToKey(absolutePath);
+
             FileMetadata fileMetadata = this.store.retrieveMetadata(key);
             if (null == fileMetadata) {
                 throw new FileNotFoundException("File or directory doesn't exist: " + f);
@@ -847,6 +936,7 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
+
     /**
      * Set the value of an attribute for a path
      *
@@ -860,10 +950,12 @@ public class CosFileSystem extends FileSystem {
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
         LOG.debug("set XAttr: {}.", f);
 
+        checkPermission(f, AccessType.WRITE);
+
         // First, determine whether the length of the name and value exceeds the limit.
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
             throw new HadoopIllegalArgumentException(String.format("The maximum combined size of " +
-                    "the name and value of an extended attribute in bytes should be less than or equal to %d",
+                            "the name and value of an extended attribute in bytes should be less than or equal to %d",
                     MAX_XATTR_SIZE));
         }
 
@@ -896,6 +988,8 @@ public class CosFileSystem extends FileSystem {
     public byte[] getXAttr(Path f, String name) throws IOException {
         LOG.debug("get XAttr: {}.", f);
 
+        checkPermission(f, AccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
@@ -923,6 +1017,8 @@ public class CosFileSystem extends FileSystem {
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
         LOG.debug("get XAttrs: {}.", f);
 
+        checkPermission(f, AccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
@@ -944,6 +1040,23 @@ public class CosFileSystem extends FileSystem {
         return attrs;
     }
 
+    @Override
+    public Map<String, byte[]> getXAttrs(Path f) throws IOException {
+        LOG.debug("get XAttrs: {}.", f);
+
+        checkPermission(f, AccessType.READ);
+
+        Path absolutePath = makeAbsolute(f);
+
+        String key = pathToKey(absolutePath);
+        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        if (null == fileMetadata) {
+            throw new FileNotFoundException("File or directory doesn't exist: " + f);
+        }
+
+        return fileMetadata.getUserAttributes();
+    }
+
     /**
      * Removes an xattr of a cosn file or directory.
      *
@@ -954,6 +1067,8 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
         LOG.debug("remove XAttr: {}.", f);
+
+        checkPermission(f, AccessType.WRITE);
 
         Path absolutPath = makeAbsolute(f);
 
@@ -977,23 +1092,10 @@ public class CosFileSystem extends FileSystem {
     }
 
     @Override
-    public Map<String, byte[]> getXAttrs(Path f) throws IOException {
-        LOG.debug("get XAttrs: {}.", f);
-
-        Path absolutePath = makeAbsolute(f);
-
-        String key = pathToKey(absolutePath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
-        if (null == fileMetadata) {
-            throw new FileNotFoundException("File or directory doesn't exist: " + f);
-        }
-
-        return fileMetadata.getUserAttributes();
-    }
-
-    @Override
     public List<String> listXAttrs(Path f) throws IOException {
         LOG.debug("list XAttrs: {}.", f);
+
+        checkPermission(f, AccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
 
@@ -1004,6 +1106,35 @@ public class CosFileSystem extends FileSystem {
         }
 
         return new ArrayList<>(fileMetadata.getUserAttributes().keySet());
+    }
+
+    @Override
+    public Token<?> getDelegationToken(String renewer) throws IOException {
+        if (rangerQcloudObjectStorageStorageClient != null) {
+            return rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
+        }
+        return super.getDelegationToken(renewer);
+    }
+
+
+    private void checkPermission(Path f, AccessType accessType) throws IOException {
+        if (!this.enableRangerPluginPermissionCheck) {
+            return;
+        }
+        Path absolutePath = makeAbsolute(f);
+        String allowKey = pathToKey(absolutePath);
+        if (allowKey.startsWith("/")) {
+            allowKey = allowKey.substring(1);
+        }
+
+
+        PermissionRequest permissionReq = new PermissionRequest(ServiceType.COS, accessType,
+                this.bucket, allowKey, "", "");
+        boolean allowed = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
+        if (!allowed) {
+            throw new IOException(String.format("Permission denied, [key: %s], [user: %s], [operation: %s]",
+                    allowKey, currentUser.getShortUserName(), accessType.name()));
+        }
     }
 
     @Override

@@ -42,6 +42,10 @@ public class WriteConsistencyChecker {
             return key;
         }
 
+        /**
+         * judge the success operation
+         * @return whether success
+         */
         public boolean isSucceeded() {
             if (this.expectedLength < 0 && this.realLength < 0) {
                 // The expected length and the real length are invalid.
@@ -74,6 +78,10 @@ public class WriteConsistencyChecker {
             return realLength;
         }
 
+        /**
+         * get description string
+         * @return description
+         */
         public String getDescription() {
             if (!this.description.isEmpty()) {
                 return this.description;
@@ -99,8 +107,8 @@ public class WriteConsistencyChecker {
 
             // The expected length and real length is valid.
             if (this.expectedLength == this.realLength) {
-                this.description = String.format("File verification succeeded. expected length: %d, real length: %d"
-                        , this.expectedLength, this.realLength);
+                this.description = String.format("File verification succeeded. expected length: %d, real length: %d" ,
+                        this.expectedLength, this.realLength);
             } else {
                 this.description = String.format("File verification failure. expected length: %d, real length: %d",
                         this.expectedLength, this.realLength);

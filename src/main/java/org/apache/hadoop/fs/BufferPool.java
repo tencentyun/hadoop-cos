@@ -258,6 +258,9 @@ public final class BufferPool {
         }
     }
 
+    /**
+     *  close
+     */
     public synchronized void close() {
         LOG.info("Close a buffer pool instance.");
 

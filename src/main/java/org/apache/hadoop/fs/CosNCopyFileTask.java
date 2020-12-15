@@ -29,8 +29,8 @@ public class CosNCopyFileTask implements Runnable {
         try {
             this.store.copy(srcKey, dstKey);
         } catch (IOException e) {
-            LOG.warn("Exception thrown when copy from {} to {}, exception:{}"
-                    , this.srcKey, this.dstKey, e);
+            LOG.warn("Exception thrown when copy from {} to {}, exception:{}",
+                    this.srcKey, this.dstKey, e);
             fail = true;
         } finally {
             this.cosCopyFileContext.lock();

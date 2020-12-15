@@ -72,8 +72,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
                     "rw");
             randomAccessFile.setLength(size);
             MappedByteBuffer buf =
-                    randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0
-                            , size);
+                    randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0 , size);
             return new CosNMappedBuffer(buf, randomAccessFile, tmpFile);
         } catch (IOException e) {
             LOG.error("Create tmp file failed. Tmp dir: {}", this.tmpDir, e);

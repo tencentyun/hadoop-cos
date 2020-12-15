@@ -41,6 +41,17 @@ public class CosFsDataOutputStream extends OutputStream {
     private WriteConsistencyChecker writeConsistencyChecker = null;
     private boolean closed = false;
 
+    /**
+     * Output stream
+     *
+     * @param conf config
+     * @param store native file system
+     * @param key cos key
+     * @param blockSize block config size
+     * @param executorService thread executor
+     * @param checksEnabled check flag
+     * @throws IOException
+     */
     public CosFsDataOutputStream(
             Configuration conf,
             NativeFileSystemStore store,
@@ -207,7 +218,7 @@ public class CosFsDataOutputStream extends OutputStream {
 
         this.currentBlockId++;
         LOG.debug("upload part blockId: {}, uploadId: {}.", this.currentBlockId, this.uploadId);
-        byte[] md5Hash = this.digest == null ? null : this.digest.digest();
+        final byte[] md5Hash = this.digest == null ? null : this.digest.digest();
         ListenableFuture<PartETag> partETagListenableFuture =
                 this.executorService.submit(new Callable<PartETag>() {
                     private final CosNByteBuffer buffer = currentBlockBuffer;
