@@ -87,7 +87,7 @@ public class CosFsInputStream extends FSInputStream {
     private long partRemaining;
     private long bufferStart;
     private long bufferEnd;
-    private final long PreReadPartSize;
+    private final long preReadPartSize;
     private final int maxReadPartNumber;
     private byte[] buffer;
     private boolean closed = false;
@@ -95,6 +95,16 @@ public class CosFsInputStream extends FSInputStream {
     private final ExecutorService readAheadExecutorService;
     private final Queue<ReadBuffer> readBufferQueue;
 
+    /**
+     * Input Stream
+     *
+     * @param conf config
+     * @param store native file system
+     * @param statistics statis
+     * @param key cos key
+     * @param fileSize file size
+     * @param readAheadExecutorService thread executor
+     */
     public CosFsInputStream(
             Configuration conf,
             NativeFileSystemStore store,
@@ -110,7 +120,7 @@ public class CosFsInputStream extends FSInputStream {
         this.fileSize = fileSize;
         this.bufferStart = -1;
         this.bufferEnd = -1;
-        this.PreReadPartSize = conf.getLong(
+        this.preReadPartSize = conf.getLong(
                 CosNConfigKeys.READ_AHEAD_BLOCK_SIZE_KEY,
                 CosNConfigKeys.DEFAULT_READ_AHEAD_BLOCK_SIZE);
         this.maxReadPartNumber = conf.getInt(
@@ -130,10 +140,10 @@ public class CosFsInputStream extends FSInputStream {
         } else if (pos > this.fileSize) {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
         } else {
-            if (pos + this.PreReadPartSize > this.fileSize) {
+            if (pos + this.preReadPartSize > this.fileSize) {
                 partSize = this.fileSize - pos;
             } else {
-                partSize = this.PreReadPartSize;
+                partSize = this.preReadPartSize;
             }
         }
 

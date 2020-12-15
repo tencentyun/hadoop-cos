@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>3.1.0-5.8.7</version>
+    <version>5.9.0</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Qcloud COS Support</name>
@@ -38,9 +38,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <hadoop.version>3.1.0</hadoop.version>
+        <maven.compiler.source>1.7</maven.compiler.source>
+        <maven.compiler.target>1.7</maven.compiler.target>
+        <hadoop.version>3.3.0</hadoop.version>
         <cos_api.version>5.6.32</cos_api.version>
         <google.guava.version>24.1.1-jre</google.guava.version>
         <commons_lang3.version>3.1</commons_lang3.version>
@@ -82,8 +82,29 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.2.0</version>
+                <configuration>
+                    <attach>true</attach>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>2.9.1</version>
+                <configuration>
+                    <additionalJOption>-Xdoclint:none</additionalJOption>
+                </configuration>
                 <executions>
                     <execution>
                         <id>javadoc-jar</id>
@@ -126,5 +147,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>

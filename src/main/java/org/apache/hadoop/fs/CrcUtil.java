@@ -7,6 +7,7 @@ public class CrcUtil {
     }
 
     /**
+     * int turn to bytes
      * @return 4-byte array holding the big-endian representation of
      * {@code value}.
      */

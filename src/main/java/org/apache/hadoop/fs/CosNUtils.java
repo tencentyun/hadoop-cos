@@ -25,6 +25,13 @@ public final class CosNUtils {
     private CosNUtils() {
     }
 
+    /**
+     *  create cos cred
+     * @param uri cos uri
+     * @param conf config
+     * @return provider list
+     * @throws IOException
+     */
     public static COSCredentialProviderList createCosCredentialsProviderSet(
             URI uri,
             Configuration conf) throws IOException {
@@ -39,6 +46,7 @@ public final class CosNUtils {
                     conf));
             credentialProviderList.add(new SimpleCredentialProvider(uri, conf));
             credentialProviderList.add(new EnvironmentVariableCredentialProvider(uri, conf));
+            credentialProviderList.add(new SessionTokenCredentialProvider(uri,conf));
             credentialProviderList.add(new CVMInstanceCredentialsProvider(uri, conf));
             credentialProviderList.add(new CPMInstanceCredentialsProvider(uri, conf));
         } else {
@@ -64,6 +72,14 @@ public final class CosNUtils {
         }
     }
 
+    /**
+     * create cos cred
+     * @param uri cos uri
+     * @param conf config
+     * @param credClass cred class
+     * @return provider
+     * @throws IOException
+     */
     public static COSCredentialsProvider createCOSCredentialProvider(
             URI uri,
             Configuration conf,
@@ -134,8 +150,7 @@ public final class CosNUtils {
                                                  Class<?>... args) {
         try {
             Constructor constructor = cl.getDeclaredConstructor(args);
-            return Modifier.isPublic(constructor.getModifiers()) ?
-                    constructor : null;
+            return Modifier.isPublic(constructor.getModifiers()) ? constructor : null;
         } catch (NoSuchMethodException e) {
             return null;
         }
