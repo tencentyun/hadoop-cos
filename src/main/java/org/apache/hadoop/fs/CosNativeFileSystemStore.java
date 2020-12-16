@@ -46,6 +46,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean crc32cEnabled;
     private CosEncryptionSecrets encryptionSecrets;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
+    private L5EndpointResolver l5EndpointResolver;
+    private boolean useL5Id = false;
+    private int l5UpdateMaxRetryTimes;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         this.cosCredentialProviderList =
@@ -77,6 +80,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 config.setEndPointSuffix(endpointSuffix);
             } else {
                 config = new ClientConfig(new Region(region));
+            }
+            this.useL5Id = conf.getBoolean(
+                    CosNConfigKeys.COSN_USE_L5_ENABLE,
+                    CosNConfigKeys.DEFAULT_COSN_USE_L5_ENABLE);
+            this.l5UpdateMaxRetryTimes = conf.getInt(CosNConfigKeys.COSN_L5_UPDATE_MAX_RETRIES_KEY,
+                    CosNConfigKeys.DEFAULT_COSN_L5_UPDATE_MAX_RETRIES);
+            if (useL5Id) {
+                String l5Id = conf.get(CosNConfigKeys.COSN_L5_KEY);
+                if (null != l5Id) {
+                    int l5modId = Integer.parseInt(l5Id.split(",")[0]);
+                    int l5cmdId = Integer.parseInt(l5Id.split(",")[1]);
+                    l5EndpointResolver = new L5EndpointResolver(l5modId, l5cmdId);
+                    config.setEndpointResolver(l5EndpointResolver);
+                }
             }
         } else {
             config = new ClientConfig(new Region(""));
@@ -1134,6 +1151,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {
         String sdkMethod = "";
         int retryIndex = 1;
+        int l5ErrorCodeRetryIndex = 1;
+        int l5IOExceptionRetryIndex = 1;
         while (true) {
             try {
                 if (request instanceof PutObjectRequest) {
@@ -1200,6 +1219,17 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     }
                 } else if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
+                        if(statusCode == 503) {
+                            if (useL5Id) {
+                                if(l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
+                                    // L5上报，进行重试
+                                    l5EndpointResolver.L5RouteResultUpdate(-1);
+                                    l5ErrorCodeRetryIndex = 1;
+                                } else {
+                                    l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
+                                }
+                            }
+                        }
                         LOG.info(errMsg, cse);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
@@ -1240,7 +1270,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     throw cse;
                 }
             } catch (Exception e) {
-                throw new IOException(e);
+                if (useL5Id) {
+                    if(l5IOExceptionRetryIndex >= this.l5UpdateMaxRetryTimes) {
+                        // L5上报，进行重试
+                        l5EndpointResolver.L5RouteResultUpdate(-1);
+                        l5IOExceptionRetryIndex = 1;
+                    } else {
+                        l5IOExceptionRetryIndex = l5IOExceptionRetryIndex + 1;
+                    }
+                }
+                if (retryIndex > this.maxRetryTimes) {
+                    throw new IOException(e);
+                } else {
+                    ++retryIndex;
+                }
             }
         }
     }

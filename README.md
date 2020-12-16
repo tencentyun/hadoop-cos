@@ -4,7 +4,7 @@
 Hadoop-COS插件实现了以腾讯云 COS 作为底层文件系统运行上层计算任务的功能，支持使用Hadoop、Spark以及Tez等处理存储在腾讯云COS对象存储系统上的数据。
 
 ## 使用限制
-只适用于 COS V5 版本
+只适用于 COS V5 版本，**且该分支版本限于腾讯内部支持L5负载均衡的环境使用**。
 
 ## 使用环境
 ### 系统环境
@@ -189,6 +189,21 @@ done
         <value></value>
         <description>The SSE-C server side encryption key.</description>
     </property>
+   
+   <property>
+       <name>fs.cosn.use.l5.enable</name>
+       <value></value>
+   </property>
+   
+   <property>
+      <name>fs.cosn.bucket.l5</name>
+      <value>modid,cmdid</value>
+   </property>
+   
+   <property>
+      <name>fs.cosn.l5.update.maxRetries</name>
+      <value></value>
+   </property>
 
 </configuration>
 
@@ -224,6 +239,9 @@ done
 |fs.cosn.crc64.checksum.enabled    | 是否开启CRC64校验。默认不开启，此时无法使用`hadoop fs -checksum`命令获取文件的CRC64校验值。| false | 否 |
 |fs.cosn.crc32c.checksum.enabled    | 是否开启CRC32c校验。默认不开启，此时无法使用hadoop fs -checksum命令获取文件的CRC32C校验值。只能开启一种校验方式| false | 否 |
 |fs.cosn.traffic.limit | 上传下载带宽的控制选项，819200 ~ 838860800，单位为bits/s。默认值为-1，表示不限制。 | -1 | 否 |
+|fs.cosn.use.l5.enable | 配置是否使用L5。 | false | 否 |
+|fs.cosn.bucket.l5     | L5配置项，格式为modid,cmdid | 无 | 否 |
+|fs.cosn.l5.update.maxRetries    | 请求重试多少次后，进行L5上报   | 5 | 否 |
 
 ### 开始使用
 

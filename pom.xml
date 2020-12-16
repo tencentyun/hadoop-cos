@@ -36,18 +36,19 @@
         <url>https://github.com/tencentyun/hadoop-cos</url>
     </scm>
 
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.7</maven.compiler.source>
-        <maven.compiler.target>1.7</maven.compiler.target>
-        <hadoop.version>3.3.0</hadoop.version>
-        <cos_api.version>5.6.32</cos_api.version>
-        <google.guava.version>24.1.1-jre</google.guava.version>
-        <commons_lang3.version>3.1</commons_lang3.version>
-        <junit.version>4.8</junit.version>
-        <downloadSources>true</downloadSources>
-    </properties>
+  <distributionManagement>
+        <repository>
+            <id>oss</id>
+            <name>hadoop-cos</name>
+            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
+        </repository>
 
+        <snapshotRepository>
+            <id>oss</id>
+            <name>hadoop-cos</name>
+            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
     <dependencies>
         <dependency>
             <groupId>com.qcloud</groupId>
@@ -62,21 +63,19 @@
             <version>${hadoop.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.tencent.jungle</groupId>
+            <artifactId>jungle-udp-l5</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
     </dependencies>
-
-    <distributionManagement>
-        <repository>
-            <id>oss</id>
-            <name>hadoop-cos</name>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
-        </repository>
-
-        <snapshotRepository>
-            <id>oss</id>
-            <name>hadoop-cos</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
-    </distributionManagement>
 
     <build>
         <plugins>

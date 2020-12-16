@@ -29,6 +29,13 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_USE_HTTPS_KEY = "fs.cosn.useHttps";
     public static final boolean DEFAULT_USE_HTTPS = false;
 
+    public static final String COSN_L5_KEY = "fs.cosn.bucket.l5";
+    public static final boolean DEFAULT_COSN_USE_L5_ENABLE = false;
+    public static final String COSN_USE_L5_ENABLE = "fs.cosn.use.l5.enable";
+
+    public static final String COSN_L5_UPDATE_MAX_RETRIES_KEY = "fs.cosn.l5.update.maxRetries";
+    public static final int DEFAULT_COSN_L5_UPDATE_MAX_RETRIES = 5;
+
     public static final String COSN_TMP_DIR = "fs.cosn.tmp.dir";
     public static final String DEFAULT_TMP_DIR = "/tmp/hadoop_cos";
 
