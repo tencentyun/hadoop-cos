@@ -11,7 +11,6 @@ import com.qcloud.cos.utils.Base64;
 import com.qcloud.cos.utils.Jackson;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.math3.analysis.function.Constant;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -19,8 +18,10 @@ import org.apache.hadoop.fs.auth.COSCredentialProviderList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.OverridingMethodsMustInvokeSuper;
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -138,7 +139,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.COSN_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_MAX_RETRIES);
 
-        // 设置cosn的最大重试次数跟COS SDK的保持一致
+        // 设置COSClient的最大重试次数
         int clientMaxRetryTimes = conf.getInt(
                 CosNConfigKeys.CLIENT_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_CLIENT_MAX_RETRIES);
