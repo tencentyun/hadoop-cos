@@ -420,7 +420,8 @@ public class CosFileSystem extends FileSystem {
             return newDirectory(absolutePath);
         }
 
-        FileMetadata meta = store.retrieveMetadata(key);
+        CosResultInfo info = new CosResultInfo();
+        FileMetadata meta = store.retrieveMetadata(key, info);
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
@@ -441,6 +442,12 @@ public class CosFileSystem extends FileSystem {
             return newDirectory(absolutePath);
         }
 
+        if (listing.isKeySamePrefix()) {
+            LOG.info("List the cos key [{}] same to prefix, head-id:[{}], " +
+                            "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]",
+                    key, info.getRequestID(), listing.getRequestID(),
+                    listing.isKeySamePrefix(), Thread.currentThread().getId(), Thread.currentThread().getName());
+        }
         LOG.debug("Can not find the cos key [{}] on COS.", key);
 
         throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
