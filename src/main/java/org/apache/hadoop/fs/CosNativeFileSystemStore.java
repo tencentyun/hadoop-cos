@@ -449,6 +449,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     private FileMetadata queryObjectMetadata(String key) throws IOException {
+        return queryObjectMetadata(key, null);
+    }
+
+    private FileMetadata queryObjectMetadata(String key,
+                                             CosResultInfo info) throws IOException {
         LOG.debug("Query Object metadata. cos key: {}.", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
@@ -494,10 +499,17 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     new FileMetadata(key, fileSize, mtime, !key.endsWith(PATH_DELIMITER),
                             ETag, crc64ecm, crc32cm, versionId,
                             objectMetadata.getStorageClass(), userMetadata);
+            // record the last request result info
+            if (info != null)  {
+                info.setRequestID(objectMetadata.getRequestId());
+            }
             LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}, crc64ecm: {}.", key,
                     objectMetadata.getETag(), objectMetadata.getContentLength(), objectMetadata.getCrc64Ecma());
             return fileMetadata;
         } catch (CosServiceException e) {
+            if (info != null) {
+                info.setRequestID(e.getRequestId());
+            }
             if (e.getStatusCode() != 404) {
                 String errorMsg =
                         String.format("Retrieve the file metadata file failure. " +
@@ -510,19 +522,26 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public FileMetadata retrieveMetadata(String key) throws IOException {
+        return retrieveMetadata(key, null);
+    }
+
+    // this method only used in getFileStatus to get the head request result info
+    @Override
+    public FileMetadata retrieveMetadata(String key,
+                                         CosResultInfo info) throws IOException {
         if (key.endsWith(PATH_DELIMITER)) {
             key = key.substring(0, key.length() - 1);
         }
 
         if (!key.isEmpty()) {
-            FileMetadata fileMetadata = queryObjectMetadata(key);
+            FileMetadata fileMetadata = queryObjectMetadata(key, info);
             if (fileMetadata != null) {
                 return fileMetadata;
             }
         }
         // judge if the key is directory
         key = key + PATH_DELIMITER;
-        return queryObjectMetadata(key);
+        return queryObjectMetadata(key, info);
     }
 
     @Override
@@ -782,15 +801,26 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public PartialListing list(String prefix, int maxListingLength) throws IOException {
-        return list(prefix, maxListingLength, null, false);
+        return list(prefix, maxListingLength, null);
+    }
+
+    @Override
+    public PartialListing list(String prefix, int maxListingLength, CosResultInfo info) throws IOException {
+        return list(prefix, maxListingLength, null, false, info);
     }
 
     @Override
     public PartialListing list(String prefix, int maxListingLength,
                                String priorLastKey,
                                boolean recurse) throws IOException {
+        return list(prefix, maxListingLength, priorLastKey, recurse, null);
+    }
 
-        return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey);
+    @Override
+    public PartialListing list(String prefix, int maxListingLength,
+                               String priorLastKey,
+                               boolean recurse, CosResultInfo info) throws IOException {
+        return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey, info);
     }
 
     /**
@@ -806,7 +836,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private PartialListing list(String prefix, String delimiter,
                                 int maxListingLength,
-                                String priorLastKey) throws IOException {
+                                String priorLastKey, CosResultInfo info) throws IOException {
         LOG.debug("List the cos key prefix: {}, max listing length: {}, delimiter: {}, prior last key: {}.",
                 prefix,
                 delimiter, maxListingLength, priorLastKey);
@@ -846,12 +876,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         ArrayList<FileMetadata> commonPrefixArray =
                 new ArrayList<FileMetadata>();
         List<COSObjectSummary> summaries = objectListing.getObjectSummaries();
+        boolean isKeySamePrefix = false;
         for (COSObjectSummary cosObjectSummary : summaries) {
             String filePath = cosObjectSummary.getKey();
             if (!filePath.startsWith(PATH_DELIMITER)) {
                 filePath = PATH_DELIMITER + filePath;
             }
             if (filePath.equals(prefix)) {
+                isKeySamePrefix = true;
                 continue;
             }
             long mtime = 0;
@@ -890,10 +922,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         // 如果truncated为false, 则表明已经遍历完
         if (!objectListing.isTruncated()) {
-            return new PartialListing(null, fileMetadata, commonPrefixMetaData);
+            PartialListing ret = new PartialListing(null, fileMetadata, commonPrefixMetaData);
+            if (info != null) {
+                info.setRequestID(objectListing.getRequestId());
+                info.setKeySameToPrefix(isKeySamePrefix);
+            }
+            return ret;
         } else {
-            return new PartialListing(objectListing.getNextMarker(),
+            PartialListing ret =  new PartialListing(objectListing.getNextMarker(),
                     fileMetadata, commonPrefixMetaData);
+            if (info != null) {
+                info.setRequestID(objectListing.getRequestId());
+                info.setKeySameToPrefix(isKeySamePrefix);
+            }
+            return ret;
         }
     }
 

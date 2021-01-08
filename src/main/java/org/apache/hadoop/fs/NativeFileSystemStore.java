@@ -45,6 +45,8 @@ public interface NativeFileSystemStore {
 
     FileMetadata retrieveMetadata(String key) throws IOException;
 
+    FileMetadata retrieveMetadata(String key, CosResultInfo info) throws IOException;
+
     byte[] retrieveAttribute(String key, String attribute) throws IOException;
 
     void storeDirAttribute(String key, String attribute, byte[] value) throws IOException;
@@ -69,8 +71,14 @@ public interface NativeFileSystemStore {
 
     PartialListing list(String prefix, int maxListingLength) throws IOException;
 
+    PartialListing list(String prefix, int maxListingLength, CosResultInfo info) throws IOException;
+
     PartialListing list(String prefix, int maxListingLength,
                         String priorLastKey, boolean recursive)
+            throws IOException;
+
+    PartialListing list(String prefix, int maxListingLength,
+                        String priorLastKey, boolean recursive, CosResultInfo info)
             throws IOException;
 
     void delete(String key) throws IOException;
