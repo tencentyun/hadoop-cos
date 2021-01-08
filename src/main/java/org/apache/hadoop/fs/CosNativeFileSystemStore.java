@@ -801,15 +801,26 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public PartialListing list(String prefix, int maxListingLength) throws IOException {
-        return list(prefix, maxListingLength, null, false);
+        return list(prefix, maxListingLength, null);
+    }
+
+    @Override
+    public PartialListing list(String prefix, int maxListingLength, CosResultInfo info) throws IOException {
+        return list(prefix, maxListingLength, null, false, info);
     }
 
     @Override
     public PartialListing list(String prefix, int maxListingLength,
                                String priorLastKey,
                                boolean recurse) throws IOException {
+        return list(prefix, maxListingLength, priorLastKey, recurse, null);
+    }
 
-        return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey);
+    @Override
+    public PartialListing list(String prefix, int maxListingLength,
+                               String priorLastKey,
+                               boolean recurse, CosResultInfo info) throws IOException {
+        return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey, info);
     }
 
     /**
@@ -825,7 +836,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private PartialListing list(String prefix, String delimiter,
                                 int maxListingLength,
-                                String priorLastKey) throws IOException {
+                                String priorLastKey, CosResultInfo info) throws IOException {
         LOG.debug("List the cos key prefix: {}, max listing length: {}, delimiter: {}, prior last key: {}.",
                 prefix,
                 delimiter, maxListingLength, priorLastKey);
@@ -912,14 +923,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         // 如果truncated为false, 则表明已经遍历完
         if (!objectListing.isTruncated()) {
             PartialListing ret = new PartialListing(null, fileMetadata, commonPrefixMetaData);
-            ret.setKeySamePrefix(isKeySamePrefix);
-            ret.setRequestID(objectListing.getRequestId());
+            if (info != null) {
+                info.setRequestID(objectListing.getRequestId());
+                info.setKeySameToPrefix(isKeySamePrefix);
+            }
             return ret;
         } else {
             PartialListing ret =  new PartialListing(objectListing.getNextMarker(),
                     fileMetadata, commonPrefixMetaData);
-            ret.setKeySamePrefix(isKeySamePrefix);
-            ret.setRequestID(objectListing.getRequestId());
+            if (info != null) {
+                info.setRequestID(objectListing.getRequestId());
+                info.setKeySameToPrefix(isKeySamePrefix);
+            }
             return ret;
         }
     }

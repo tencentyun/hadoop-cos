@@ -24,30 +24,12 @@ public class PartialListing {
     private final String priorLastKey;
     private final FileMetadata[] files;
     private final FileMetadata[] commonPrefixes;
-    private CosResultInfo resultInfo;
 
     public PartialListing(String priorLastKey, FileMetadata[] files,
                           FileMetadata[] commonPrefixes) {
         this.priorLastKey = priorLastKey;
         this.files = files;
         this.commonPrefixes = commonPrefixes;
-        this.resultInfo = new CosResultInfo();
-    }
-
-    public void setKeySamePrefix(boolean isKeySamePrefix) {
-        this.resultInfo.setKeySameToPrefix(isKeySamePrefix);
-    }
-
-    public boolean isKeySamePrefix() {
-        return this.resultInfo.isKeySameToPrefix();
-    }
-
-    public void setRequestID(String requestID) {
-        this.resultInfo.setRequestID(requestID);
-    }
-
-    public String getRequestID() {
-        return this.resultInfo.getRequestID();
     }
 
     public FileMetadata[] getFiles() {

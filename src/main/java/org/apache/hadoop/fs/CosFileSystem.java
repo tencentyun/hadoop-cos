@@ -420,8 +420,8 @@ public class CosFileSystem extends FileSystem {
             return newDirectory(absolutePath);
         }
 
-        CosResultInfo info = new CosResultInfo();
-        FileMetadata meta = store.retrieveMetadata(key, info);
+        CosResultInfo headInfo = new CosResultInfo();
+        FileMetadata meta = store.retrieveMetadata(key, headInfo);
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
@@ -436,17 +436,18 @@ public class CosFileSystem extends FileSystem {
             key += PATH_DELIMITER;
         }
         LOG.debug("List the cos key [{}] to judge whether it is a directory or not.", key);
-        PartialListing listing = store.list(key, 1);
+        CosResultInfo listInfo = new CosResultInfo();
+        PartialListing listing = store.list(key, 1, listInfo);
         if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
             LOG.debug("List the cos key [{}] to find that it is a directory.", key);
             return newDirectory(absolutePath);
         }
 
-        if (listing.isKeySamePrefix()) {
+        if (listInfo.isKeySameToPrefix()) {
             LOG.info("List the cos key [{}] same to prefix, head-id:[{}], " +
                             "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]",
-                    key, info.getRequestID(), listing.getRequestID(),
-                    listing.isKeySamePrefix(), Thread.currentThread().getId(), Thread.currentThread().getName());
+                    key, headInfo.getRequestID(), listInfo.getRequestID(),
+                    listInfo.isKeySameToPrefix(), Thread.currentThread().getId(), Thread.currentThread().getName());
         }
         LOG.debug("Can not find the cos key [{}] on COS.", key);
 
