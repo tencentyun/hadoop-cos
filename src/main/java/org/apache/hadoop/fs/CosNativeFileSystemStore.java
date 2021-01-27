@@ -1174,6 +1174,30 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
+
+    private <X> void resetInputStream(X request, CosServiceException cse) throws CosServiceException, IOException {
+        if (request instanceof PutObjectRequest) {
+            LOG.info("Try to reset the put object request input stream.");
+            if (((PutObjectRequest) request).getInputStream().markSupported()) {
+                ((PutObjectRequest) request).getInputStream().reset();
+            } else {
+                LOG.error("The put object request input stream can not be reset, so it can not be" +
+                        " retried.");
+                throw cse;
+            }
+        } else if (request instanceof UploadPartRequest) {
+            LOG.info("Try to reset the upload part request input stream.");
+            if (((UploadPartRequest) request).getInputStream().markSupported()) {
+                ((UploadPartRequest) request).getInputStream().reset();
+            } else {
+                LOG.error("The upload part request input stream can not be reset, so it can not " +
+                        "be retried" +
+                        ".");
+                throw cse;
+            }
+        }
+    }
+
     private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {
         String sdkMethod = "";
         int retryIndex = 1;
@@ -1231,9 +1255,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 int statusCode = cse.getStatusCode();
                 String errorCode = cse.getErrorCode();
                 LOG.debug("fail to retry statusCode {}, errorCode {}", statusCode, errorCode);
-                // 对5xx错误进行重试
                 if (request instanceof CopyObjectRequest && statusCode / 100 == 2
                         && errorCode != null && !errorCode.isEmpty()) {
+                    // 1. copy 200 but has error code must retry
                     if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg, cse);
                         ++retryIndex;
@@ -1241,34 +1265,34 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         LOG.error(errMsg, cse);
                         throw new IOException(errMsg);
                     }
-                } else if (statusCode / 100 == 5) {
+                } else if (request instanceof UploadPartRequest && statusCode == 409) {
+                    // 2. upload part 409 retry
                     if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg, cse);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
-                            if (request instanceof PutObjectRequest) {
-                                LOG.info("Try to reset the put object request input stream.");
-                                if (((PutObjectRequest) request).getInputStream().markSupported()) {
-                                    ((PutObjectRequest) request).getInputStream().reset();
-                                } else {
-                                    LOG.error("The put object request input stream can not be reset, so it can not be" +
-                                            " retried.");
-                                    throw cse;
-                                }
-                            }
-
-                            if (request instanceof UploadPartRequest) {
-                                LOG.info("Try to reset the upload part request input stream.");
-                                if (((UploadPartRequest) request).getInputStream().markSupported()) {
-                                    ((UploadPartRequest) request).getInputStream().reset();
-                                } else {
-                                    LOG.error("The upload part request input stream can not be reset, so it can not " +
-                                            "be retried" +
-                                            ".");
-                                    throw cse;
-                                }
-                            }
+                            // 2.1 reset upload input stream
+                            resetInputStream(request, cse);
+                            Thread.sleep(
+                                    ThreadLocalRandom.current().nextLong(sleepLeast, sleepBound));
+                            ++retryIndex;
+                        } catch (InterruptedException e) { // reset exception
+                            throw new IOException(e.toString());
+                        }
+                    } else {  // out of retry index
+                        LOG.error(errMsg, cse);
+                        throw new IOException(errMsg);
+                    }
+                } else if (statusCode / 100 == 5) {
+                    // 503 freq control to retry
+                    if (retryIndex <= this.maxRetryTimes) {
+                        LOG.info(errMsg, cse);
+                        long sleepLeast = retryIndex * 300L;
+                        long sleepBound = retryIndex * 500L;
+                        try {
+                            // reset upload part and put object input stream
+                            resetInputStream(request, cse);
                             Thread.sleep(
                                     ThreadLocalRandom.current().nextLong(sleepLeast, sleepBound));
                             ++retryIndex;
