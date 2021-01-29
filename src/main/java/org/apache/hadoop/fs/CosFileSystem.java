@@ -141,7 +141,12 @@ public class CosFileSystem extends FileSystem {
                             } catch (InterruptedException e) {
                                 LOG.error("put a io task into the download " +
                                         "thread pool occurs an exception.", e);
+                                throw new RejectedExecutionException(
+                                        "Putting the io task failed due to the interruption", e);
                             }
+                        } else {
+                            LOG.error("The bounded io thread pool has been shutdown.");
+                            throw new RejectedExecutionException("The bounded io thread pool has been shutdown");
                         }
                     }
                 }
