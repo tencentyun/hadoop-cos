@@ -105,4 +105,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_RANGER_PLUGIN_CLIENT_IMPL = "fs.cosn.ranger.plugin.client.impl";
     public static final String DEFAULT_COSN_RANGER_PLUGIN_CLIENT_IMPL  =
             "org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClientImpl";
+
+    public static final String COSN_CLIENT_SOCKET_TIMEOUTSEC = "fs.cosn.client.socket.timeoutsec";
+    public static final int DEFAULT_CLIENT_SOCKET_TIMEOUTSEC = 30;
 }
