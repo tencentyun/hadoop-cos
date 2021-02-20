@@ -126,6 +126,7 @@ public class CosFileSystem extends FileSystem {
                 CosNConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
                 CosNConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME
         );
+
         this.boundedIOThreadPool = new ThreadPoolExecutor(
                 ioThreadPoolSize / 2, ioThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,

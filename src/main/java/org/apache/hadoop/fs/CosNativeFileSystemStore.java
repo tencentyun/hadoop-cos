@@ -94,6 +94,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             config.setHttpProtocol(HttpProtocol.https);
         }
 
+        int socketTimeoutSec = conf.getInt(
+                CosNConfigKeys.COSN_CLIENT_SOCKET_TIMEOUTSEC,
+                CosNConfigKeys.DEFAULT_CLIENT_SOCKET_TIMEOUTSEC);
+        config.setSocketTimeout(socketTimeoutSec * 1000);
+
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
 
@@ -144,6 +149,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.CLIENT_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_CLIENT_MAX_RETRIES);
         config.setMaxErrorRetry(clientMaxRetryTimes);
+        LOG.info("hadoop cos retry times: {}, cos client retry times: {}",
+                this.maxRetryTimes, clientMaxRetryTimes);
 
         // 设置连接池的最大连接数目
         config.setMaxConnectionsCount(
