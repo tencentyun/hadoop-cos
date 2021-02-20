@@ -149,6 +149,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.CLIENT_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_CLIENT_MAX_RETRIES);
         config.setMaxErrorRetry(clientMaxRetryTimes);
+        LOG.info("hadoop cos retry times: {}, cos client retry times: {}",
+                this.maxRetryTimes, clientMaxRetryTimes);
 
         // 设置连接池的最大连接数目
         config.setMaxConnectionsCount(

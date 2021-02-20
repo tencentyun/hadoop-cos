@@ -127,17 +127,6 @@ public class CosFileSystem extends FileSystem {
                 CosNConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME
         );
 
-        int maxRetrys = this.getConf().getInt(
-                CosNConfigKeys.COSN_MAX_RETRIES_KEY,
-                CosNConfigKeys.DEFAULT_MAX_RETRIES
-        );
-
-        int clientMaxRetrys = this.getConf().getInt(
-                CosNConfigKeys.CLIENT_MAX_RETRIES_KEY,
-                CosNConfigKeys.DEFAULT_CLIENT_MAX_RETRIES
-        );
-        LOG.info("hadoop cos retry times: {}, cos client retry times: {}", maxRetrys, clientMaxRetrys);
-
         this.boundedIOThreadPool = new ThreadPoolExecutor(
                 ioThreadPoolSize / 2, ioThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
