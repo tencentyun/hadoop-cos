@@ -205,9 +205,9 @@ public class CosFsDataOutputStream extends OutputStream implements Abortable{
                 this.store.abortMultipartUpload(key, uploadId);
             }
         } finally {
+            this.closed = true;
             BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
             this.blockWritten = 0;
-            this.closed = true;
             this.writeConsistencyChecker = null;
             this.currentBlockBuffer = null;
             this.currentBlockOutputStream = null;
