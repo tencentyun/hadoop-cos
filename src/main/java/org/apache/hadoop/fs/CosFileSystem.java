@@ -195,8 +195,6 @@ public class CosFileSystem extends FileSystem {
                 RetryPolicies.retryByException(RetryPolicies.TRY_ONCE_THEN_FAIL,
                         exceptionToPolicyMap);
         Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String, RetryPolicy>();
-        methodNameToPolicyMap.put("storeFile", methodPolicy);
-        methodNameToPolicyMap.put("rename", methodPolicy);
 
         return (NativeFileSystemStore) RetryProxy.create(NativeFileSystemStore.class, store,
                 methodNameToPolicyMap);
