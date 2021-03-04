@@ -21,7 +21,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
-public class CosFsDataOutputStream extends OutputStream {
+public class CosFsDataOutputStream extends OutputStream implements Abortable{
     static final Logger LOG =
             LoggerFactory.getLogger(CosFsDataOutputStream.class);
 
@@ -183,6 +183,31 @@ public class CosFsDataOutputStream extends OutputStream {
             BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
             this.blockWritten = 0;
             this.closed = true;
+            this.writeConsistencyChecker = null;
+            this.currentBlockBuffer = null;
+            this.currentBlockOutputStream = null;
+        }
+    }
+
+    @Override
+    public void abort() throws IOException {
+        LOG.info("abort file upload, key:{}, uploadId:{}", key, uploadId);
+        if (this.closed) {
+            return;
+        }
+
+        try {
+            if(currentBlockOutputStream != null) {
+                this.currentBlockOutputStream.flush();
+                this.currentBlockOutputStream.close();
+            }
+            if(uploadId != null) {
+                this.store.abortMultipartUpload(key, uploadId);
+            }
+        } finally {
+            this.closed = true;
+            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
+            this.blockWritten = 0;
             this.writeConsistencyChecker = null;
             this.currentBlockBuffer = null;
             this.currentBlockOutputStream = null;
