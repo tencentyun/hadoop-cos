@@ -1,7 +1,7 @@
 # HADOOP-COS
 
 ## 功能说明
-Hadoop-COS插件实现了以腾讯云 COS 作为底层文件系统运行上层计算任务的功能，支持使用Hadoop、Spark以及Tez等处理存储在腾讯云COS对象存储系统上的数据。
+Hadoop-COS实现了以腾讯云 COS 作为底层文件系统运行上层计算任务的功能，支持使用Hadoop、Spark以及Tez等处理存储在腾讯云COS对象存储系统上的数据。
 
 ## 使用限制
 只适用于 COS V5 版本
