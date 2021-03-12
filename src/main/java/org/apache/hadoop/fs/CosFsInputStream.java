@@ -336,6 +336,20 @@ public class CosFsInputStream extends FSInputStream {
     }
 
     @Override
+    public int available() throws IOException {
+        if(this.closed) {
+            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
+        }
+
+        long remaining = this.fileSize - this.position;
+        if(remaining > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+
+        return (int) remaining;
+    }
+
+    @Override
     public void close() throws IOException {
         if (this.closed) {
             return;
