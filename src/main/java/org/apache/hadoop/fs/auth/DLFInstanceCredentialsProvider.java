@@ -53,7 +53,7 @@ public class DLFInstanceCredentialsProvider extends AbstractCOSCredentialProvide
     try {
       return this.cosCredentialsProvider.getCredentials();
     } catch (CosClientException e) {
-      LOG.error("Failed to obtain the credentials from CVMInstanceCredentialsProvider.", e);
+      LOG.error("Failed to obtain the credentials from DLFInstanceCredentialsProvider.", e);
     }
 
     return null;
