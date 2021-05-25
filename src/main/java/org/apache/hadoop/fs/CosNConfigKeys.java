@@ -10,7 +10,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.9.3";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v5.9.4";
 
     public static final String TENCENT_EMR_VERSION_KEY = "fs.emr.version";
 
