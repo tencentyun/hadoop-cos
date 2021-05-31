@@ -27,6 +27,11 @@ public class CosEncryptionSecrets implements Writable, Serializable {
     private String encryptionKey = "";
 
     /**
+     * Encryption context used by sse-kms
+     */
+    private String encryptionContext = "";
+
+    /**
      * This field isn't serialized/marshalled; it is rebuilt from the
      * encryptionAlgorithm field.
      */
@@ -51,6 +56,11 @@ public class CosEncryptionSecrets implements Writable, Serializable {
         this(encryptionAlgorithm.getMethod(), encryptionKey);
     }
 
+    public CosEncryptionSecrets(final CosEncryptionMethods encryptionAlgorithm,
+                                final String encryptionKey, final String encryptionContext) throws IOException {
+        this(encryptionAlgorithm.getMethod(), encryptionKey, encryptionContext);
+    }
+
     /**
      * Create a pair of secrets.
      *
@@ -65,6 +75,13 @@ public class CosEncryptionSecrets implements Writable, Serializable {
         init();
     }
 
+    public CosEncryptionSecrets(final String encryptionAlgorithm,
+                                final String encryptionKey, final String encryptionContext) throws IOException {
+        this.encryptionAlgorithm = encryptionAlgorithm;
+        this.encryptionKey = encryptionKey;
+        this.encryptionContext = encryptionContext;
+        init();
+    }
     /**
      * Write out the encryption secrets.
      *
@@ -128,6 +145,8 @@ public class CosEncryptionSecrets implements Writable, Serializable {
     public String getEncryptionKey() {
         return encryptionKey;
     }
+
+    public String getEncryptionContext() { return encryptionContext; }
 
     /**
      * Does this instance have encryption options?

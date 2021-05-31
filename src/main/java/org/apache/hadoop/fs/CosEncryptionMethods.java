@@ -8,6 +8,7 @@ public enum CosEncryptionMethods {
 
     SSE_COS("SSE-COS", true),
     SSE_C("SSE-C", true),
+    SSE_KMS("SSE-KMS", true),
     NONE("", false);
 
     static final String UNKNOWN_ALGORITHM_MESSAGE

@@ -5,6 +5,7 @@ import com.qcloud.cos.ClientConfig;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.http.HttpProtocol;
+import com.qcloud.cos.internal.SkipMd5CheckStrategy;
 import com.qcloud.cos.model.*;
 import com.qcloud.cos.region.Region;
 import com.qcloud.cos.utils.Base64;
@@ -164,8 +165,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 serverSideEncryptionAlgorithm);
         String sseKey = conf.get(
                 CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY, "");
+        String sseContext = conf.get(
+                CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_CONTEXT, "");
         checkEncryptionMethod(config, cosSSE, sseKey);
-        this.encryptionSecrets = new CosEncryptionSecrets(cosSSE, sseKey);
+        this.encryptionSecrets = new CosEncryptionSecrets(cosSSE, sseKey, sseContext);
 
         // Set the traffic limit
         this.trafficLimit = conf.getInt(CosNConfigKeys.TRAFFIC_LIMIT, CosNConfigKeys.DEFAULT_TRAFFIC_LIMIT);
@@ -1074,6 +1077,23 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
+    private <X> void callCOSClientWithSSEKMS(X request, SSECOSKeyManagementParams managementParams) {
+        try {
+            if (request instanceof PutObjectRequest) {
+                ((PutObjectRequest) request).setSSECOSKeyManagementParams(managementParams);
+            } else if (request instanceof CopyObjectRequest) {
+                ((CopyObjectRequest) request).setSSECOSKeyManagementParams(managementParams);
+            } else if (request instanceof InitiateMultipartUploadRequest) {
+                ((InitiateMultipartUploadRequest) request).setSSECOSKeyManagementParams(managementParams);
+            }
+        } catch (Exception e) {
+            String errMsg =
+                    String.format("callCOSClientWithSSEKMS failed:" +
+                            " %s", e.toString());
+            LOG.error(errMsg);
+        }
+    }
+
     private <X> void callCOSClientWithSSECOS(X request, ObjectMetadata objectMetadata) {
         try {
             objectMetadata.setServerSideEncryption(SSEAlgorithm.AES256.getAlgorithm());
@@ -1130,6 +1150,12 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             case SSE_COS:
                 callCOSClientWithSSECOS(request, objectMetadata);
                 break;
+            case SSE_KMS:
+                String key = encryptionSecrets.getEncryptionKey();
+                String context = Base64.encodeAsString(encryptionSecrets.getEncryptionContext().getBytes());
+                SSECOSKeyManagementParams ssecosKeyManagementParams = new SSECOSKeyManagementParams(key, context);
+                callCOSClientWithSSEKMS(request, ssecosKeyManagementParams);
+                break;
             case NONE:
             default:
                 break;
@@ -1174,6 +1200,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             + " (" + description + ")");
                 }
                 break;
+            case SSE_KMS:
+                // sseKeyLen can be empty which auto used by cos server
+                System.setProperty(SkipMd5CheckStrategy.DISABLE_PUT_OBJECT_MD5_VALIDATION_PROPERTY, "true");
+                config.setHttpProtocol(HttpProtocol.https);
             case NONE:
             default:
                 LOG.debug("Data is unencrypted");

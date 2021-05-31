@@ -2,6 +2,7 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.qcloud.cos.internal.SkipMd5CheckStrategy;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -651,6 +652,7 @@ public class CosFileSystem extends FileSystem {
                         fileStatus.getLen(), this.boundedIOThreadPool),
                 bufferSize));
     }
+
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
