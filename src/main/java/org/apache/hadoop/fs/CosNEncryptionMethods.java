@@ -4,7 +4,7 @@ import com.qcloud.cos.utils.StringUtils;
 
 import java.io.IOException;
 
-public enum CosEncryptionMethods {
+public enum CosNEncryptionMethods {
 
     SSE_COS("SSE-COS", true),
     SSE_C("SSE-C", true),
@@ -17,7 +17,7 @@ public enum CosEncryptionMethods {
     private String method;
     private boolean serverSide;
 
-    CosEncryptionMethods(String method, final boolean serverSide) {
+    CosNEncryptionMethods(String method, final boolean serverSide) {
         this.method = method;
         this.serverSide = serverSide;
     }
@@ -32,11 +32,11 @@ public enum CosEncryptionMethods {
      * @return the method
      * @throws IOException if the algorithm is unknown
      */
-    public static CosEncryptionMethods getMethod(String name) throws IOException {
+    public static CosNEncryptionMethods getMethod(String name) throws IOException {
         if (StringUtils.isNullOrEmpty(name)) {
             return NONE;
         }
-        for (CosEncryptionMethods v : values()) {
+        for (CosNEncryptionMethods v : values()) {
             if (v.getMethod().equals(name)) {
                 return v;
             }

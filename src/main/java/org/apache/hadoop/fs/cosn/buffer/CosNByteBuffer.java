@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs.buffer;
+package org.apache.hadoop.fs.cosn.buffer;
 
 import java.io.Closeable;
 import java.io.IOException;

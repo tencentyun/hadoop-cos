@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
 import java.io.IOException;
 

@@ -2,13 +2,13 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.qcloud.cos.internal.SkipMd5CheckStrategy;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
+import org.apache.hadoop.fs.cosn.*;
 import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
@@ -310,7 +310,7 @@ public class CosFileSystem extends FileSystem {
         boolean uploadChecksEnabled = this.getConf().getBoolean(CosNConfigKeys.COSN_UPLOAD_CHECKS_ENABLE_KEY,
                 CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE);
         return new FSDataOutputStream(
-                new CosFsDataOutputStream(getConf(), store, key,
+                new CosNFSDataOutputStream(getConf(), store, key,
                         uploadPartSize,
                         this.boundedIOThreadPool, uploadChecksEnabled), statistics);
     }
@@ -364,7 +364,7 @@ public class CosFileSystem extends FileSystem {
 
             String priorLastKey = null;
             do {
-                PartialListing listing =
+                CosNPartialListing listing =
                         store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey, true);
                 for (FileMetadata file : listing.getFiles()) {
                     this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
@@ -425,7 +425,7 @@ public class CosFileSystem extends FileSystem {
             return newDirectory(absolutePath);
         }
 
-        CosResultInfo headInfo = new CosResultInfo();
+        CosNResultInfo headInfo = new CosNResultInfo();
         FileMetadata meta = store.retrieveMetadata(key, headInfo);
         if (meta != null) {
             if (meta.isFile()) {
@@ -441,8 +441,8 @@ public class CosFileSystem extends FileSystem {
             key += PATH_DELIMITER;
         }
         LOG.debug("List the cos key [{}] to judge whether it is a directory or not.", key);
-        CosResultInfo listInfo = new CosResultInfo();
-        PartialListing listing = store.list(key, 1, listInfo);
+        CosNResultInfo listInfo = new CosNResultInfo();
+        CosNPartialListing listing = store.list(key, 1, listInfo);
         if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
             LOG.debug("List the cos key [{}] to find that it is a directory.", key);
             return newDirectory(absolutePath);
@@ -497,7 +497,7 @@ public class CosFileSystem extends FileSystem {
         Set<FileStatus> status = new TreeSet<FileStatus>();
         String priorLastKey = null;
         do {
-            PartialListing listing = store.list(key, COS_MAX_LISTING_LENGTH,
+            CosNPartialListing listing = store.list(key, COS_MAX_LISTING_LENGTH,
                     priorLastKey, false);
             for (FileMetadata fileMetadata : listing.getFiles()) {
                 Path subPath = keyToPath(fileMetadata.getKey());
@@ -648,7 +648,7 @@ public class CosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataInputStream(new BufferedFSInputStream(
-                new CosFsInputStream(this.getConf(), store, statistics, key,
+                new CosNFSInputStream(this.getConf(), store, statistics, key,
                         fileStatus.getLen(), this.boundedIOThreadPool),
                 bufferSize));
     }
@@ -796,7 +796,7 @@ public class CosFileSystem extends FileSystem {
         int copiesToFinishes = 0;
         String priorLastKey = null;
         do {
-            PartialListing objectList = this.store.list(srcKey,
+            CosNPartialListing objectList = this.store.list(srcKey,
                     COS_MAX_LISTING_LENGTH, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(

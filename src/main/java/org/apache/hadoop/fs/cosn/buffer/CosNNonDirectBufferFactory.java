@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs.buffer;
+package org.apache.hadoop.fs.cosn.buffer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;

@@ -1,4 +1,6 @@
-package org.apache.hadoop.fs.buffer;
+package org.apache.hadoop.fs.cosn.buffer;
+
+import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 
 import java.nio.ByteBuffer;
 

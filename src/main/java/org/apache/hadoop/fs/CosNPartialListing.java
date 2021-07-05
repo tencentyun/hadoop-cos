@@ -2,6 +2,8 @@ package org.apache.hadoop.fs;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.fs.FileMetadata;
+import org.apache.hadoop.fs.NativeFileSystemStore;
 
 /**
  * <p>
@@ -19,14 +21,14 @@ import org.apache.hadoop.classification.InterfaceStability;
  */
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
-public class PartialListing {
+public class CosNPartialListing {
 
     private final String priorLastKey;
     private final FileMetadata[] files;
     private final FileMetadata[] commonPrefixes;
 
-    public PartialListing(String priorLastKey, FileMetadata[] files,
-                          FileMetadata[] commonPrefixes) {
+    public CosNPartialListing(String priorLastKey, FileMetadata[] files,
+                              FileMetadata[] commonPrefixes) {
         this.priorLastKey = priorLastKey;
         this.files = files;
         this.commonPrefixes = commonPrefixes;

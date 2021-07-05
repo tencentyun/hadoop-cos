@@ -13,9 +13,9 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 
-public class CosFsInputStream extends FSInputStream {
+public class CosNFSInputStream extends FSInputStream {
     public static final Logger LOG =
-            LoggerFactory.getLogger(CosFsInputStream.class);
+            LoggerFactory.getLogger(CosNFSInputStream.class);
 
     public static class ReadBuffer {
         public static final int INIT = 1;
@@ -105,7 +105,7 @@ public class CosFsInputStream extends FSInputStream {
      * @param fileSize file size
      * @param readAheadExecutorService thread executor
      */
-    public CosFsInputStream(
+    public CosNFSInputStream(
             Configuration conf,
             NativeFileSystemStore store,
             FileSystem.Statistics statistics,

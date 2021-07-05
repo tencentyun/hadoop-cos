@@ -1,11 +1,11 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
 
-import org.apache.hadoop.fs.buffer.CosNByteBuffer;
+import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 
 public class BufferInputStream extends InputStream {
     private ByteBuffer byteBuffer;

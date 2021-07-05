@@ -13,7 +13,7 @@ public class CosNFileReadTask implements Runnable {
 
     private final String key;
     private final NativeFileSystemStore store;
-    private final CosFsInputStream.ReadBuffer readBuffer;
+    private final CosNFSInputStream.ReadBuffer readBuffer;
 
     /**
      * cos file read task
@@ -24,7 +24,7 @@ public class CosNFileReadTask implements Runnable {
      */
     public CosNFileReadTask(Configuration conf, String key,
                             NativeFileSystemStore store,
-                            CosFsInputStream.ReadBuffer readBuffer) {
+                            CosNFSInputStream.ReadBuffer readBuffer) {
         this.key = key;
         this.store = store;
         this.readBuffer = readBuffer;
@@ -46,9 +46,9 @@ public class CosNFileReadTask implements Runnable {
                     LOG.error("Expect to read the eof, but the return is not -1. key: {}.", this.key);
                 }
                 inputStream.close();
-                this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.SUCCESS);
+                this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.SUCCESS);
             } catch (IOException e) {
-                this.readBuffer.setStatus(CosFsInputStream.ReadBuffer.ERROR);
+                this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.ERROR);
                 LOG.error("Exception occurs when retrieve the block range " +
                         "start: "
                         + String.valueOf(this.readBuffer.getStart()) + " " +

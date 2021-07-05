@@ -1,10 +1,10 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
-import org.apache.hadoop.fs.buffer.CosNByteBuffer;
+import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 
 /**
  * The input stream class is used for buffered files.

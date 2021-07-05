@@ -6,7 +6,8 @@ import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.qcloud.cos.model.PartETag;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.buffer.CosNByteBuffer;
+import org.apache.hadoop.fs.cosn.*;
+import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,9 +22,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
-public class CosFsDataOutputStream extends OutputStream implements Abortable{
+public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     static final Logger LOG =
-            LoggerFactory.getLogger(CosFsDataOutputStream.class);
+            LoggerFactory.getLogger(CosNFSDataOutputStream.class);
 
     private final Configuration conf;
     private final NativeFileSystemStore store;
@@ -52,7 +53,7 @@ public class CosFsDataOutputStream extends OutputStream implements Abortable{
      * @param checksEnabled check flag
      * @throws IOException
      */
-    public CosFsDataOutputStream(
+    public CosNFSDataOutputStream(
             Configuration conf,
             NativeFileSystemStore store,
             String key, long blockSize,

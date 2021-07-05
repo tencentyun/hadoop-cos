@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
 import com.qcloud.cos.endpoint.EndpointBuilder;
 import org.slf4j.Logger;

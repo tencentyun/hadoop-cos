@@ -5,7 +5,7 @@ import com.qcloud.cos.auth.COSCredentials;
 import com.qcloud.cos.auth.COSCredentialsProvider;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Constants;
+import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.CosNConfigKeys;
 
 import javax.annotation.Nullable;

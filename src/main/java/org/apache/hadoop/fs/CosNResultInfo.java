@@ -3,11 +3,11 @@ package org.apache.hadoop.fs;
 /**
  * Used to record the cos client query result
  */
-public class CosResultInfo {
+public class CosNResultInfo {
     private String requestID;
     private boolean isKeySameToPrefix;
 
-    CosResultInfo() {
+    CosNResultInfo() {
         requestID = "";
         isKeySameToPrefix = false;
     }

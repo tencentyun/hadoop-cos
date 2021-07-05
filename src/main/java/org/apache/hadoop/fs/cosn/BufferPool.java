@@ -1,7 +1,8 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.buffer.*;
+import org.apache.hadoop.fs.CosNConfigKeys;
+import org.apache.hadoop.fs.cosn.buffer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +35,7 @@ public final class BufferPool {
 
     private long partSize = 0;
     private long totalBufferSize = 0;
-    private BufferType bufferType;
+    private CosNBufferType bufferType;
     private CosNBufferFactory bufferFactory;
     private BlockingQueue<CosNByteBuffer> bufferPool;
 
@@ -76,14 +77,14 @@ public final class BufferPool {
             throw new IllegalArgumentException(exceptionMsg);
         }
 
-        this.bufferType = BufferType.typeFactory(conf.get(
+        this.bufferType = CosNBufferType.typeFactory(conf.get(
                 CosNConfigKeys.COSN_UPLOAD_BUFFER_TYPE_KEY,
                 CosNConfigKeys.DEFAULT_UPLOAD_BUFFER_TYPE));
 
         if (null == this.bufferType
-                || (BufferType.NON_DIRECT_MEMORY != this.bufferType
-                && BufferType.DIRECT_MEMORY != this.bufferType
-                && BufferType.MAPPED_DISK != this.bufferType)) {
+                || (CosNBufferType.NON_DIRECT_MEMORY != this.bufferType
+                && CosNBufferType.DIRECT_MEMORY != this.bufferType
+                && CosNBufferType.MAPPED_DISK != this.bufferType)) {
             LOG.warn("The [{}] option is set incorrectly, using the default " +
                             "settings:"
                             + " [{}].",
@@ -111,16 +112,16 @@ public final class BufferPool {
             LOG.info("{} is set to -1, so the 'mapped_disk' buffer will be " +
                     "used by "
                     + "default.", CosNConfigKeys.COSN_UPLOAD_BUFFER_SIZE_KEY);
-            this.bufferType = BufferType.MAPPED_DISK;
+            this.bufferType = CosNBufferType.MAPPED_DISK;
         }
 
         LOG.info("The type of the upload buffer pool is [{}]. Buffer size:[{}]",
                 this.bufferType, this.totalBufferSize);
-        if (this.bufferType == BufferType.NON_DIRECT_MEMORY) {
+        if (this.bufferType == CosNBufferType.NON_DIRECT_MEMORY) {
             this.bufferFactory = new CosNNonDirectBufferFactory();
-        } else if (this.bufferType == BufferType.DIRECT_MEMORY) {
+        } else if (this.bufferType == CosNBufferType.DIRECT_MEMORY) {
             this.bufferFactory = new CosNDirectBufferFactory();
-        } else if (this.bufferType == BufferType.MAPPED_DISK) {
+        } else if (this.bufferType == CosNBufferType.MAPPED_DISK) {
             String tmpDir = conf.get(CosNConfigKeys.COSN_TMP_DIR,
                     CosNConfigKeys.DEFAULT_TMP_DIR);
             this.bufferFactory = new CosNMappedBufferFactory(tmpDir);
@@ -136,9 +137,9 @@ public final class BufferPool {
         // or mapped memory, it need to be allocate in advance to reduce the
         // overhead of repeated allocations and releases.
         if (this.totalBufferSize > 0
-                && (BufferType.NON_DIRECT_MEMORY == this.bufferType
-                || BufferType.DIRECT_MEMORY == this.bufferType
-                || BufferType.MAPPED_DISK == this.bufferType)) {
+                && (CosNBufferType.NON_DIRECT_MEMORY == this.bufferType
+                || CosNBufferType.DIRECT_MEMORY == this.bufferType
+                || CosNBufferType.MAPPED_DISK == this.bufferType)) {
             int bufferNumber = (int) (totalBufferSize / partSize);
             if (bufferNumber == 0) {
                 String errMsg = String.format("The buffer size: [%d] is at " +

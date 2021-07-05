@@ -1,7 +1,6 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
-import org.apache.hadoop.io.WritableUtils;
-import org.apache.hadoop.util.StringUtils;
+import org.apache.hadoop.fs.FileChecksum;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -14,52 +13,51 @@ import java.math.BigInteger;
  * not suitable for comparing two different objects for equivalence,
  * especially between hadoop compatible filesystem.
  */
-public class CRC64Checksum extends FileChecksum {
-    private static final String ALGORITHM_NAME = "CRC64";
+public class CRC32CCheckSum extends FileChecksum {
+    private static final String ALGORITHM_NAME = "COMPOSITE-CRC32C";
 
-    private long crc64 = 0;
+    private int crc32c = 0;
 
-    public CRC64Checksum() {
+    public CRC32CCheckSum() {
     }
 
-    public CRC64Checksum(String crc64ecma) {
+
+    public CRC32CCheckSum(String crc32cecma) {
         try {
-            BigInteger bigInteger = new BigInteger(crc64ecma);
-            this.crc64 = bigInteger.longValue();
+            BigInteger bigInteger = new BigInteger(crc32cecma);
+            this.crc32c = bigInteger.intValue();
         } catch (NumberFormatException e) {
-            this.crc64 = 0;
+            this.crc32c = 0;
         }
     }
 
     @Override
     public String getAlgorithmName() {
-        return CRC64Checksum.ALGORITHM_NAME;
+        return CRC32CCheckSum.ALGORITHM_NAME;
     }
 
     @Override
     public int getLength() {
-        return Long.SIZE / Byte.SIZE;
+        return Integer.SIZE / Byte.SIZE;
     }
 
     @Override
     public byte[] getBytes() {
-        return this.crc64 != 0 ? WritableUtils.toByteArray(this) : new byte[0];
+        return CrcUtil.intToBytes(crc32c);
     }
 
     @Override
     public void write(DataOutput dataOutput) throws IOException {
-        dataOutput.writeLong(this.crc64);
+        dataOutput.writeInt(this.crc32c);
     }
 
     @Override
     public void readFields(DataInput dataInput) throws IOException {
-        this.crc64 = dataInput.readLong();
+        this.crc32c = dataInput.readInt();
     }
 
     @Override
     public String toString() {
-        return "CRC64Checksum{" +
-                "crc64=" + crc64 +
-                '}';
+        return getAlgorithmName() + ":" + String.format("0x%08x", crc32c);
     }
 }

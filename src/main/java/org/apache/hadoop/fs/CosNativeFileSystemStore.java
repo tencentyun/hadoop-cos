@@ -16,6 +16,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.COSCredentialProviderList;
+import org.apache.hadoop.fs.cosn.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,7 +47,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private int maxRetryTimes;
     private int trafficLimit;
     private boolean crc32cEnabled;
-    private CosEncryptionSecrets encryptionSecrets;
+    private CosNEncryptionSecrets encryptionSecrets;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
@@ -161,14 +162,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         // 设置是否进行服务器端加密
         String serverSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
-        CosEncryptionMethods cosSSE = CosEncryptionMethods.getMethod(
+        CosNEncryptionMethods cosSSE = CosNEncryptionMethods.getMethod(
                 serverSideEncryptionAlgorithm);
         String sseKey = conf.get(
                 CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY, "");
         String sseContext = conf.get(
                 CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_CONTEXT, "");
         checkEncryptionMethod(config, cosSSE, sseKey);
-        this.encryptionSecrets = new CosEncryptionSecrets(cosSSE, sseKey, sseContext);
+        this.encryptionSecrets = new CosNEncryptionSecrets(cosSSE, sseKey, sseContext);
 
         // Set the traffic limit
         this.trafficLimit = conf.getInt(CosNConfigKeys.TRAFFIC_LIMIT, CosNConfigKeys.DEFAULT_TRAFFIC_LIMIT);
@@ -463,7 +464,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     private FileMetadata queryObjectMetadata(String key,
-                                             CosResultInfo info) throws IOException {
+                                             CosNResultInfo info) throws IOException {
         LOG.debug("Query Object metadata. cos key: {}.", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
@@ -538,7 +539,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     // this method only used in getFileStatus to get the head request result info
     @Override
     public FileMetadata retrieveMetadata(String key,
-                                         CosResultInfo info) throws IOException {
+                                         CosNResultInfo info) throws IOException {
         if (key.endsWith(PATH_DELIMITER)) {
             key = key.substring(0, key.length() - 1);
         }
@@ -810,26 +811,26 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
 
     @Override
-    public PartialListing list(String prefix, int maxListingLength) throws IOException {
+    public CosNPartialListing list(String prefix, int maxListingLength) throws IOException {
         return list(prefix, maxListingLength, null);
     }
 
     @Override
-    public PartialListing list(String prefix, int maxListingLength, CosResultInfo info) throws IOException {
+    public CosNPartialListing list(String prefix, int maxListingLength, CosNResultInfo info) throws IOException {
         return list(prefix, maxListingLength, null, false, info);
     }
 
     @Override
-    public PartialListing list(String prefix, int maxListingLength,
-                               String priorLastKey,
-                               boolean recurse) throws IOException {
+    public CosNPartialListing list(String prefix, int maxListingLength,
+                                   String priorLastKey,
+                                   boolean recurse) throws IOException {
         return list(prefix, maxListingLength, priorLastKey, recurse, null);
     }
 
     @Override
-    public PartialListing list(String prefix, int maxListingLength,
-                               String priorLastKey,
-                               boolean recurse, CosResultInfo info) throws IOException {
+    public CosNPartialListing list(String prefix, int maxListingLength,
+                                   String priorLastKey,
+                                   boolean recurse, CosNResultInfo info) throws IOException {
         return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey, info);
     }
 
@@ -844,9 +845,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      * @throws IOException on any reported failure
      */
 
-    private PartialListing list(String prefix, String delimiter,
-                                int maxListingLength,
-                                String priorLastKey, CosResultInfo info) throws IOException {
+    private CosNPartialListing list(String prefix, String delimiter,
+                                    int maxListingLength,
+                                    String priorLastKey, CosNResultInfo info) throws IOException {
         LOG.debug("List the cos key prefix: {}, max listing length: {}, delimiter: {}, prior last key: {}.",
                 prefix,
                 delimiter, maxListingLength, priorLastKey);
@@ -932,14 +933,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         // 如果truncated为false, 则表明已经遍历完
         if (!objectListing.isTruncated()) {
-            PartialListing ret = new PartialListing(null, fileMetadata, commonPrefixMetaData);
+            CosNPartialListing ret = new CosNPartialListing(null, fileMetadata, commonPrefixMetaData);
             if (info != null) {
                 info.setRequestID(objectListing.getRequestId());
                 info.setKeySameToPrefix(isKeySamePrefix);
             }
             return ret;
         } else {
-            PartialListing ret =  new PartialListing(objectListing.getNextMarker(),
+            CosNPartialListing ret =  new CosNPartialListing(objectListing.getNextMarker(),
                     fileMetadata, commonPrefixMetaData);
             if (info != null) {
                 info.setRequestID(objectListing.getRequestId());
@@ -1163,7 +1164,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     private void checkEncryptionMethod(ClientConfig config,
-                                       CosEncryptionMethods cosSSE, String sseKey) throws IOException {
+                                       CosNEncryptionMethods cosSSE, String sseKey) throws IOException {
         int sseKeyLen = StringUtils.isNullOrEmpty(sseKey) ? 0 : sseKey.length();
 
         String description = "Encryption key:";

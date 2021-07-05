@@ -1,4 +1,4 @@
-package org.apache.hadoop.fs.buffer;
+package org.apache.hadoop.fs.cosn.buffer;
 
 import java.io.File;
 import java.io.IOException;
@@ -6,6 +6,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
+import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

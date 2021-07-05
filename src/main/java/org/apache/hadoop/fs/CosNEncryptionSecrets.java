@@ -9,7 +9,7 @@ import java.io.*;
 import java.util.Objects;
 
 
-public class CosEncryptionSecrets implements Writable, Serializable {
+public class CosNEncryptionSecrets implements Writable, Serializable {
 
     public static final int MAX_SECRET_LENGTH = 2048;
 
@@ -17,7 +17,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
 
     /**
      * Encryption algorithm to use: must match one in
-     * {@link CosEncryptionMethods}.
+     * {@link CosNEncryptionMethods}.
      */
     private String encryptionAlgorithm = "";
 
@@ -35,13 +35,13 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      * This field isn't serialized/marshalled; it is rebuilt from the
      * encryptionAlgorithm field.
      */
-    private transient CosEncryptionMethods encryptionMethod =
-            CosEncryptionMethods.NONE;
+    private transient CosNEncryptionMethods encryptionMethod =
+            CosNEncryptionMethods.NONE;
 
     /**
      * Empty constructor, for use in marshalling.
      */
-    public CosEncryptionSecrets() {
+    public CosNEncryptionSecrets() {
     }
 
     /**
@@ -51,13 +51,13 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      * @param encryptionKey       key/key reference.
      * @throws IOException failure to initialize.
      */
-    public CosEncryptionSecrets(final CosEncryptionMethods encryptionAlgorithm,
-                                final String encryptionKey) throws IOException {
+    public CosNEncryptionSecrets(final CosNEncryptionMethods encryptionAlgorithm,
+                                 final String encryptionKey) throws IOException {
         this(encryptionAlgorithm.getMethod(), encryptionKey);
     }
 
-    public CosEncryptionSecrets(final CosEncryptionMethods encryptionAlgorithm,
-                                final String encryptionKey, final String encryptionContext) throws IOException {
+    public CosNEncryptionSecrets(final CosNEncryptionMethods encryptionAlgorithm,
+                                 final String encryptionKey, final String encryptionContext) throws IOException {
         this(encryptionAlgorithm.getMethod(), encryptionKey, encryptionContext);
     }
 
@@ -68,15 +68,15 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      * @param encryptionKey       key/key reference.
      * @throws IOException failure to initialize.
      */
-    public CosEncryptionSecrets(final String encryptionAlgorithm,
-                                final String encryptionKey) throws IOException {
+    public CosNEncryptionSecrets(final String encryptionAlgorithm,
+                                 final String encryptionKey) throws IOException {
         this.encryptionAlgorithm = encryptionAlgorithm;
         this.encryptionKey = encryptionKey;
         init();
     }
 
-    public CosEncryptionSecrets(final String encryptionAlgorithm,
-                                final String encryptionKey, final String encryptionContext) throws IOException {
+    public CosNEncryptionSecrets(final String encryptionAlgorithm,
+                                 final String encryptionKey, final String encryptionContext) throws IOException {
         this.encryptionAlgorithm = encryptionAlgorithm;
         this.encryptionKey = encryptionKey;
         this.encryptionContext = encryptionContext;
@@ -134,7 +134,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      * @throws IOException error rebuilding state.
      */
     private void init() throws IOException {
-        encryptionMethod = CosEncryptionMethods.getMethod(
+        encryptionMethod = CosNEncryptionMethods.getMethod(
                 encryptionAlgorithm);
     }
 
@@ -175,7 +175,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        final CosEncryptionSecrets that = (CosEncryptionSecrets) o;
+        final CosNEncryptionSecrets that = (CosNEncryptionSecrets) o;
         return Objects.equals(encryptionAlgorithm, that.encryptionAlgorithm)
                 && Objects.equals(encryptionKey, that.encryptionKey);
     }
@@ -190,7 +190,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      *
      * @return the encryption method
      */
-    public CosEncryptionMethods getEncryptionMethod() {
+    public CosNEncryptionMethods getEncryptionMethod() {
         return encryptionMethod;
     }
 
@@ -202,7 +202,7 @@ public class CosEncryptionSecrets implements Writable, Serializable {
      */
     @Override
     public String toString() {
-        return CosEncryptionMethods.NONE.equals(encryptionMethod)
+        return CosNEncryptionMethods.NONE.equals(encryptionMethod)
                 ? "(no encryption)"
                 : encryptionMethod.getMethod();
     }

@@ -1,6 +1,6 @@
-package org.apache.hadoop.fs.buffer;
+package org.apache.hadoop.fs.cosn.buffer;
 
-import org.apache.hadoop.fs.Constants;
+import org.apache.hadoop.fs.cosn.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
