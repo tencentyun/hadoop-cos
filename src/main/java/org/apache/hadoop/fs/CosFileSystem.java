@@ -1154,12 +1154,12 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         try {
+            super.close();
+        } finally {
             this.store.close();
             this.boundedIOThreadPool.shutdown();
             this.boundedCopyThreadPool.shutdown();
             BufferPool.getInstance().close();
-        } finally {
-            super.close();
         }
     }
 
