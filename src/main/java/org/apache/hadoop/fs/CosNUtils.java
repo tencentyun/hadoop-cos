@@ -49,7 +49,6 @@ public final class CosNUtils {
             credentialProviderList.add(new SessionTokenCredentialProvider(uri,conf));
             credentialProviderList.add(new CVMInstanceCredentialsProvider(uri, conf));
             credentialProviderList.add(new CPMInstanceCredentialsProvider(uri, conf));
-            credentialProviderList.add(new DLFInstanceCredentialsProvider(uri, conf));
         } else {
             for (Class<?> credClass : cosClasses) {
                 credentialProviderList.add(createCOSCredentialProvider(uri,
