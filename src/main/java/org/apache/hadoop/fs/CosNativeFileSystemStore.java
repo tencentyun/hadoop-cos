@@ -4,6 +4,7 @@ import com.qcloud.cos.COSClient;
 import com.qcloud.cos.ClientConfig;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
+import com.qcloud.cos.exception.ResponseNotCompleteException;
 import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.internal.SkipMd5CheckStrategy;
 import com.qcloud.cos.model.*;
@@ -47,6 +48,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private int maxRetryTimes;
     private int trafficLimit;
     private boolean crc32cEnabled;
+    private boolean completeMPUCheckEnabled;
     private CosNEncryptionSecrets encryptionSecrets;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
@@ -103,6 +105,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
+
+        this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,
+                CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
 
         // Proxy settings
         String httpProxyIp = conf.getTrimmed(CosNConfigKeys.HTTP_PROXY_IP);
@@ -1106,8 +1111,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 ((CopyObjectRequest) request).setNewObjectMetadata(objectMetadata);
             } else if (request instanceof InitiateMultipartUploadRequest) {
                 ((InitiateMultipartUploadRequest) request).setObjectMetadata(objectMetadata);
-            } else {
-                throw new IOException("Set SSE_COS request no such method");
             }
         } catch (Exception e) {
             String errMsg =
@@ -1132,8 +1135,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 ((GetObjectRequest) request).setSSECustomerKey(sseKey);
             } else if (request instanceof InitiateMultipartUploadRequest) {
                 ((InitiateMultipartUploadRequest) request).setSSECustomerKey(sseKey);
-            } else {
-                throw new IOException("Set SSE_C request no such method");
             }
         } catch (Exception e) {
             String errMsg =
@@ -1260,12 +1261,24 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 } else {
                     throw new IOException("no such method");
                 }
+            } catch (ResponseNotCompleteException nce) {
+                if  (this.completeMPUCheckEnabled && request instanceof  CompleteMultipartUploadRequest) {
+                    String key = ((CompleteMultipartUploadRequest) request).getKey();
+                    FileMetadata fileMetadata = this.queryObjectMetadata(key);
+                    if (null == fileMetadata) {
+                        // if file not exist must throw the exception.
+                        handleException(nce, key);
+                    }
+                    LOG.warn("Upload the cos key [{}] concurrently", key);
+                    // todo: some other double check after cgi unified the ctime of mpu.
+                } else {
+                    throw new IOException(nce);
+                }
             } catch (CosServiceException cse) {
                 String errMsg = String.format(
                         "all cos sdk failed, retryIndex: [%d / %d], call " +
                                 "method: %s, exception: %s",
-                        retryIndex, this.maxRetryTimes, sdkMethod,
-                        cse.toString());
+                        retryIndex, this.maxRetryTimes, sdkMethod, cse.toString());
                 int statusCode = cse.getStatusCode();
                 String errorCode = cse.getErrorCode();
                 LOG.debug("fail to retry statusCode {}, errorCode {}", statusCode, errorCode);

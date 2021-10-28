@@ -30,6 +30,8 @@ public interface NativeFileSystemStore {
 
     void storeEmptyFile(String key) throws IOException;
 
+    // must notice some mpu chunk error might have double head check.
+    // which means some times CompleteMultipartUploadResult might be null.
     CompleteMultipartUploadResult completeMultipartUpload(String key,
                                                           String uploadId,
                                                           List<PartETag> partETagList) throws IOException;
