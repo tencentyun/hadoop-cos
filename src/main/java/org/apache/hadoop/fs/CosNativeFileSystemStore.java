@@ -1269,7 +1269,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         // if file not exist must throw the exception.
                         handleException(nce, key);
                     }
-                    LOG.warn("Upload the cos key [{}] concurrently", key);
+                    LOG.warn("Complete mpu resp not complete key [{}]", key);
                     // todo: some other double check after cgi unified the ctime of mpu.
                 } else {
                     throw new IOException(nce);
