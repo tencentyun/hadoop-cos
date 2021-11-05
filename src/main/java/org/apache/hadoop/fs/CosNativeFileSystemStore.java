@@ -1271,6 +1271,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     }
                     LOG.warn("Complete mpu resp not complete key [{}]", key);
                     // todo: some other double check after cgi unified the ctime of mpu.
+                    return new CompleteMultipartUploadResult();
                 } else {
                     throw new IOException(nce);
                 }
