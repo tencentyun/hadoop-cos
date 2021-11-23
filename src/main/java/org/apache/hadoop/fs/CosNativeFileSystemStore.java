@@ -10,6 +10,7 @@ import com.qcloud.cos.internal.SkipMd5CheckStrategy;
 import com.qcloud.cos.model.*;
 import com.qcloud.cos.region.Region;
 import com.qcloud.cos.utils.Base64;
+import com.qcloud.cos.utils.IOUtils;
 import com.qcloud.cos.utils.Jackson;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.commons.codec.binary.Hex;
@@ -138,9 +139,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             config.setProxyPassword(proxyPassword);
         }
 
-        String userAgent = conf.get(
-                CosNConfigKeys.USER_AGENT,
-                CosNConfigKeys.DEFAULT_USER_AGENT);
+        String versionNum = getPluginVersionInfo();
+        String versionInfo = versionNum.equals("unknown") ? CosNConfigKeys.DEFAULT_USER_AGENT : "cos-hadoop-plugin-v" + versionNum;
+        String userAgent = conf.get(CosNConfigKeys.USER_AGENT,versionInfo);
         String emrVersion = conf.get(CosNConfigKeys.TENCENT_EMR_VERSION_KEY);
         if (null != emrVersion && !emrVersion.isEmpty()) {
             userAgent = String.format("%s on %s", userAgent, emrVersion);
@@ -1343,4 +1344,26 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private static String ensureValidAttributeName(String attributeName) {
         return attributeName.replace('.', '-').toLowerCase();
     }
+
+    private String getPluginVersionInfo() {
+        Properties versionProperties = new Properties();
+        InputStream inputStream= null;
+        String versionStr = "unknown";
+        final String versionFile = "hadoopCosPluginVersionInfo.properties";
+        try {
+            inputStream = this.getClass().getClassLoader().getResourceAsStream(versionFile);
+            if (inputStream != null) {
+                versionProperties.load(inputStream);
+                versionStr = versionProperties.getProperty("plugin_version");
+            }else {
+                LOG.error("load versionInfo properties failed, propName: {} ", versionFile);
+            }
+        } catch (IOException e) {
+            LOG.error("load versionInfo properties exception, propName: {} ", versionFile);
+        } finally {
+            IOUtils.closeQuietly(inputStream,LOG);
+        }
+        return versionStr;
+    }
+
 }
