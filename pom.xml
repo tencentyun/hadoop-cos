@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>5.10.0</version>
+    <version>5.10.1</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Qcloud COS Support</name>
@@ -79,6 +79,16 @@
     </distributionManagement>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/java</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>hadoopCosPluginVersionInfo.properties</include>
+                </includes>
+            </resource>
+        </resources>
+        <pluginManagement>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -146,5 +156,6 @@
                 </executions>
             </plugin>
         </plugins>
+        </pluginManagement>
     </build>
 </project>
