@@ -82,18 +82,18 @@ public interface NativeFileSystemStore {
     CosNPartialListing list(String prefix, int maxListingLength, CosNResultInfo info) throws IOException;
 
     CosNPartialListing list(String prefix, int maxListingLength,
-                        String priorLastKey, boolean recursive)
+                            String priorLastKey, boolean recursive)
             throws IOException;
 
     CosNPartialListing list(String prefix, int maxListingLength,
-                        String priorLastKey, boolean recursive, CosNResultInfo info)
+                            String priorLastKey, boolean recursive, CosNResultInfo info)
             throws IOException;
 
     void delete(String key) throws IOException;
 
-	void deleteRecursive(String key) throws IOException;
+    void deleteRecursive(String key) throws IOException;
     void copy(String srcKey, String dstKey) throws IOException;
-	void rename(String srcKey, String dstKey) throws IOException;
+    void rename(String srcKey, String dstKey) throws IOException;
 
     /**
      * Delete all keys with the given prefix. Used for testing.

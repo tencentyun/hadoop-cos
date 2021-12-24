@@ -20,7 +20,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_CREDENTIALS_PROVIDER = "fs.cosn.credentials.provider";
     public static final String COSN_APPID_KEY = "fs.cosn.userinfo.appid";
-	public static final String COSN_UIN_KEY = "fs.cosn.userinfo.uin";
+    public static final String COSN_UIN_KEY = "fs.cosn.userinfo.uin";
     public static final String COSN_REQUEST_ID = "fs.cosn.request.id";
     public static final String COS_REMOTE_CREDENTIAL_PROVIDER_URL = "fs.cosn.remote-credential-provider.url";
     public static final String COS_REMOTE_CREDENTIAL_PROVIDER_PATH = "fs.cosn.remote-credential-provider.path";
@@ -75,28 +75,26 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 1 * Unit.MB;
     public static final String READ_AHEAD_QUEUE_SIZE = "fs.cosn.read.ahead.queue.size";
     public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 8;
-
-	// used to control getFileStatus list to judge dir whether exist.
+    // used to control getFileStatus list to judge dir whether exist.
     public static final String FILESTATUS_LIST_MAX_KEYS = "fs.cosn.filestatus.list_max_keys";
     public static final int DEFAULT_FILESTATUS_LIST_MAX_KEYS = 2;
 
-	// used for double check complete mpu in case of return cos client exception but status is 200 ok.
+    // used for double check complete mpu in case of return cos client exception but status is 200 ok.
     public static final String COSN_COMPLETE_MPU_CHECK = "fs.cosn.complete.mpu.check";
     public static final boolean DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE = true;
     public static final String MAX_CONNECTION_NUM = "fs.cosn.max.connection.num";
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
-
-	public static final String OPEN_CHECK_MERGE_BUCKET = "fs.cosn.check.merge.bucket";
+    public static final String OPEN_CHECK_MERGE_BUCKET = "fs.cosn.check.merge.bucket";
     public static final boolean DEFAULT_CHECK_MERGE_BUCKET = true;
-	public static final String MERGE_BUCKET_MAX_LIST_NUM = "fs.cosn.merge.bucket.max.list.num";
+    public static final String MERGE_BUCKET_MAX_LIST_NUM = "fs.cosn.merge.bucket.max.list.num";
     public static final int DEFAULT_MERGE_BUCKET_MAX_LIST_NUM = 5000;
     public static final String NORMAL_BUCKET_MAX_LIST_NUM = "fs.cosn.normal.bucket.max.list.num";
     public static final int DEFAULT_NORMAL_BUCKET_MAX_LIST_NUM = 999;
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
-	public static final String COSN_SERVER_SIDE_ENCRYPTION_CONTEXT = "fs.cosn.server-side-encryption.context";
+    public static final String COSN_SERVER_SIDE_ENCRYPTION_CONTEXT = "fs.cosn.server-side-encryption.context";
     public static final String BASE64_PATTERN = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9" +
             "+/]{2}==)$";
 
@@ -125,6 +123,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_RANGER_PLUGIN_CLIENT_IMPL = "fs.cosn.ranger.plugin.client.impl";
     public static final String DEFAULT_COSN_RANGER_PLUGIN_CLIENT_IMPL  =
             "org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClientImpl";
-	public static final String COSN_CLIENT_SOCKET_TIMEOUTSEC = "fs.cosn.client.socket.timeoutsec";
+    public static final String COSN_CLIENT_SOCKET_TIMEOUTSEC = "fs.cosn.client.socket.timeoutsec";
     public static final int DEFAULT_CLIENT_SOCKET_TIMEOUTSEC = 30;
 }

@@ -348,7 +348,7 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     @Override
-	public int available() throws IOException {
+    public int available() throws IOException {
         if(this.closed) {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
@@ -360,7 +360,7 @@ public class CosNFSInputStream extends FSInputStream {
 
         return (int) remaining;
     }
-	@Override
+    @Override
     public void close() throws IOException {
         if (this.closed) {
             return;

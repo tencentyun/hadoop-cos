@@ -191,7 +191,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         }
     }
 
-	@Override
+    @Override
     public void abort() throws IOException {
         LOG.info("abort file upload, key:{}, uploadId:{}", key, uploadId);
         if (this.closed) {
@@ -216,7 +216,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         }
     }
 
-	private List<PartETag> waitForFinishPartUploads() throws IOException {
+    private List<PartETag> waitForFinishPartUploads() throws IOException {
         try {
             LOG.info("Waiting for finish part uploads...");
             return Futures.allAsList(this.partEtagList).get();
