@@ -49,6 +49,7 @@ public class CosNFileReadTask implements Runnable {
                 this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.SUCCESS);
             } catch (IOException e) {
                 this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.ERROR);
+                this.readBuffer.setException(e);
                 LOG.error("Exception occurs when retrieve the block range " +
                         "start: "
                         + String.valueOf(this.readBuffer.getStart()) + " " +

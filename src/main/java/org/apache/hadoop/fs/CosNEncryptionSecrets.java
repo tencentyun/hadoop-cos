@@ -60,7 +60,6 @@ public class CosNEncryptionSecrets implements Writable, Serializable {
                                  final String encryptionKey, final String encryptionContext) throws IOException {
         this(encryptionAlgorithm.getMethod(), encryptionKey, encryptionContext);
     }
-
     /**
      * Create a pair of secrets.
      *
@@ -147,7 +146,6 @@ public class CosNEncryptionSecrets implements Writable, Serializable {
     }
 
     public String getEncryptionContext() { return encryptionContext; }
-
     /**
      * Does this instance have encryption options?
      * That is: is the algorithm non-null.

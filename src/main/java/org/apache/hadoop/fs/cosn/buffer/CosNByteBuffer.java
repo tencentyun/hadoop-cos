@@ -2,13 +2,14 @@ package org.apache.hadoop.fs.cosn.buffer;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
-import org.apache.hadoop.io.nativeio.NativeIO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.nio.ch.DirectBuffer;
+import sun.nio.ch.FileChannelImpl;
 
 /**
  * The base class for all CosN byte buffers.
@@ -40,7 +41,19 @@ public abstract class CosNByteBuffer implements Closeable {
         this.byteBuffer.clear();
 
         if (this.isMapped()) {
-            NativeIO.POSIX.munmap((MappedByteBuffer) this.byteBuffer);
+            Method method = null;
+            try {
+                method = FileChannelImpl.class.getDeclaredMethod(
+                        "unmap",
+                        MappedByteBuffer.class);
+                method.setAccessible(true);
+                method.invoke(
+                        FileChannelImpl.class,
+                        (MappedByteBuffer)this.byteBuffer);
+            } catch (Exception e) {
+                LOG.error("failed to call reflect unmap", e);
+                throw new IOException("failed to call reflect unmap", e);
+            }
         } else if (this.byteBuffer.isDirect()) {
             ((DirectBuffer) this.byteBuffer).cleaner().clean();
         }

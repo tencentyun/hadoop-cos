@@ -2,6 +2,8 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.qcloud.cos.model.HeadBucketResult;
+import com.qcloud.chdfs.permission.RangerAccessType;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -12,6 +14,7 @@ import org.apache.hadoop.fs.cosn.*;
 import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionResponse;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.ServiceType;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.io.retry.RetryPolicies;
@@ -20,6 +23,7 @@ import org.apache.hadoop.io.retry.RetryProxy;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +51,6 @@ public class CosFileSystem extends FileSystem {
 
     static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
-    static final int COS_MAX_LISTING_LENGTH = 999;
 
     static final Charset METADATA_ENCODING = StandardCharsets.UTF_8;
     // The length of name:value pair should be less than or equal to 1024 bytes.
@@ -55,6 +58,10 @@ public class CosFileSystem extends FileSystem {
 
     private URI uri;
     private String bucket;
+    private boolean isMergeBucket;
+    private boolean checkMergeBucket;
+    private int mergeBucketMaxListNum;
+    private int normalBucketMaxListNum;
     private NativeFileSystemStore store;
     private Path workingDir;
     private String owner = "Unknown";
@@ -67,6 +74,8 @@ public class CosFileSystem extends FileSystem {
 
     private boolean enableRangerPluginPermissionCheck = false;
     public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
+
+    private String formatBucket;
 
     public CosFileSystem() {
     }
@@ -96,6 +105,7 @@ public class CosFileSystem extends FileSystem {
         initRangerClientImpl(conf);
 
         this.bucket = uri.getHost();
+        this.formatBucket = CosNUtils.formatBucket(uri.getHost(), conf);
 
         if (this.store == null) {
             this.store = createDefaultStore(conf);
@@ -113,6 +123,30 @@ public class CosFileSystem extends FileSystem {
                 uri, bucket, workingDir, owner, group, conf);
         BufferPool.getInstance().initialize(getConf());
 
+		// head the bucket to judge whether the merge bucket
+        this.isMergeBucket = false;
+        this.checkMergeBucket = this.getConf().getBoolean(
+                CosNConfigKeys.OPEN_CHECK_MERGE_BUCKET,
+                CosNConfigKeys.DEFAULT_CHECK_MERGE_BUCKET
+        );
+
+        if (this.checkMergeBucket) { // control
+            HeadBucketResult headBucketResult = this.store.headBucket(this.bucket);
+            int mergeBucketMaxListNum = this.getConf().getInt(
+                    CosNConfigKeys.MERGE_BUCKET_MAX_LIST_NUM,
+                    CosNConfigKeys.DEFAULT_MERGE_BUCKET_MAX_LIST_NUM
+            );
+            if (headBucketResult.isMergeBucket()) {
+                this.isMergeBucket = true;
+                this.mergeBucketMaxListNum = mergeBucketMaxListNum;
+                this.store.setMergeBucket(true);
+            }
+        }
+        LOG.info("cos file system bucket is merged {}", this.isMergeBucket);
+        this.normalBucketMaxListNum = this.getConf().getInt(
+                CosNConfigKeys.NORMAL_BUCKET_MAX_LIST_NUM,
+                CosNConfigKeys.DEFAULT_NORMAL_BUCKET_MAX_LIST_NUM);
+
         // initialize the thread pool
         int uploadThreadPoolSize = this.getConf().getInt(
                 CosNConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
@@ -127,7 +161,6 @@ public class CosFileSystem extends FileSystem {
                 CosNConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
                 CosNConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME
         );
-
         this.boundedIOThreadPool = new ThreadPoolExecutor(
                 ioThreadPoolSize / 2, ioThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
@@ -295,7 +328,7 @@ public class CosFileSystem extends FileSystem {
                                      long blockSize, Progressable progress)
             throws IOException {
 
-        checkPermission(f, AccessType.WRITE);
+        checkPermission(f, RangerAccessType.WRITE);
 
         if (exists(f) && !overwrite) {
             throw new FileAlreadyExistsException("File already exists: " + f);
@@ -332,8 +365,7 @@ public class CosFileSystem extends FileSystem {
     public boolean delete(Path f, boolean recursive) throws IOException {
         LOG.debug("Ready to delete path: {}. recursive: {}.", f, recursive);
 
-        checkPermission(f, AccessType.DELETE);
-
+        checkPermission(f, RangerAccessType.DELETE);
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -341,6 +373,7 @@ public class CosFileSystem extends FileSystem {
             LOG.debug("Delete called for '{}', but the file does not exist and returning the false.", f);
             return false;
         }
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         if (key.compareToIgnoreCase("/") == 0) {
@@ -358,61 +391,77 @@ public class CosFileSystem extends FileSystem {
                         + " as is a not empty directory and recurse option is" +
                         " false");
             }
-
-            CosNDeleteFileContext deleteFileContext = new CosNDeleteFileContext();
-            int deleteToFinishes = 0;
-
-            String priorLastKey = null;
-            do {
-                CosNPartialListing listing =
-                        store.list(key, COS_MAX_LISTING_LENGTH, priorLastKey, true);
-                for (FileMetadata file : listing.getFiles()) {
-                    this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                            this.store, file.getKey(), deleteFileContext));
-                    deleteToFinishes++;
-                    if (!deleteFileContext.isDeleteSuccess()) {
-                        break;
-                    }
-                }
-                for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
-                    this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                            this.store, commonPrefix.getKey(), deleteFileContext));
-                    deleteToFinishes++;
-                    if (!deleteFileContext.isDeleteSuccess()) {
-                        break;
-                    }
-                }
-                priorLastKey = listing.getPriorLastKey();
-            } while (priorLastKey != null);
-
-            deleteFileContext.lock();
-            try {
-                deleteFileContext.awaitAllFinish(deleteToFinishes);
-            } catch (InterruptedException e) {
-                LOG.warn("interrupted when wait delete to finish");
-            } finally {
-                deleteFileContext.unlock();
+            // how to tell the result
+            if (!isMergeBucket) {
+                internalRecursiveDelete(key);
+            } else {
+                internalAutoRecursiveDelete(key);
             }
-
-            // according the flag and exception in thread opr to throw this out
-            if (!deleteFileContext.isDeleteSuccess() && deleteFileContext.hasException()) {
-                throw deleteFileContext.getIOException();
-            }
-
-            try {
-                LOG.debug("Delete the cos key [{}].", key);
-                store.delete(key);
-            } catch (Exception e) {
-                LOG.error("Delete the key failed.");
-            }
-
         } else {
             LOG.debug("Delete the cos key [{}].", key);
             store.delete(key);
         }
 
-        createParentDirectoryIfNecessary(f);
+        if (!isMergeBucket) {
+            createParentDirectoryIfNecessary(f);
+        }
         return true;
+    }
+
+
+    private void internalRecursiveDelete(String key) throws IOException {
+        CosNDeleteFileContext deleteFileContext = new CosNDeleteFileContext();
+        int deleteToFinishes = 0;
+
+        String priorLastKey = null;
+        do {
+            CosNPartialListing listing =
+                    store.list(key, this.normalBucketMaxListNum, priorLastKey, true);
+            for (FileMetadata file : listing.getFiles()) {
+                this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
+                        this.store, file.getKey(), deleteFileContext));
+                deleteToFinishes++;
+                if (!deleteFileContext.isDeleteSuccess()) {
+                    break;
+                }
+            }
+            for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
+                this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
+                        this.store, commonPrefix.getKey(), deleteFileContext));
+                deleteToFinishes++;
+                if (!deleteFileContext.isDeleteSuccess()) {
+                    break;
+                }
+            }
+            priorLastKey = listing.getPriorLastKey();
+        } while (priorLastKey != null);
+
+        deleteFileContext.lock();
+        try {
+            deleteFileContext.awaitAllFinish(deleteToFinishes);
+        } catch (InterruptedException e) {
+            LOG.warn("interrupted when wait delete to finish");
+        } finally {
+            deleteFileContext.unlock();
+        }
+
+        // according the flag and exception in thread opr to throw this out
+        if (!deleteFileContext.isDeleteSuccess() && deleteFileContext.hasException()) {
+            throw deleteFileContext.getIOException();
+        }
+
+        try {
+            LOG.debug("Delete the cos key [{}].", key);
+            store.delete(key);
+        } catch (Exception e) {
+            LOG.error("Delete the key failed.");
+        }
+    }
+
+    // use by merge bucket which support recursive delete dirs by setting flag parameter
+    private void internalAutoRecursiveDelete(String key) throws IOException {
+        LOG.debug("Delete the cos key auto recursive [{}].", key);
+        store.deleteRecursive(key);
     }
 
     @Override
@@ -421,7 +470,7 @@ public class CosFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
-        if (key.length() == 0) { // root always exists
+        if (key.length() == 0 || key.equals(PATH_DELIMITER)) { // root always exists
             return newDirectory(absolutePath);
         }
 
@@ -435,6 +484,10 @@ public class CosFileSystem extends FileSystem {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
                 return newDirectory(meta, absolutePath);
             }
+		}
+
+        if (isMergeBucket) {
+            throw new FileNotFoundException("No such file or directory in merge bucket'" + absolutePath + "'");
         }
 
         if (!key.endsWith(PATH_DELIMITER)) {
@@ -481,12 +534,17 @@ public class CosFileSystem extends FileSystem {
      * </p>
      */
     @Override
-    public FileStatus[] listStatus(Path f) throws IOException {
+    public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
         LOG.debug("list status:" + f);
-        checkPermission(f, AccessType.LIST);
+        checkPermission(f, RangerAccessType.LIST);
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
+		int listMaxLength = this.normalBucketMaxListNum;
+        if (checkMergeBucket && isMergeBucket) {
+            listMaxLength = this.mergeBucketMaxListNum;
+        }
+
 
         if (key.length() > 0) {
             FileMetadata meta = store.retrieveMetadata(key);
@@ -499,11 +557,21 @@ public class CosFileSystem extends FileSystem {
             key += PATH_DELIMITER;
         }
 
+        // if introduce the get file status to solve the file not exist exception
+        // will expand the list qps, for now only used get file status for merge bucket.
+        if (this.isMergeBucket) {
+            try {
+                this.getFileStatus(f);
+            } catch (FileNotFoundException e) {
+                throw new FileNotFoundException("No such file or directory:" + f);
+            }
+        }
+
         URI pathUri = absolutePath.toUri();
         Set<FileStatus> status = new TreeSet<FileStatus>();
         String priorLastKey = null;
         do {
-            CosNPartialListing listing = store.list(key, COS_MAX_LISTING_LENGTH,
+            CosNPartialListing listing = store.list(key, listMaxLength,
                     priorLastKey, false);
             for (FileMetadata fileMetadata : listing.getFiles()) {
                 Path subPath = keyToPath(fileMetadata.getKey());
@@ -578,7 +646,7 @@ public class CosFileSystem extends FileSystem {
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
         LOG.debug("mkdirs path: {}.", f);
-        checkPermission(f, AccessType.WRITE);
+        checkPermission(f, RangerAccessType.WRITE);
         try {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isDirectory()) {
@@ -588,7 +656,13 @@ public class CosFileSystem extends FileSystem {
             }
         } catch (FileNotFoundException e) {
             validatePath(f);
-            return mkDirRecursively(f, permission);
+			boolean result;
+            if (isMergeBucket) {
+                result = mkDirAutoRecursively(f, permission);
+            } else {
+                result = mkDirRecursively(f, permission);
+            }
+            return result;
         }
     }
 
@@ -641,9 +715,30 @@ public class CosFileSystem extends FileSystem {
         return true;
     }
 
+	/**
+     * Create a directory recursively auto by merge plan
+     * which the put object interface decide the dir which end with the "/"
+     *
+     * @param f          Absolute path to the directory
+     * @param permission Directory permissions
+     * @return Return true if the creation was successful,  throw a IOException.
+     * @throws IOException An IOException occurred when creating a directory object on COS.
+     */
+    public boolean mkDirAutoRecursively(Path f, FsPermission permission)
+            throws IOException {
+        LOG.debug("Make the directory recursively auto. Path: {}, FsPermission: {}.", f, permission);
+        // add the end '/' to the path which server auto create middle dir
+        String folderPath = pathToKey(makeAbsolute(f));
+        if (!folderPath.endsWith(PATH_DELIMITER)) {
+            folderPath += PATH_DELIMITER;
+        }
+        store.storeEmptyFile(folderPath);
+        return true;
+    }
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
-        checkPermission(f, AccessType.READ);
+        checkPermission(f, RangerAccessType.READ);
+		LOG.debug("Open file [{}] to read, buffer [{}]", f, bufferSize);
 
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
@@ -659,13 +754,12 @@ public class CosFileSystem extends FileSystem {
                 bufferSize));
     }
 
-
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
         LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
 
-        checkPermission(src, AccessType.DELETE);
-        checkPermission(dst, AccessType.WRITE);
+        checkPermission(src, RangerAccessType.DELETE);
+        checkPermission(dst, RangerAccessType.WRITE);
 
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
@@ -752,11 +846,18 @@ public class CosFileSystem extends FileSystem {
             // The default root directory is definitely there.
         }
 
-        boolean result = false;
-        if (srcFileStatus.isDirectory()) {
-            result = this.copyDirectory(src, dst);
+		 if (!isMergeBucket) {
+            return internalCopyAndDelete(src, dst, srcFileStatus.isDirectory());
         } else {
-            result = this.copyFile(src, dst);
+            return internalRename(src, dst);
+		}
+	}
+	private boolean internalCopyAndDelete(Path srcPath, Path dstPath, boolean isDir) throws IOException {
+        boolean result = false;
+        if (isDir) {
+            result = this.copyDirectory(srcPath, dstPath);
+        } else {
+            result = this.copyFile(srcPath, dstPath);
         }
 
         if (!result) {
@@ -765,8 +866,14 @@ public class CosFileSystem extends FileSystem {
             // ensure data security.
             return false;
         } else {
-            return this.delete(src, true);
+            return this.delete(srcPath, true);
         }
+	}
+	private boolean internalRename(Path srcPath, Path dstPath) throws IOException {
+        String srcKey = pathToKey(srcPath);
+        String dstKey = pathToKey(dstPath);
+        this.store.rename(srcKey, dstKey);
+        return true;
     }
 
     private boolean copyFile(Path srcPath, Path dstPath) throws IOException {
@@ -803,7 +910,7 @@ public class CosFileSystem extends FileSystem {
         String priorLastKey = null;
         do {
             CosNPartialListing objectList = this.store.list(srcKey,
-                    COS_MAX_LISTING_LENGTH, priorLastKey, true);
+                    this.normalBucketMaxListNum, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
                         this.store,
@@ -898,7 +1005,7 @@ public class CosFileSystem extends FileSystem {
             synchronized (CosFileSystem.class) {
                 if (rangerQcloudObjectStorageStorageClient == null) {
                     try {
-                        RangerQcloudObjectStorageClient tmpClient  =
+                        RangerQcloudObjectStorageClient tmpClient =
                                 (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
                         tmpClient.init(conf);
                         rangerQcloudObjectStorageStorageClient = tmpClient;
@@ -927,7 +1034,7 @@ public class CosFileSystem extends FileSystem {
         LOG.debug("call the checksum for the path: {}.", f);
 
         // The order of each file, must support both crc at same time, how to tell the difference crc request?
-        checkPermission(f, AccessType.READ);
+        checkPermission(f, RangerAccessType.READ);
 
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
@@ -970,7 +1077,7 @@ public class CosFileSystem extends FileSystem {
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
         LOG.debug("set XAttr: {}.", f);
 
-        checkPermission(f, AccessType.WRITE);
+        checkPermission(f, RangerAccessType.WRITE);
 
         // First, determine whether the length of the name and value exceeds the limit.
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
@@ -1008,7 +1115,7 @@ public class CosFileSystem extends FileSystem {
     public byte[] getXAttr(Path f, String name) throws IOException {
         LOG.debug("get XAttr: {}.", f);
 
-        checkPermission(f, AccessType.READ);
+        checkPermission(f, RangerAccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
 
@@ -1037,7 +1144,7 @@ public class CosFileSystem extends FileSystem {
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
         LOG.debug("get XAttrs: {}.", f);
 
-        checkPermission(f, AccessType.READ);
+        checkPermission(f, RangerAccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
 
@@ -1064,7 +1171,7 @@ public class CosFileSystem extends FileSystem {
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
         LOG.debug("get XAttrs: {}.", f);
 
-        checkPermission(f, AccessType.READ);
+        checkPermission(f, RangerAccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
 
@@ -1088,7 +1195,7 @@ public class CosFileSystem extends FileSystem {
     public void removeXAttr(Path f, String name) throws IOException {
         LOG.debug("remove XAttr: {}.", f);
 
-        checkPermission(f, AccessType.WRITE);
+        checkPermission(f, RangerAccessType.WRITE);
 
         Path absolutPath = makeAbsolute(f);
 
@@ -1115,7 +1222,7 @@ public class CosFileSystem extends FileSystem {
     public List<String> listXAttrs(Path f) throws IOException {
         LOG.debug("list XAttrs: {}.", f);
 
-        checkPermission(f, AccessType.READ);
+        checkPermission(f, RangerAccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
 
@@ -1130,17 +1237,37 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public Token<?> getDelegationToken(String renewer) throws IOException {
+        LOG.info("getDelegationToken, renewer: {}, stack: {}",
+                renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace( ',', '\n' ));
         if (rangerQcloudObjectStorageStorageClient != null) {
             return rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
         }
         return super.getDelegationToken(renewer);
     }
 
-
-    private void checkPermission(Path f, AccessType accessType) throws IOException {
+    private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
         if (!this.enableRangerPluginPermissionCheck) {
             return;
         }
+
+        AccessType accessType = null;
+        switch (rangerAccessType) {
+            case LIST:
+                accessType = AccessType.LIST;
+                break;
+            case WRITE:
+                accessType = AccessType.WRITE;
+                break;
+            case READ:
+                accessType = AccessType.READ;
+                break;
+            case DELETE:
+                accessType = AccessType.DELETE;
+                break;
+            default:
+                throw new IOException(String.format("unknown access type %s", rangerAccessType.toString()));
+        }
+
         Path absolutePath = makeAbsolute(f);
         String allowKey = pathToKey(absolutePath);
         if (allowKey.startsWith("/")) {
@@ -1149,16 +1276,21 @@ public class CosFileSystem extends FileSystem {
 
 
         PermissionRequest permissionReq = new PermissionRequest(ServiceType.COS, accessType,
-                this.bucket, allowKey, "", "");
-        boolean allowed = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
+                this.formatBucket, allowKey, "", "");
+        boolean allowed = false;
+        PermissionResponse permission = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
+        if (permission != null) {
+            allowed = permission.isAllowed();
+        }
         if (!allowed) {
             throw new IOException(String.format("Permission denied, [key: %s], [user: %s], [operation: %s]",
-                    allowKey, currentUser.getShortUserName(), accessType.name()));
+                    allowKey, currentUser.getShortUserName(), rangerAccessType.name()));
         }
     }
 
     @Override
     public void close() throws IOException {
+        LOG.info("begin to close cos file system");
         try {
             super.close();
         } finally {

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
-
 import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 
 public class BufferInputStream extends InputStream {

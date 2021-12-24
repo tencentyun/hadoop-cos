@@ -6,7 +6,6 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
-import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
