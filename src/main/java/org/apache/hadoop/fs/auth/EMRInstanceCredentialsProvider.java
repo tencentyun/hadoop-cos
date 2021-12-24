@@ -46,7 +46,9 @@ public class EMRInstanceCredentialsProvider extends AbstractCOSCredentialProvide
             }
             return cosCredentials;
         } catch (CosClientException e) {
-            LOG.error("Failed to obtain the credentials from CVMInstanceCredentialsProvider.", e);
+            LOG.error("Failed to obtain the credentials from EMRInstanceCredentialsProvider.", e);
+        } catch (Exception e) {
+            LOG.error("getCredentials failed", e);
         }
 
         return null;

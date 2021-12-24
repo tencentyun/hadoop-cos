@@ -29,12 +29,14 @@ public class CosNFSInputStream extends FSInputStream {
         private int status;
         private long start;
         private long end;
+        private IOException exception;
 
         public ReadBuffer(long start, long end) {
             this.start = start;
             this.end = end;
             this.buffer = new byte[(int) (this.end - this.start) + 1];
             this.status = INIT;
+            this.exception = null;
         }
 
         public void lock() {
@@ -65,6 +67,14 @@ public class CosNFSInputStream extends FSInputStream {
 
         public void setStatus(int status) {
             this.status = status;
+        }
+
+        public void setException(IOException e) {
+            this.exception = e;
+        }
+
+        public IOException getException() {
+            return this.exception;
         }
 
         public long getStart() {
@@ -204,10 +214,12 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         ReadBuffer readBuffer = this.readBufferQueue.poll();
+        IOException innerException = null;
         readBuffer.lock();
         try {
             readBuffer.await(ReadBuffer.INIT);
             if (readBuffer.getStatus() == ReadBuffer.ERROR) {
+                innerException = readBuffer.getException();
                 this.buffer = null;
                 this.bufferStart = -1;
                 this.bufferEnd = -1;
@@ -223,7 +235,7 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         if (null == this.buffer) {
-            throw new IOException("Null IO stream");
+            throw new IOException("Null IO stream.", innerException);
         }
 
         this.position = pos;
@@ -336,7 +348,7 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     @Override
-    public int available() throws IOException {
+	public int available() throws IOException {
         if(this.closed) {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
@@ -348,8 +360,7 @@ public class CosNFSInputStream extends FSInputStream {
 
         return (int) remaining;
     }
-
-    @Override
+	@Override
     public void close() throws IOException {
         if (this.closed) {
             return;

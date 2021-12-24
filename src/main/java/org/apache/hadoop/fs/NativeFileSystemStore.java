@@ -1,6 +1,7 @@
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
+import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.cos.model.PartETag;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -22,6 +23,11 @@ import java.util.List;
 public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
+
+    void setMergeBucket(boolean isMergeBucket);
+
+    HeadBucketResult headBucket(String bucketName) throws IOException;
+
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
@@ -76,16 +82,18 @@ public interface NativeFileSystemStore {
     CosNPartialListing list(String prefix, int maxListingLength, CosNResultInfo info) throws IOException;
 
     CosNPartialListing list(String prefix, int maxListingLength,
-                            String priorLastKey, boolean recursive)
+                        String priorLastKey, boolean recursive)
             throws IOException;
 
     CosNPartialListing list(String prefix, int maxListingLength,
-                            String priorLastKey, boolean recursive, CosNResultInfo info)
+                        String priorLastKey, boolean recursive, CosNResultInfo info)
             throws IOException;
 
     void delete(String key) throws IOException;
 
+	void deleteRecursive(String key) throws IOException;
     void copy(String srcKey, String dstKey) throws IOException;
+	void rename(String srcKey, String dstKey) throws IOException;
 
     /**
      * Delete all keys with the given prefix. Used for testing.

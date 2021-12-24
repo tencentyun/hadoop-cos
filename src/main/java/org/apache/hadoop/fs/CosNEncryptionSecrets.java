@@ -27,7 +27,7 @@ public class CosNEncryptionSecrets implements Writable, Serializable {
     private String encryptionKey = "";
 
     /**
-     * Encryption context used by sse-kms
+	* Encryption context used by sse-kms
      */
     private String encryptionContext = "";
 
@@ -56,11 +56,10 @@ public class CosNEncryptionSecrets implements Writable, Serializable {
         this(encryptionAlgorithm.getMethod(), encryptionKey);
     }
 
-    public CosNEncryptionSecrets(final CosNEncryptionMethods encryptionAlgorithm,
+	public CosNEncryptionSecrets(final CosNEncryptionMethods encryptionAlgorithm,
                                  final String encryptionKey, final String encryptionContext) throws IOException {
         this(encryptionAlgorithm.getMethod(), encryptionKey, encryptionContext);
     }
-
     /**
      * Create a pair of secrets.
      *
@@ -75,7 +74,7 @@ public class CosNEncryptionSecrets implements Writable, Serializable {
         init();
     }
 
-    public CosNEncryptionSecrets(final String encryptionAlgorithm,
+	public CosNEncryptionSecrets(final String encryptionAlgorithm,
                                  final String encryptionKey, final String encryptionContext) throws IOException {
         this.encryptionAlgorithm = encryptionAlgorithm;
         this.encryptionKey = encryptionKey;
@@ -146,8 +145,7 @@ public class CosNEncryptionSecrets implements Writable, Serializable {
         return encryptionKey;
     }
 
-    public String getEncryptionContext() { return encryptionContext; }
-
+	public String getEncryptionContext() { return encryptionContext; }
     /**
      * Does this instance have encryption options?
      * That is: is the algorithm non-null.

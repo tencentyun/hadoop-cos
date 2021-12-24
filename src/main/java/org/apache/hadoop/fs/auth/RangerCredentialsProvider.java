@@ -6,6 +6,7 @@ import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CosFileSystem;
 import org.apache.hadoop.fs.CosNConfigKeys;
+import org.apache.hadoop.fs.CosNUtils;
 import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,91 +14,94 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.URI;
-import java.util.Date;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class RangerCredentialsProvider extends AbstractCOSCredentialProvider implements COSCredentialsProvider {
     private static final Logger log = LoggerFactory.getLogger(RangerCredentialsProvider.class);
-    private Thread credentialsFetcherDaemonThread;
-    private CredentialsFetcherDaemon credentialsFetcherDaemon;
+    private RangerCredentialsFetcher rangerCredentialsFetcher;
     private final String bucketName;
     private String bucketRegion;
+    private String appId;
+
 
     public RangerCredentialsProvider(@Nullable URI uri, Configuration conf) {
         super(uri, conf);
-        this.bucketName = uri.getHost();
+        if (null != conf) {
+            this.appId = conf.get(CosNConfigKeys.COSN_APPID_KEY);
+        }
+        this.bucketName = CosNUtils.formatBucket(uri.getHost(), conf);
         this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
         if (this.bucketRegion == null || this.bucketRegion.isEmpty()) {
             this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
         }
 
-        credentialsFetcherDaemon = new CredentialsFetcherDaemon(
+        rangerCredentialsFetcher = new RangerCredentialsFetcher(
                 conf.getInt(
                         CosNConfigKeys.COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL,
                         CosNConfigKeys.DEFAULT_COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL));
-        credentialsFetcherDaemonThread = new Thread(credentialsFetcherDaemon);
-        credentialsFetcherDaemonThread.setDaemon(true);
-        credentialsFetcherDaemonThread.start();
     }
 
-    class CredentialsFetcherDaemon implements Runnable {
+    class RangerCredentialsFetcher  {
         private int refreshIntervalSeconds;
         private AtomicReference<COSCredentials> lastCredentialsRef;
-        private Date lastFreshDate;
+        private AtomicLong lastGetCredentialsTimeStamp;
 
-        CredentialsFetcherDaemon(int refreshIntervalSeconds) {
+        RangerCredentialsFetcher(int refreshIntervalSeconds) {
             this.refreshIntervalSeconds = refreshIntervalSeconds;
             this.lastCredentialsRef = new AtomicReference<>();
+            this.lastGetCredentialsTimeStamp = new AtomicLong();
         }
 
         COSCredentials getCredentials() {
-            COSCredentials lastCred = lastCredentialsRef.get();
-            if (lastCred == null) {
-                return fetchCredentials();
+            if (needSyncFetchNewCredentials()) {
+                synchronized (this) {
+                    if (needSyncFetchNewCredentials()) {
+                        return fetchNewCredentials();
+                    }
+                }
             }
-            return lastCred;
+            return lastCredentialsRef.get();
         }
 
-        private COSCredentials fetchCredentials() {
+        private boolean needSyncFetchNewCredentials() {
+            if (lastCredentialsRef.get() == null) {
+                return true;
+            }
+            long currentSec = System.currentTimeMillis() / 1000;
+            return currentSec - lastGetCredentialsTimeStamp.get() > this.refreshIntervalSeconds;
+        }
+
+        private COSCredentials fetchNewCredentials() {
             try {
                 GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
                         bucketName);
-                return new BasicSessionCredentials(stsResp.getTempAK(), stsResp.getTempSK(), stsResp.getTempToken());
+
+                COSCredentials cosCredentials = null;
+                if (appId != null) {
+                    cosCredentials =  new BasicSessionCredentials(appId, stsResp.getTempAK(), stsResp.getTempSK(),
+                            stsResp.getTempToken());
+                } else {
+                    cosCredentials = new BasicSessionCredentials(stsResp.getTempAK(), stsResp.getTempSK(),
+                            stsResp.getTempToken());
+                }
+
+                this.lastCredentialsRef.set(cosCredentials);
+                this.lastGetCredentialsTimeStamp.set(System.currentTimeMillis() / 1000);
+                return cosCredentials;
             } catch (IOException e) {
                 log.error("fetch credentials failed", e);
                 return null;
-            }
-        }
-
-        @Override
-        public void run() {
-            while (true) {
-                Date currentDate = new Date();
-                if (lastFreshDate == null || (currentDate.getTime() / 1000 - lastFreshDate.getTime() / 1000)
-                        < this.refreshIntervalSeconds) {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                    }
-                    continue;
-                }
-
-                COSCredentials newCred = fetchCredentials();
-                if (newCred != null) {
-                    this.lastFreshDate = currentDate;
-                    this.lastCredentialsRef.set(newCred);
-                }
             }
         }
     }
 
     @Override
     public COSCredentials getCredentials() {
-        return credentialsFetcherDaemon.getCredentials();
+        return rangerCredentialsFetcher.getCredentials();
     }
 
     @Override
     public void refresh() {
-
     }
 }

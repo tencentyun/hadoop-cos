@@ -171,4 +171,15 @@ public final class CosNUtils {
             return null;
         }
     }
+
+    public static String formatBucket(String originBucketName, Configuration conf) {
+        String appidStr = conf.get(CosNConfigKeys.COSN_APPID_KEY);
+        if (appidStr == null || appidStr.isEmpty()) {
+            return originBucketName;
+        }
+        if (originBucketName.endsWith("-"+appidStr)) {
+            return originBucketName;
+        }
+        return originBucketName + "-" + appidStr;
+    }
 }

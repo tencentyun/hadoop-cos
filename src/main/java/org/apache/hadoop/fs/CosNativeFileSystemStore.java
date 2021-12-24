@@ -49,8 +49,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private int maxRetryTimes;
     private int trafficLimit;
     private boolean crc32cEnabled;
-    private boolean completeMPUCheckEnabled;
+	private boolean completeMPUCheckEnabled;
     private CosNEncryptionSecrets encryptionSecrets;
+	private boolean isMergeBucket;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
@@ -99,15 +100,13 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             config.setHttpProtocol(HttpProtocol.https);
         }
 
-        int socketTimeoutSec = conf.getInt(
+		int socketTimeoutSec = conf.getInt(
                 CosNConfigKeys.COSN_CLIENT_SOCKET_TIMEOUTSEC,
                 CosNConfigKeys.DEFAULT_CLIENT_SOCKET_TIMEOUTSEC);
         config.setSocketTimeout(socketTimeoutSec * 1000);
-
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
-
-        this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,
+		this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,
                 CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
 
         // Proxy settings
@@ -157,7 +156,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.CLIENT_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_CLIENT_MAX_RETRIES);
         config.setMaxErrorRetry(clientMaxRetryTimes);
-        LOG.info("hadoop cos retry times: {}, cos client retry times: {}",
+		LOG.info("hadoop cos retry times: {}, cos client retry times: {}",
                 this.maxRetryTimes, clientMaxRetryTimes);
 
         // 设置连接池的最大连接数目
@@ -172,7 +171,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 serverSideEncryptionAlgorithm);
         String sseKey = conf.get(
                 CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY, "");
-        String sseContext = conf.get(
+		String sseContext = conf.get(
                 CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_CONTEXT, "");
         checkEncryptionMethod(config, cosSSE, sseKey);
         this.encryptionSecrets = new CosNEncryptionSecrets(cosSSE, sseKey, sseContext);
@@ -194,6 +193,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             initCOSClient(uri, conf);
             this.bucketName = uri.getHost();
+			this.isMergeBucket = false;
             String storageClass = conf.get(CosNConfigKeys.COSN_STORAGE_CLASS_KEY);
             if (null != storageClass && !storageClass.isEmpty()) {
                 try {
@@ -214,6 +214,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         } catch (Exception e) {
             handleException(e, "");
         }
+	 }
+
+    @Override
+    public void setMergeBucket(boolean isMergeBucket)  {
+        this.isMergeBucket = isMergeBucket;
     }
 
     private void storeFileWithRetry(String key, InputStream inputStream,
@@ -263,6 +268,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     String.format("Store the file failed, cos key: %s, exception: %s.", key, e.toString());
             handleException(new Exception(errMsg), key);
         }
+	}
+
+    @Override
+    public HeadBucketResult headBucket(String bucketName) throws IOException {
+        HeadBucketRequest headBucketRequest = new HeadBucketRequest(bucketName);
+        try {
+            HeadBucketResult result = (HeadBucketResult) callCOSClientWithRetry(headBucketRequest);
+            return result;
+        } catch (Exception e) {
+            String errMsg = String.format("head bucket [%s] occurs an exception",
+                    bucketName, e.toString());
+            handleException(new Exception(errMsg), bucketName);
+        }
+        return null; // never will get here
     }
 
     @Override
@@ -512,8 +531,16 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     }
                 }
             }
+			boolean isFile = true;
+            if (isMergeBucket) {
+                if (objectMetadata.isFileModeDir() || key.equals(PATH_DELIMITER)) {
+                    isFile = false;
+                }
+            } else {
+                isFile = !key.endsWith(PATH_DELIMITER);
+            }
             FileMetadata fileMetadata =
-                    new FileMetadata(key, fileSize, mtime, !key.endsWith(PATH_DELIMITER),
+                    new FileMetadata(key, fileSize, mtime, isFile,
                             ETag, crc64ecm, crc32cm, versionId,
                             objectMetadata.getStorageClass(), userMetadata);
             // record the last request result info
@@ -828,15 +855,15 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public CosNPartialListing list(String prefix, int maxListingLength,
-                                   String priorLastKey,
-                                   boolean recurse) throws IOException {
+                               String priorLastKey,
+                               boolean recurse) throws IOException {
         return list(prefix, maxListingLength, priorLastKey, recurse, null);
     }
 
     @Override
     public CosNPartialListing list(String prefix, int maxListingLength,
-                                   String priorLastKey,
-                                   boolean recurse, CosNResultInfo info) throws IOException {
+                               String priorLastKey,
+                               boolean recurse, CosNResultInfo info) throws IOException {
         return list(prefix, recurse ? null : PATH_DELIMITER, maxListingLength, priorLastKey, info);
     }
 
@@ -852,8 +879,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      */
 
     private CosNPartialListing list(String prefix, String delimiter,
-                                    int maxListingLength,
-                                    String priorLastKey, CosNResultInfo info) throws IOException {
+                                int maxListingLength,
+                                String priorLastKey, CosNResultInfo info) throws IOException {
         LOG.debug("List the cos key prefix: {}, max listing length: {}, delimiter: {}, prior last key: {}.",
                 prefix,
                 delimiter, maxListingLength, priorLastKey);
@@ -971,44 +998,22 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     /**
-     * rename operation
-     * @param srcKey src cos key
-     * @param dstKey dst cos key
-     * @throws IOException
+     * delete recursive only used on merge bucket to delete dir recursive
+     * @param key cos key
+     * @throws IOException e
      */
-    public void rename(String srcKey, String dstKey) throws IOException {
-        LOG.debug("Rename the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
+    @Override
+    public void deleteRecursive(String key) throws IOException {
+        LOG.debug("Delete the cos key recursive: {} from bucket: {}.", key, this.bucketName);
         try {
-            ObjectMetadata objectMetadata = new ObjectMetadata();
-            if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
-            }
-            CopyObjectRequest copyObjectRequest =
-                    new CopyObjectRequest(bucketName, srcKey, bucketName,
-                            dstKey);
-            // get the storage class of the source file
-            FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
-            if (null != sourceFileMetadata.getStorageClass()) {
-                copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
-            }
-            copyObjectRequest.setNewObjectMetadata(objectMetadata);
-            this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
-
-            if (null != this.customerDomainEndpointResolver) {
-                if (null != this.customerDomainEndpointResolver.getEndpoint()) {
-                    copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);
-                }
-            }
-            callCOSClientWithRetry(copyObjectRequest);
             DeleteObjectRequest deleteObjectRequest =
-                    new DeleteObjectRequest(bucketName, srcKey);
+                    new DeleteObjectRequest(bucketName, key);
+            deleteObjectRequest.setRecursive(true);
             callCOSClientWithRetry(deleteObjectRequest);
         } catch (Exception e) {
-            String errMsg = String.format(
-                    "Rename object failed, source cos key: %s, dest cos key: %s, " +
-                            "exception: %s", srcKey,
-                    dstKey, e.toString());
-            handleException(new Exception(errMsg), srcKey);
+            String errMsg = String.format("Deleting the cos key recursive [%s] occurs an exception: " +
+                    "%s", key, e.toString());
+            handleException(new Exception(errMsg), key);
         }
     }
 
@@ -1038,6 +1043,71 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             String errMsg = String.format(
                     "Copy the object failed, src cos key: %s, dst cos key: %s, " +
                             "exception: %s", srcKey, dstKey, e.toString());
+            handleException(new Exception(errMsg), srcKey);
+        }
+    }
+
+    /**
+     * rename operation
+     * @param srcKey src cos key
+     * @param dstKey dst cos key
+     * @throws IOException
+     */
+    @Override
+    public void rename(String srcKey, String dstKey) throws IOException {
+        if (!isMergeBucket) {
+            normalBucketRename(srcKey, dstKey);
+        } else {
+            mergeBucketRename(srcKey, dstKey);
+        }
+    }
+
+    public void normalBucketRename(String srcKey, String dstKey) throws IOException {
+        LOG.debug("Rename normal bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
+        try {
+            ObjectMetadata objectMetadata = new ObjectMetadata();
+            if (crc32cEnabled) {
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            }
+            CopyObjectRequest copyObjectRequest =
+                    new CopyObjectRequest(bucketName, srcKey, bucketName,
+                            dstKey);
+            // get the storage class of the source file
+            FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
+            if (null != sourceFileMetadata.getStorageClass()) {
+                copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
+            }
+            copyObjectRequest.setNewObjectMetadata(objectMetadata);
+            this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
+
+            if (null != this.customerDomainEndpointResolver) {
+                if (null != this.customerDomainEndpointResolver.getEndpoint()) {
+                    copyObjectRequest.setSourceEndpointBuilder(this.customerDomainEndpointResolver);
+                }
+            }
+            callCOSClientWithRetry(copyObjectRequest);
+            DeleteObjectRequest deleteObjectRequest =
+                    new DeleteObjectRequest(bucketName, srcKey);
+            callCOSClientWithRetry(deleteObjectRequest);
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Rename object failed, normal bucket, source cos key: %s, dest cos key: %s, " +
+                            "exception: %s", srcKey,
+                    dstKey, e.toString());
+            handleException(new Exception(errMsg), srcKey);
+        }
+    }
+
+    public void mergeBucketRename(String srcKey, String dstKey) throws IOException {
+        LOG.debug("Rename merge bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
+        try {
+            RenameRequest renameRequest = new RenameRequest(bucketName, srcKey, dstKey);
+            callCOSClientWithRetry(renameRequest);
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Rename object failed, merge bucket, source cos key: %s, dest cos key: %s, " +
+                            "exception: %s", srcKey,
+                    dstKey, e.toString());
             handleException(new Exception(errMsg), srcKey);
         }
     }
@@ -1084,7 +1154,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
-    private <X> void callCOSClientWithSSEKMS(X request, SSECOSKeyManagementParams managementParams) {
+	private <X> void callCOSClientWithSSEKMS(X request, SSECOSKeyManagementParams managementParams) {
         try {
             if (request instanceof PutObjectRequest) {
                 ((PutObjectRequest) request).setSSECOSKeyManagementParams(managementParams);
@@ -1100,7 +1170,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.error(errMsg);
         }
     }
-
     private <X> void callCOSClientWithSSECOS(X request, ObjectMetadata objectMetadata) {
         try {
             objectMetadata.setServerSideEncryption(SSEAlgorithm.AES256.getAlgorithm());
@@ -1152,7 +1221,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 break;
             case SSE_COS:
                 callCOSClientWithSSECOS(request, objectMetadata);
-                break;
+				break;
             case SSE_KMS:
                 String key = encryptionSecrets.getEncryptionKey();
                 String context = Base64.encodeAsString(encryptionSecrets.getEncryptionContext().getBytes());
@@ -1203,7 +1272,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             + " (" + description + ")");
                 }
                 break;
-            case SSE_KMS:
+			 case SSE_KMS:
                 // sseKeyLen can be empty which auto used by cos server
                 System.setProperty(SkipMd5CheckStrategy.DISABLE_PUT_OBJECT_MD5_VALIDATION_PROPERTY, "true");
                 config.setHttpProtocol(HttpProtocol.https);
@@ -1214,6 +1283,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
+	// merge bucket mkdir if the middle part exist will return the 500 error,
+    // and the rename if the dst exist will return the 500 status too,
+    // which make the relate 5** retry useless. must to improve the resp info to filter.
     private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {
         String sdkMethod = "";
         int retryIndex = 1;
@@ -1233,6 +1305,13 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                                 .mark((int) ((UploadPartRequest) request).getPartSize());
                     }
                     return this.cosClient.uploadPart((UploadPartRequest) request);
+				} else if (request instanceof  HeadBucketRequest) { // use for checking bucket type
+                    sdkMethod = "headBucket";
+                    return this.cosClient.headBucket((HeadBucketRequest) request);
+                } else if (request instanceof RenameRequest) {
+                    sdkMethod = "rename";
+                    this.cosClient.rename((RenameRequest) request);
+                    return new Object();
                 } else if (request instanceof GetObjectMetadataRequest) {
                     sdkMethod = "queryObjectMeta";
                     return this.cosClient.getObjectMetadata((GetObjectMetadataRequest) request);
@@ -1262,7 +1341,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 } else {
                     throw new IOException("no such method");
                 }
-            } catch (ResponseNotCompleteException nce) {
+			} catch (ResponseNotCompleteException nce) {
                 if  (this.completeMPUCheckEnabled && request instanceof  CompleteMultipartUploadRequest) {
                     String key = ((CompleteMultipartUploadRequest) request).getKey();
                     FileMetadata fileMetadata = this.queryObjectMetadata(key);
@@ -1344,8 +1423,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private static String ensureValidAttributeName(String attributeName) {
         return attributeName.replace('.', '-').toLowerCase();
     }
-
-    private String getPluginVersionInfo() {
+	private String getPluginVersionInfo() {
         Properties versionProperties = new Properties();
         InputStream inputStream= null;
         String versionStr = "unknown";
@@ -1365,5 +1443,4 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
         return versionStr;
     }
-
 }

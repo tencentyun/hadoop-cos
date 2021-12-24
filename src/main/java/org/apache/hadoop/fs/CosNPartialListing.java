@@ -2,8 +2,6 @@ package org.apache.hadoop.fs;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
-import org.apache.hadoop.fs.FileMetadata;
-import org.apache.hadoop.fs.NativeFileSystemStore;
 
 /**
  * <p>
@@ -28,7 +26,7 @@ public class CosNPartialListing {
     private final FileMetadata[] commonPrefixes;
 
     public CosNPartialListing(String priorLastKey, FileMetadata[] files,
-                              FileMetadata[] commonPrefixes) {
+                          FileMetadata[] commonPrefixes) {
         this.priorLastKey = priorLastKey;
         this.files = files;
         this.commonPrefixes = commonPrefixes;
