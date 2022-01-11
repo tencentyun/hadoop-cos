@@ -63,7 +63,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_CLIENT_MAX_RETRIES = 5;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
-    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = 8;
+    public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = 10;
 
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
     public static final int DEFAULT_COPY_THREAD_POOL_SIZE = 3;
