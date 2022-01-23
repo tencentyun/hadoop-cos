@@ -98,6 +98,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.DEFAULT_USE_HTTPS);
         if (useHttps) {
             config.setHttpProtocol(HttpProtocol.https);
+        } else {
+            // 这里 config 的默认值改过了，默认值变成了https了。
+            config.setHttpProtocol(HttpProtocol.http);
         }
 
         int socketTimeoutSec = conf.getInt(

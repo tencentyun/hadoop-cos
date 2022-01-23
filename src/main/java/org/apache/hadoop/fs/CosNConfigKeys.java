@@ -33,7 +33,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_ENDPOINT_SUFFIX_PREV_KEY = "fs.cosn.userinfo.endpoint_suffix";
 
     public static final String COSN_USE_HTTPS_KEY = "fs.cosn.useHttps";
-    public static final boolean DEFAULT_USE_HTTPS = false;
+    public static final boolean DEFAULT_USE_HTTPS = true;   // 现在 COS 强制使用 https 作为访问协议
 
     public static final String COSN_TMP_DIR = "fs.cosn.tmp.dir";
     public static final String DEFAULT_TMP_DIR = "/tmp/hadoop_cos";
