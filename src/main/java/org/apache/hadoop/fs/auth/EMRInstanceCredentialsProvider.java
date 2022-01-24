@@ -18,15 +18,24 @@ public class EMRInstanceCredentialsProvider extends AbstractCOSCredentialProvide
 
     private String appId;
     private final COSCredentialsProvider cosCredentialsProvider;
+    private boolean emrV2InstanceEnabled;
 
     public EMRInstanceCredentialsProvider(@Nullable URI uri, Configuration conf) {
         super(uri, conf);
         if (null != conf) {
             this.appId = conf.get(CosNConfigKeys.COSN_APPID_KEY);
+            this.emrV2InstanceEnabled = conf.getBoolean(CosNConfigKeys.COSN_EMRV2_INSTANCE_PROVIDER_ENABLED,
+                    CosNConfigKeys.DEFAULT_COSN_EMRV2_INSTANCE_PROVIDER_ENABLED);
         }
-        InstanceMetadataCredentialsEndpointProvider endpointProvider =
-                new InstanceMetadataCredentialsEndpointProvider(
-                        InstanceMetadataCredentialsEndpointProvider.Instance.EMR);
+
+        InstanceMetadataCredentialsEndpointProvider endpointProvider;
+        if (emrV2InstanceEnabled) {
+            endpointProvider = new InstanceMetadataCredentialsEndpointProvider(
+                    InstanceMetadataCredentialsEndpointProvider.Instance.EMRV2);
+        } else {
+            endpointProvider = new InstanceMetadataCredentialsEndpointProvider(
+                    InstanceMetadataCredentialsEndpointProvider.Instance.EMR);
+        }
         InstanceCredentialsFetcher instanceCredentialsFetcher = new InstanceCredentialsFetcher(endpointProvider);
         this.cosCredentialsProvider = new InstanceCredentialsProvider(instanceCredentialsFetcher);
     }
