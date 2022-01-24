@@ -101,6 +101,7 @@ public class CosNFSInputStream extends FSInputStream {
     private final int maxReadPartNumber;
     private byte[] buffer;
     private boolean closed = false;
+    private final int socketErrMaxRetryTimes;
 
     private final ExecutorService readAheadExecutorService;
     private final Queue<ReadBuffer> readBufferQueue;
@@ -136,6 +137,9 @@ public class CosNFSInputStream extends FSInputStream {
         this.maxReadPartNumber = conf.getInt(
                 CosNConfigKeys.READ_AHEAD_QUEUE_SIZE,
                 CosNConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE);
+        this.socketErrMaxRetryTimes = conf.getInt(
+                CosNConfigKeys.CLIENT_SOCKET_ERROR_MAX_RETRIES,
+                CosNConfigKeys.DEFAULT_CLIENT_SOCKET_ERROR_MAX_RETRIES);
         this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue =
                 new ArrayDeque<ReadBuffer>(this.maxReadPartNumber);
@@ -203,8 +207,8 @@ public class CosNFSInputStream extends FSInputStream {
                 readBuffer.setStatus(ReadBuffer.SUCCESS);
             } else {
                 this.readAheadExecutorService.execute(
-                        new CosNFileReadTask(
-                                this.conf, this.key, this.store, readBuffer));
+                        new CosNFileReadTask(this.conf, this.key, this.store,
+                                readBuffer, this.socketErrMaxRetryTimes));
             }
 
             this.readBufferQueue.add(readBuffer);
