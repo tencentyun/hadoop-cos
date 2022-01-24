@@ -12,7 +12,7 @@ import org.apache.hadoop.fs.cosn.Unit;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.0.2";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.0.3";
 
     public static final String TENCENT_EMR_VERSION_KEY = "fs.emr.version";
 
@@ -61,6 +61,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_RETRY_INTERVAL = 3;
     public static final String CLIENT_MAX_RETRIES_KEY = "fs.cosn.client.maxRetries";
     public static final int DEFAULT_CLIENT_MAX_RETRIES = 5;
+    public static final String CLIENT_SOCKET_ERROR_MAX_RETRIES = "fs.cosn.socket.error.maxRetries";
+    public static final int DEFAULT_CLIENT_SOCKET_ERROR_MAX_RETRIES = 5;
 
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
     public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = 10;
@@ -87,7 +89,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
     public static final String OPEN_CHECK_MERGE_BUCKET = "fs.cosn.check.merge.bucket";
-    public static final boolean DEFAULT_CHECK_MERGE_BUCKET = true;
+    public static final boolean DEFAULT_CHECK_MERGE_BUCKET = false;
     public static final String MERGE_BUCKET_MAX_LIST_NUM = "fs.cosn.merge.bucket.max.list.num";
     public static final int DEFAULT_MERGE_BUCKET_MAX_LIST_NUM = 5000;
     public static final String NORMAL_BUCKET_MAX_LIST_NUM = "fs.cosn.normal.bucket.max.list.num";
