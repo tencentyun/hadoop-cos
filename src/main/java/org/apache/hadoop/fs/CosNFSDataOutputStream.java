@@ -294,7 +294,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
         if (this.closed) {
-            throw new IOException("block stream has been closed.");
+            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
 
         if (this.currentBlockOutputStream == null) {
@@ -331,7 +331,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     @Override
     public void write(int b) throws IOException {
         if (this.closed) {
-            throw new IOException("block stream has been closed.");
+            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
 
         if (this.currentBlockOutputStream == null) {

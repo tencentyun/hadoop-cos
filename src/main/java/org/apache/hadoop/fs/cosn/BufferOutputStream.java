@@ -26,7 +26,13 @@ public class BufferOutputStream extends OutputStream {
     }
 
     @Override
-    public void write(int b) {
+    public void write(int b) throws IOException {
+        this.checkClosed();
+
+        if(this.byteBuffer.remaining() == 0){
+            throw new IOException("The buffer is full");
+        }
+
         byte[] singleBytes = new byte[1];
         singleBytes[0] = (byte) b;
         this.byteBuffer.put(singleBytes, 0, 1);
@@ -34,7 +40,34 @@ public class BufferOutputStream extends OutputStream {
     }
 
     @Override
-    public void flush() {
+    public void write(byte[] b, int off, int len) throws IOException {
+        this.checkClosed();
+
+        // 检查被写入的缓冲区
+        if (b == null) {
+            throw new NullPointerException();
+        } else if ((off < 0) || (off > b.length) || (len < 0) ||
+                ((off + len) > b.length) || ((off + len) < 0)) {
+            throw new IndexOutOfBoundsException();
+        } else if (len == 0) {
+            return;
+        }
+
+        // 检查缓冲区是否还可以继续写
+        if (this.byteBuffer.remaining() < len) {
+            throw new IOException(
+                    String.format("The buffer remaining[%d] is less than the write length[%d].",
+                            this.byteBuffer.remaining(), len));
+        }
+
+        this.byteBuffer.put(b, off, len);
+        this.isFlush = false;
+    }
+
+    @Override
+    public void flush() throws IOException {
+        this.checkClosed();
+
         if (this.isFlush) {
             return;
         }
@@ -55,5 +88,12 @@ public class BufferOutputStream extends OutputStream {
         this.byteBuffer = null;
         this.isFlush = false;
         this.isClosed = true;
+    }
+
+    private void checkClosed() throws IOException {
+        if (this.isClosed) {
+            throw new IOException(
+                    String.format("The BufferOutputStream[%d] has been closed.", this.hashCode()));
+        }
     }
 }

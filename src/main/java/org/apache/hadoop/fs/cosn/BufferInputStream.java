@@ -20,15 +20,26 @@ public class BufferInputStream extends InputStream {
 
     @Override
     public int read() throws IOException {
-        if (null == this.byteBuffer) {
-            throw new IOException("this byte buffer for InputStream is null");
-        }
+        this.checkClosed();
+
         if (!this.byteBuffer.hasRemaining()) {
             return -1;
         }
         return this.byteBuffer.get() & 0xFF;
     }
 
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+        this.checkClosed();
+
+        if (!this.byteBuffer.hasRemaining()) {
+            return -1;
+        }
+
+        int readLength = Math.min(this.byteBuffer.remaining(), len);
+        this.byteBuffer.get(b, off, readLength);
+        return readLength;
+    }
 
     @Override
     public synchronized void mark(int readLimit) {
@@ -46,9 +57,8 @@ public class BufferInputStream extends InputStream {
 
     @Override
     public synchronized void reset() throws IOException {
-        if (this.isClosed) {
-            throw new IOException("Closed in InputStream");
-        }
+        this.checkClosed();
+
         try {
             this.byteBuffer.reset();
         } catch (InvalidMarkException e) {
@@ -66,5 +76,12 @@ public class BufferInputStream extends InputStream {
         this.byteBuffer.rewind();
         this.byteBuffer = null;
         this.isClosed = true;
+    }
+
+    private void checkClosed() throws IOException {
+        if (this.isClosed) {
+            throw new IOException(
+                    String.format("The BufferInputStream[%d] has been closed", this.hashCode()));
+        }
     }
 }
