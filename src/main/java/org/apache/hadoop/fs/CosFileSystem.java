@@ -161,18 +161,27 @@ public class CosFileSystem extends FileSystem {
         Preconditions.checkArgument(readAheadPoolSize > 0,
                 String.format("The readAheadQueueSize[%d] should be positive.", readAheadPoolSize));
         // 核心线程数取用户配置的为准，最大线程数结合用户配置和IO密集型任务的最优线程数来看
-        int ioThreadPoolSize = uploadThreadPoolSize + readAheadPoolSize;
+        int ioCoreTaskSize = uploadThreadPoolSize + readAheadPoolSize;
         int ioMaxTaskSize = Math.max(uploadThreadPoolSize + readAheadPoolSize,
                 Runtime.getRuntime().availableProcessors() * 2 + 1);
+        if (this.getConf().get(CosNConfigKeys.IO_THREAD_POOL_MAX_SIZE_KEY) != null) {
+            int ioThreadPoolMaxSize = this.getConf().getInt(
+                    CosNConfigKeys.IO_THREAD_POOL_MAX_SIZE_KEY, CosNConfigKeys.DEFAULT_IO_THREAD_POOL_MAX_SIZE);
+            Preconditions.checkArgument(ioThreadPoolMaxSize > 0,
+                    String.format("The ioThreadPoolMaxSize[%d] should be positive.", ioThreadPoolMaxSize));
+            // 如果设置了 IO 线程池的最大限制，则整个线程池需要被限制住
+            ioCoreTaskSize = Math.min(ioCoreTaskSize, ioThreadPoolMaxSize);
+            ioMaxTaskSize = ioThreadPoolMaxSize;
+        }
         long threadKeepAlive = this.getConf().getLong(
                 CosNConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
                 CosNConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
         Preconditions.checkArgument(threadKeepAlive > 0,
                 String.format("The threadKeepAlive [%d] should be positive.", threadKeepAlive));
         this.boundedIOThreadPool = new ThreadPoolExecutor(
-                ioThreadPoolSize, ioMaxTaskSize,
+                ioCoreTaskSize, ioMaxTaskSize,
                 threadKeepAlive, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(ioThreadPoolSize),
+                new LinkedBlockingQueue<Runnable>(ioCoreTaskSize),
                 new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared-%d").setDaemon(true).build(),
                 new RejectedExecutionHandler() {
                     @Override
@@ -201,10 +210,8 @@ public class CosFileSystem extends FileSystem {
         );
         Preconditions.checkArgument(copyThreadPoolSize > 0,
                 String.format("The copyThreadPoolSize[%d] should be positive.", copyThreadPoolSize));
-        int maxCopyTaskSize = Math.max(copyThreadPoolSize,
-                Runtime.getRuntime().availableProcessors() * 2 + 1);
         this.boundedCopyThreadPool = new ThreadPoolExecutor(
-                copyThreadPoolSize, maxCopyTaskSize,
+                copyThreadPoolSize, copyThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(copyThreadPoolSize),
                 new ThreadFactoryBuilder().setNameFormat("cos-copy-%d").setDaemon(true).build(),

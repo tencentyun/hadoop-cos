@@ -67,6 +67,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String UPLOAD_THREAD_POOL_SIZE_KEY = "fs.cosn.upload_thread_pool";
     public static final int DEFAULT_UPLOAD_THREAD_POOL_SIZE = 10;
 
+    public static final String IO_THREAD_POOL_MAX_SIZE_KEY = "fs.cosn.io_thread_pool.maxSize";
+    public static final int DEFAULT_IO_THREAD_POOL_MAX_SIZE = 2 * Runtime.getRuntime().availableProcessors() + 1;
+
     public static final String COPY_THREAD_POOL_SIZE_KEY = "fs.cosn.copy_thread_pool";
     public static final int DEFAULT_COPY_THREAD_POOL_SIZE = 3;
 
