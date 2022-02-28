@@ -1374,6 +1374,26 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         LOG.error(errMsg, cse);
                         throw new IOException(errMsg);
                     }
+                } else if (request instanceof  CompleteMultipartUploadRequest && statusCode / 100 ==2
+                        && errorCode != null && !errorCode.isEmpty()) {
+                    // complete mpu error code might be in body when status code is 200
+                    // double check to head object only works in big data job case which key is not same.
+                    String key = ((CompleteMultipartUploadRequest) request).getKey();
+                    FileMetadata fileMetadata = this.queryObjectMetadata(key);
+                    if (null != fileMetadata) {
+                        // if file exist direct return.
+                        LOG.info("complete mpu error in body, error code {}, but key {} already exist, length {}",
+                                errorCode, key, fileMetadata.getLength());
+                        return new CompleteMultipartUploadResult();
+                    }
+                    // here same like the copy request not setting the interval sleep for now
+                    if (retryIndex <= this.maxRetryTimes)  {
+                        LOG.info(errMsg, cse);
+                        ++retryIndex;
+                    } else {
+                        LOG.error(errMsg, cse);
+                        throw new IOException(errMsg);
+                    }
                 } else if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg, cse);
