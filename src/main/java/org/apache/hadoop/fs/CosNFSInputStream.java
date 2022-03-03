@@ -239,6 +239,7 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         if (null == this.buffer) {
+            LOG.error(String.format("Null IO stream key:%s", this.key), innerException);
             throw new IOException("Null IO stream.", innerException);
         }
 

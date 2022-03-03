@@ -39,6 +39,21 @@ public class CosNFileReadTask implements Runnable {
 
     @Override
     public void run() {
+        // 设置线程的context class loader
+        // 之前有客户通过spark-sql执行add jar命令, 当spark.eventLog.dir为cos, jar路径也在cos时, 会导致cos读取数据时，
+        // http库的日志加载，又会加载cos上的文件，以此形成了逻辑死循环
+        // 1 上层调用cos read
+        //2 cos插件通过Apache http库读取数据
+        //3 http库里面初始化日志对象时要读取日志配置，发现配置是在cos上
+        //4 调用cos read
+
+        // 分析后发现，日志库里面获取资源是通过context class loader, 而add jar会改变context class loader，将被add jar也加入classpath路径中
+        // 因此这里通过设置context class loader为app class loader。 避免被上层add jar等改变context class loader行为污染
+        Thread currentThread = Thread.currentThread();
+        LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
+                this.getClass().getClassLoader(), currentThread.getContextClassLoader());
+        currentThread.setContextClassLoader(this.getClass().getClassLoader());
+
         try {
             this.readBuffer.lock();
             int retryIndex = 1;

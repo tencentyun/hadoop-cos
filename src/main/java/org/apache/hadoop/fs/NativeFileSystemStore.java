@@ -24,7 +24,7 @@ public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
 
-    void setMergeBucket(boolean isMergeBucket);
+    void setPosixBucket(boolean isPosixBucket);
 
     HeadBucketResult headBucket(String bucketName) throws IOException;
 
