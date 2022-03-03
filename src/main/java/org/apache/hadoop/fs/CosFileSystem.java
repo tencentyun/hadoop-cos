@@ -43,6 +43,10 @@ import java.util.concurrent.*;
  * . Unlike
  * {@link CosFileSystem} this implementation stores files on COS in their
  * native form so they can be read by other cos tools.
+ *
+ * todo: for new version cos file system is the shell which using the head bucket
+ * to decide whether normal bucket or merge bucket, if it is merge bucket
+ * direct use the network shell implements.
  */
 @InterfaceAudience.Private
 @InterfaceStability.Stable
@@ -61,28 +65,25 @@ public class CosFileSystem extends FileSystem {
     private boolean isMergeBucket;
     private boolean checkMergeBucket;
     private int mergeBucketMaxListNum;
-    private int normalBucketMaxListNum;
-    private NativeFileSystemStore store;
     private Path workingDir;
     private String owner = "Unknown";
     private String group = "Unknown";
-
-    private ExecutorService boundedIOThreadPool;
-    private ExecutorService boundedCopyThreadPool;
+    private NativeFileSystemStore store;
 
     private UserGroupInformation currentUser;
-
     private boolean enableRangerPluginPermissionCheck = false;
     public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
 
     private String formatBucket;
 
+/*
     public CosFileSystem() {
     }
 
     public CosFileSystem(NativeFileSystemStore store) {
         this.store = store;
     }
+*/
 
     /**
      * Return the protocol scheme for the FileSystem.
@@ -102,6 +103,7 @@ public class CosFileSystem extends FileSystem {
         UserGroupInformation.setConfiguration(conf);
         this.currentUser = UserGroupInformation.getCurrentUser();
 
+        // use the topper cos ranger. ignore the ofs ranger
         initRangerClientImpl(conf);
 
         this.bucket = uri.getHost();
@@ -111,6 +113,7 @@ public class CosFileSystem extends FileSystem {
             this.store = createDefaultStore(conf);
         }
 
+        // this store no need to init twice.
         this.store.initialize(uri, conf);
         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
         this.workingDir =
@@ -121,115 +124,27 @@ public class CosFileSystem extends FileSystem {
         LOG.debug("uri: {}, bucket: {}, working dir: {}, owner: {}, group: {}.\n" +
                         "configuration: {}.",
                 uri, bucket, workingDir, owner, group, conf);
-        BufferPool.getInstance().initialize(getConf());
 
-        // head the bucket to judge whether the merge bucket
         this.isMergeBucket = false;
-        this.checkMergeBucket = this.getConf().getBoolean(
-                CosNConfigKeys.OPEN_CHECK_MERGE_BUCKET,
-                CosNConfigKeys.DEFAULT_CHECK_MERGE_BUCKET
+        // for now all need to head bucket to check whether is the merge bucket
+        this.checkMergeBucket = true;
+        // head the bucket to judge whether the merge bucket
+        HeadBucketResult headBucketResult = this.store.headBucket(this.bucket);
+        int mergeBucketMaxListNum = this.getConf().getInt(
+                CosNConfigKeys.MERGE_BUCKET_MAX_LIST_NUM,
+                CosNConfigKeys.DEFAULT_MERGE_BUCKET_MAX_LIST_NUM
         );
 
-        if (this.checkMergeBucket) { // control
-            HeadBucketResult headBucketResult = this.store.headBucket(this.bucket);
-            int mergeBucketMaxListNum = this.getConf().getInt(
-                    CosNConfigKeys.MERGE_BUCKET_MAX_LIST_NUM,
-                    CosNConfigKeys.DEFAULT_MERGE_BUCKET_MAX_LIST_NUM
-            );
-            if (headBucketResult.isMergeBucket()) {
-                this.isMergeBucket = true;
-                this.mergeBucketMaxListNum = mergeBucketMaxListNum;
-                this.store.setMergeBucket(true);
-            }
-        }
         LOG.info("cos file system bucket is merged {}", this.isMergeBucket);
-        this.normalBucketMaxListNum = this.getConf().getInt(
-                CosNConfigKeys.NORMAL_BUCKET_MAX_LIST_NUM,
-                CosNConfigKeys.DEFAULT_NORMAL_BUCKET_MAX_LIST_NUM);
+        if (headBucketResult.isMergeBucket()) { // ofs implements
+            this.isMergeBucket = true;
+            this.mergeBucketMaxListNum = mergeBucketMaxListNum;
+            this.store.setMergeBucket(true);
+        } else { // normal cos hadoop file system implements
 
-        // initialize the thread pool
-        int uploadThreadPoolSize = this.getConf().getInt(
-                CosNConfigKeys.UPLOAD_THREAD_POOL_SIZE_KEY,
-                CosNConfigKeys.DEFAULT_UPLOAD_THREAD_POOL_SIZE
-        );
-        int readAheadPoolSize = this.getConf().getInt(
-                CosNConfigKeys.READ_AHEAD_QUEUE_SIZE,
-                CosNConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE
-        );
-        Preconditions.checkArgument(uploadThreadPoolSize > 0,
-                String.format("The uploadThreadPoolSize[%d] should be positive.", uploadThreadPoolSize));
-        Preconditions.checkArgument(readAheadPoolSize > 0,
-                String.format("The readAheadQueueSize[%d] should be positive.", readAheadPoolSize));
-        // 核心线程数取用户配置的为准，最大线程数结合用户配置和IO密集型任务的最优线程数来看
-        int ioCoreTaskSize = uploadThreadPoolSize + readAheadPoolSize;
-        int ioMaxTaskSize = Math.max(uploadThreadPoolSize + readAheadPoolSize,
-                Runtime.getRuntime().availableProcessors() * 2 + 1);
-        if (this.getConf().get(CosNConfigKeys.IO_THREAD_POOL_MAX_SIZE_KEY) != null) {
-            int ioThreadPoolMaxSize = this.getConf().getInt(
-                    CosNConfigKeys.IO_THREAD_POOL_MAX_SIZE_KEY, CosNConfigKeys.DEFAULT_IO_THREAD_POOL_MAX_SIZE);
-            Preconditions.checkArgument(ioThreadPoolMaxSize > 0,
-                    String.format("The ioThreadPoolMaxSize[%d] should be positive.", ioThreadPoolMaxSize));
-            // 如果设置了 IO 线程池的最大限制，则整个线程池需要被限制住
-            ioCoreTaskSize = Math.min(ioCoreTaskSize, ioThreadPoolMaxSize);
-            ioMaxTaskSize = ioThreadPoolMaxSize;
         }
-        long threadKeepAlive = this.getConf().getLong(
-                CosNConfigKeys.THREAD_KEEP_ALIVE_TIME_KEY,
-                CosNConfigKeys.DEFAULT_THREAD_KEEP_ALIVE_TIME);
-        Preconditions.checkArgument(threadKeepAlive > 0,
-                String.format("The threadKeepAlive [%d] should be positive.", threadKeepAlive));
-        this.boundedIOThreadPool = new ThreadPoolExecutor(
-                ioCoreTaskSize, ioMaxTaskSize,
-                threadKeepAlive, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(ioCoreTaskSize),
-                new ThreadFactoryBuilder().setNameFormat("cos-transfer-shared-%d").setDaemon(true).build(),
-                new RejectedExecutionHandler() {
-                    @Override
-                    public void rejectedExecution(Runnable r,
-                                                  ThreadPoolExecutor executor) {
-                        if (!executor.isShutdown()) {
-                            try {
-                                executor.getQueue().put(r);
-                            } catch (InterruptedException e) {
-                                LOG.error("put a io task into the download " +
-                                        "thread pool occurs an exception.", e);
-                                throw new RejectedExecutionException(
-                                        "Putting the io task failed due to the interruption", e);
-                            }
-                        } else {
-                            LOG.error("The bounded io thread pool has been shutdown.");
-                            throw new RejectedExecutionException("The bounded io thread pool has been shutdown");
-                        }
-                    }
-                }
-        );
 
-        int copyThreadPoolSize = this.getConf().getInt(
-                CosNConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
-                CosNConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
-        );
-        Preconditions.checkArgument(copyThreadPoolSize > 0,
-                String.format("The copyThreadPoolSize[%d] should be positive.", copyThreadPoolSize));
-        this.boundedCopyThreadPool = new ThreadPoolExecutor(
-                copyThreadPoolSize, copyThreadPoolSize,
-                threadKeepAlive, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(copyThreadPoolSize),
-                new ThreadFactoryBuilder().setNameFormat("cos-copy-%d").setDaemon(true).build(),
-                new RejectedExecutionHandler() {
-                    @Override
-                    public void rejectedExecution(Runnable r,
-                                                  ThreadPoolExecutor executor) {
-                        if (!executor.isShutdown()) {
-                            try {
-                                executor.getQueue().put(r);
-                            } catch (InterruptedException e) {
-                                LOG.error("put a copy task into the download " +
-                                        "thread pool occurs an exception.", e);
-                            }
-                        }
-                    }
-                }
-        );
+
     }
 
     private static NativeFileSystemStore createDefaultStore(Configuration conf) {

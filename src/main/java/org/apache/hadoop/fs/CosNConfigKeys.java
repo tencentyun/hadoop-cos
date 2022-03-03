@@ -92,7 +92,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
     public static final String OPEN_CHECK_MERGE_BUCKET = "fs.cosn.check.merge.bucket";
-    public static final boolean DEFAULT_CHECK_MERGE_BUCKET = false;
+    public static final boolean DEFAULT_CHECK_MERGE_BUCKET = true;
     public static final String MERGE_BUCKET_MAX_LIST_NUM = "fs.cosn.merge.bucket.max.list.num";
     public static final int DEFAULT_MERGE_BUCKET_MAX_LIST_NUM = 5000;
     public static final String NORMAL_BUCKET_MAX_LIST_NUM = "fs.cosn.normal.bucket.max.list.num";
