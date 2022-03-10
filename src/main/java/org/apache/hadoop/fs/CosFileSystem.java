@@ -1,18 +1,12 @@
 package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.qcloud.chdfs.fs.AlreadyLoadedFileSystemInfo;
-import com.qcloud.chdfs.fs.FileSystemWithLockCleaner;
 import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.chdfs.permission.RangerAccessType;
-import com.qcloud.cos.utils.StringUtils;
-import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
-import org.apache.hadoop.fs.cosn.*;
 import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
@@ -29,7 +23,6 @@ import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -67,7 +60,6 @@ public class CosFileSystem extends FileSystem {
     private String bucket;
     private boolean isMergeBucket;
     private boolean checkMergeBucket;
-    private int mergeBucketMaxListNum;
     private Path workingDir;
     private String owner = "Unknown";
     private String group = "Unknown";
@@ -133,20 +125,16 @@ public class CosFileSystem extends FileSystem {
         this.checkMergeBucket = true;
         // head the bucket to judge whether the merge bucket
         HeadBucketResult headBucketResult = this.store.headBucket(this.bucket);
-        int mergeBucketMaxListNum = this.getConf().getInt(
-                CosNConfigKeys.MERGE_BUCKET_MAX_LIST_NUM,
-                CosNConfigKeys.DEFAULT_MERGE_BUCKET_MAX_LIST_NUM
-        );
 
         LOG.info("cos file system bucket is merged {}", this.isMergeBucket);
         if (headBucketResult.isMergeBucket()) { // ofs implements
             this.actualImplFS = getActualFileSystemByClassName("com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter");
             this.isMergeBucket = true;
-            this.mergeBucketMaxListNum = mergeBucketMaxListNum;
             this.store.setMergeBucket(true);
         } else { // normal cos hadoop file system implements
             this.actualImplFS = getActualFileSystemByClassName("org.apache.hadoop.fs.CosHadoopFileSystem");
-            ((CosHadoopFileSystem) this.actualImplFS).setNativeFileSystemStore(this.store);
+            ((CosHadoopFileSystem) this.actualImplFS).setNativeFileSystemStore(this.store, this.bucket, this.uri,
+                    this.owner, this.group);
             this.actualImplFS.setWorkingDirectory(this.workingDir);
         }
 
@@ -286,7 +274,6 @@ public class CosFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
-
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.create(f, permission, overwrite, bufferSize,
                 replication, blockSize, progress);
@@ -321,7 +308,6 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
-        LOG.debug("list status:" + f);
         checkPermission(f, RangerAccessType.LIST);
         return this.actualImplFS.listStatus(f);
     }
@@ -342,8 +328,6 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
-        LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
-
         checkPermission(src, RangerAccessType.DELETE);
         checkPermission(dst, RangerAccessType.WRITE);
         return this.actualImplFS.rename(src, dst);
@@ -536,7 +520,7 @@ public class CosFileSystem extends FileSystem {
                 throw new IOException(String.format("unknown access type %s", rangerAccessType.toString()));
         }
 
-        Path absolutePath = CosHadoopFileSystem.makeAbsolute(f);
+        Path absolutePath = makeAbsolute(f);
         String allowKey = CosHadoopFileSystem.pathToKey(absolutePath);
         if (allowKey.startsWith("/")) {
             allowKey = allowKey.substring(1);
@@ -563,5 +547,12 @@ public class CosFileSystem extends FileSystem {
 
     public NativeFileSystemStore getStore() {
         return this.store;
+    }
+
+    private Path makeAbsolute(Path path) {
+        if (path.isAbsolute()) {
+            return path;
+        }
+        return new Path(workingDir, path);
     }
 }

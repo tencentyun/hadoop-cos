@@ -2,7 +2,6 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.qcloud.chdfs.permission.RangerAccessType;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
@@ -33,16 +32,19 @@ public class CosHadoopFileSystem extends FileSystem {
     // The length of name:value pair should be less than or equal to 1024 bytes.
     static final int MAX_XATTR_SIZE = 1024;
 
-    private FileSystem actualImplFS = null;
     private NativeFileSystemStore store;
-
     private int normalBucketMaxListNum;
+    private int mergeBucketMaxListNum;
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
-    private NativeFileSystemStore store;
     private Path workingDir;
     private boolean isMergeBucket;
+    private boolean checkMergeBucket;
     private URI uri;
+
+    private String bucket;
+    private String owner = "Unknown";
+    private String group = "Unknown";
 
     // todo: flink or some other case must replace with inner structure.
     public CosHadoopFileSystem() {
@@ -53,8 +55,13 @@ public class CosHadoopFileSystem extends FileSystem {
         this.store = store;
     }
 
-    public void setNativeFileSystemStore(NativeFileSystemStore store) {
+    public void setNativeFileSystemStore(NativeFileSystemStore store, String bucket, URI uri,
+                                        String owner, String group) {
         this.store = store;
+        this.bucket = bucket;
+        this.uri = uri;
+        this.owner = owner;
+        this.group = group;
     }
 
     @Override
@@ -63,6 +70,7 @@ public class CosHadoopFileSystem extends FileSystem {
         setConf(conf);
         // todo: for now close the gateway process.
         this.isMergeBucket = false;
+        this.checkMergeBucket = false;
 
         if (this.store == null) {
             this.store = CosFileSystem.createDefaultStore(conf);
@@ -74,6 +82,11 @@ public class CosHadoopFileSystem extends FileSystem {
         this.normalBucketMaxListNum = this.getConf().getInt(
                 CosNConfigKeys.NORMAL_BUCKET_MAX_LIST_NUM,
                 CosNConfigKeys.DEFAULT_NORMAL_BUCKET_MAX_LIST_NUM);
+
+        this.mergeBucketMaxListNum = this.getConf().getInt(
+                CosNConfigKeys.MERGE_BUCKET_MAX_LIST_NUM,
+                CosNConfigKeys.DEFAULT_MERGE_BUCKET_MAX_LIST_NUM
+        );
 
         // initialize the thread pool
         int uploadThreadPoolSize = this.getConf().getInt(
@@ -162,9 +175,8 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public URI getUri() {
-        return null;
+        return this.uri;
     }
-
 
     /**
      * This optional operation is not yet supported.
@@ -184,7 +196,6 @@ public class CosHadoopFileSystem extends FileSystem {
         if (exists(f) && !overwrite) {
             throw new FileAlreadyExistsException("File already exists: " + f);
         }
-
         LOG.debug("Creating a new file [{}] in COS.", f);
 
         Path absolutePath = makeAbsolute(f);
@@ -368,6 +379,7 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
+        LOG.debug("list status:" + f);
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         int listMaxLength = this.normalBucketMaxListNum;
@@ -1032,7 +1044,7 @@ public class CosHadoopFileSystem extends FileSystem {
         }
     }
 
-    public static Path makeAbsolute(Path path) {
+    private Path makeAbsolute(Path path) {
         if (path.isAbsolute()) {
             return path;
         }
