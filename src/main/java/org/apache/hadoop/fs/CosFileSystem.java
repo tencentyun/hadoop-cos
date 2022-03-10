@@ -123,7 +123,7 @@ public class CosFileSystem extends FileSystem {
                 uri, bucket, workingDir, owner, group, conf);
         BufferPool.getInstance().initialize(getConf());
 
-		// head the bucket to judge whether the merge bucket
+        // head the bucket to judge whether the merge bucket
         this.isMergeBucket = false;
         this.checkMergeBucket = this.getConf().getBoolean(
                 CosNConfigKeys.OPEN_CHECK_MERGE_BUCKET,
@@ -255,10 +255,42 @@ public class CosFileSystem extends FileSystem {
     }
 
     private String getOwnerId() {
-        return System.getProperty("user.name");
+        UserGroupInformation currentUgi = null;
+        try {
+            currentUgi = UserGroupInformation.getCurrentUser();
+        } catch (IOException e) {
+            LOG.warn("get current user failed! use user.name prop", e);
+            return System.getProperty("user.name");
+        }
+
+        String shortUserName = "";
+        if (currentUgi != null) {
+            shortUserName = currentUgi.getShortUserName();
+        }
+
+        if (shortUserName == null) {
+            LOG.warn("get short user name failed! use user.name prop");
+            shortUserName = System.getProperty("user.name");
+        }
+        return shortUserName;
     }
 
     private String getGroupId() {
+        UserGroupInformation currentUgi = null;
+        try {
+            currentUgi = UserGroupInformation.getCurrentUser();
+        } catch (IOException e) {
+            LOG.warn("get current user failed! use user.name prop", e);
+            return System.getProperty("user.name");
+        }
+        if (currentUgi != null) {
+            String[] groupNames = currentUgi.getGroupNames();
+            if (groupNames.length != 0) {
+                return groupNames[0];
+            } else {
+                return getOwnerId();
+            }
+        }
         return System.getProperty("user.name");
     }
 
@@ -325,7 +357,7 @@ public class CosFileSystem extends FileSystem {
     public Path getHomeDirectory() {
         String homePrefix = this.getConf().get("dfs.user.home.dir.prefix");
         if (null != homePrefix) {
-            return makeQualified(new Path(homePrefix + "/" + System.getProperty("user.name")));
+            return makeQualified(new Path(homePrefix + "/" + getOwnerId()));
         }
 
         return super.getHomeDirectory();
@@ -503,7 +535,7 @@ public class CosFileSystem extends FileSystem {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
                 return newDirectory(meta, absolutePath);
             }
-		}
+        }
 
         if (isMergeBucket) {
             throw new FileNotFoundException("No such file or directory in merge bucket'" + absolutePath + "'");
@@ -559,7 +591,7 @@ public class CosFileSystem extends FileSystem {
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-		int listMaxLength = this.normalBucketMaxListNum;
+        int listMaxLength = this.normalBucketMaxListNum;
         if (checkMergeBucket && isMergeBucket) {
             listMaxLength = this.mergeBucketMaxListNum;
         }
@@ -675,7 +707,7 @@ public class CosFileSystem extends FileSystem {
             }
         } catch (FileNotFoundException e) {
             validatePath(f);
-			boolean result;
+            boolean result;
             if (isMergeBucket) {
                 result = mkDirAutoRecursively(f, permission);
             } else {
@@ -734,7 +766,7 @@ public class CosFileSystem extends FileSystem {
         return true;
     }
 
-	/**
+    /**
      * Create a directory recursively auto by merge plan
      * which the put object interface decide the dir which end with the "/"
      *
@@ -754,10 +786,11 @@ public class CosFileSystem extends FileSystem {
         store.storeEmptyFile(folderPath);
         return true;
     }
+
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
         checkPermission(f, RangerAccessType.READ);
-		LOG.debug("Open file [{}] to read, buffer [{}]", f, bufferSize);
+        LOG.debug("Open file [{}] to read, buffer [{}]", f, bufferSize);
 
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
@@ -865,13 +898,14 @@ public class CosFileSystem extends FileSystem {
             // The default root directory is definitely there.
         }
 
-		 if (!isMergeBucket) {
+        if (!isMergeBucket) {
             return internalCopyAndDelete(src, dst, srcFileStatus.isDirectory());
         } else {
             return internalRename(src, dst);
-		}
-	}
-	private boolean internalCopyAndDelete(Path srcPath, Path dstPath, boolean isDir) throws IOException {
+        }
+    }
+
+    private boolean internalCopyAndDelete(Path srcPath, Path dstPath, boolean isDir) throws IOException {
         boolean result = false;
         if (isDir) {
             result = this.copyDirectory(srcPath, dstPath);
@@ -887,8 +921,9 @@ public class CosFileSystem extends FileSystem {
         } else {
             return this.delete(srcPath, true);
         }
-	}
-	private boolean internalRename(Path srcPath, Path dstPath) throws IOException {
+    }
+
+    private boolean internalRename(Path srcPath, Path dstPath) throws IOException {
         String srcKey = pathToKey(srcPath);
         String dstKey = pathToKey(dstPath);
         this.store.rename(srcKey, dstKey);
@@ -1257,7 +1292,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public Token<?> getDelegationToken(String renewer) throws IOException {
         LOG.info("getDelegationToken, renewer: {}, stack: {}",
-                renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace( ',', '\n' ));
+                renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
         if (rangerQcloudObjectStorageStorageClient != null) {
             return rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
         }
