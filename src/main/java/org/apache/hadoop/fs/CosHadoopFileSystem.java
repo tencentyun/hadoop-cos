@@ -26,25 +26,25 @@ import java.util.concurrent.*;
  */
 public class CosHadoopFileSystem extends FileSystem {
     static final Logger LOG = LoggerFactory.getLogger(CosHadoopFileSystem.class);
-    static final String SCHEME = "cosn";
+
     static final String PATH_DELIMITER = Path.SEPARATOR;
     static final Charset METADATA_ENCODING = StandardCharsets.UTF_8;
     // The length of name:value pair should be less than or equal to 1024 bytes.
     static final int MAX_XATTR_SIZE = 1024;
 
+    private URI uri;
+    private String bucket;
+    private Path workingDir;
+    private boolean isMergeBucket;
+    private boolean checkMergeBucket;
     private NativeFileSystemStore store;
+
+    private String owner = "Unknown";
+    private String group = "Unknown";
     private int normalBucketMaxListNum;
     private int mergeBucketMaxListNum;
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
-    private Path workingDir;
-    private boolean isMergeBucket;
-    private boolean checkMergeBucket;
-    private URI uri;
-
-    private String bucket;
-    private String owner = "Unknown";
-    private String group = "Unknown";
 
     // todo: flink or some other case must replace with inner structure.
     public CosHadoopFileSystem() {
@@ -55,22 +55,22 @@ public class CosHadoopFileSystem extends FileSystem {
         this.store = store;
     }
 
+    // used by transfer information from the shell
     public void setNativeFileSystemStore(NativeFileSystemStore store, String bucket, URI uri,
-                                        String owner, String group) {
+                                        String owner, String group, boolean isMergeBucket) {
         this.store = store;
         this.bucket = bucket;
         this.uri = uri;
         this.owner = owner;
         this.group = group;
+        this.isMergeBucket = isMergeBucket;
     }
 
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
         super.initialize(uri, conf);
         setConf(conf);
-        // todo: for now close the gateway process.
-        this.isMergeBucket = false;
-        this.checkMergeBucket = false;
+        this.checkMergeBucket = true;
 
         if (this.store == null) {
             this.store = CosFileSystem.createDefaultStore(conf);
@@ -196,7 +196,6 @@ public class CosHadoopFileSystem extends FileSystem {
         if (exists(f) && !overwrite) {
             throw new FileAlreadyExistsException("File already exists: " + f);
         }
-        LOG.debug("Creating a new file [{}] in COS.", f);
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
@@ -225,7 +224,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
-        LOG.debug("Ready to delete path: {}. recursive: {}.", f, recursive);
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -325,7 +323,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
-        LOG.debug("Get file status: {}.", f);
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -379,7 +376,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
-        LOG.debug("list status:" + f);
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         int listMaxLength = this.normalBucketMaxListNum;
@@ -488,7 +484,6 @@ public class CosHadoopFileSystem extends FileSystem {
     @Override
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
-        LOG.debug("mkdirs path: {}.", f);
         try {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isDirectory()) {
@@ -580,8 +575,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
-        LOG.debug("Open file [{}] to read, buffer [{}]", f, bufferSize);
-
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
         if (fileStatus.isDirectory()) {
@@ -598,8 +591,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
-        LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
-
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
             LOG.debug("Cannot rename the root directory of a filesystem.");
@@ -814,8 +805,6 @@ public class CosHadoopFileSystem extends FileSystem {
     @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         Preconditions.checkArgument(length >= 0);
-        LOG.debug("call the checksum for the path: {}.", f);
-
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
             Path absolutePath = makeAbsolute(f);
@@ -855,8 +844,6 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
-        LOG.debug("set XAttr: {}.", f);
-
         // First, determine whether the length of the name and value exceeds the limit.
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
             throw new HadoopIllegalArgumentException(String.format("The maximum combined size of " +
@@ -891,10 +878,7 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public byte[] getXAttr(Path f, String name) throws IOException {
-        LOG.debug("get XAttr: {}.", f);
-
         Path absolutePath = makeAbsolute(f);
-
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = store.retrieveMetadata(key);
         if (null == fileMetadata) {
@@ -918,8 +902,6 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
-        LOG.debug("get XAttrs: {}.", f);
-
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
@@ -943,8 +925,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
-        LOG.debug("get XAttrs: {}.", f);
-
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
@@ -965,9 +945,7 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
-        LOG.debug("remove XAttr: {}.", f);
         Path absolutPath = makeAbsolute(f);
-
         String key = pathToKey(absolutPath);
         FileMetadata fileMetadata = store.retrieveMetadata(key);
         if (null == fileMetadata) {
@@ -989,10 +967,7 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public List<String> listXAttrs(Path f) throws IOException {
-        LOG.debug("list XAttrs: {}.", f);
-
         Path absolutePath = makeAbsolute(f);
-
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = store.retrieveMetadata(key);
         if (null == fileMetadata) {
@@ -1004,7 +979,6 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public void close() throws IOException {
-        LOG.info("begin to close cos file system");
         try {
             super.close();
         } finally {

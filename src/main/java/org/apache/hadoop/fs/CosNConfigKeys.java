@@ -2,8 +2,8 @@ package org.apache.hadoop.fs;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.Unit;
-
 
 /**
  * This class contains constants for configuration keys used in the cos file system.
@@ -91,8 +91,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
-    public static final String OPEN_CHECK_MERGE_BUCKET = "fs.cosn.check.merge.bucket";
-    public static final boolean DEFAULT_CHECK_MERGE_BUCKET = true;
     public static final String MERGE_BUCKET_MAX_LIST_NUM = "fs.cosn.merge.bucket.max.list.num";
     public static final int DEFAULT_MERGE_BUCKET_MAX_LIST_NUM = 5000;
     public static final String NORMAL_BUCKET_MAX_LIST_NUM = "fs.cosn.normal.bucket.max.list.num";
@@ -134,4 +132,11 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // default disable emr v2 instance url.
     public static final String COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = "fs.cosn.emrv2.instance.provider.enabled";
     public static final boolean DEFAULT_COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = false;
+
+    public static final String COSN_MERGE_BUCKET_GATEWAY_MODE_ENABLED = "fs.cosn.merge.bucket.gateway.mode.enabled";
+    public static final boolean DEFAULT_COSN_MERGE_BUCKET_GATEWAY_MODE_ENABLED = false;
+    public static final String COSN_MERGE_BUCKET_NOGATEWAY_IMPL = "fs.cosn.merge.bucket.nogateway.impl";
+    public static final String DEFAULT_COSN_MERGE_BUCKET_NOGATEWAY_IMPL =
+            "com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter";
+
 }

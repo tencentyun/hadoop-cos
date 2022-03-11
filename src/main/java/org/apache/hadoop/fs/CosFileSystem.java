@@ -7,6 +7,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
+import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
 import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
@@ -20,6 +21,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
 
+import org.apache.hadoop.util.hash.Hash;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +42,7 @@ import java.util.concurrent.*;
  * {@link CosFileSystem} this implementation stores files on COS in their
  * native form so they can be read by other cos tools.
  *
- * todo: for new version cos file system is the shell which using the head bucket
+ * for new version cos file system is the shell which using the head bucket
  * to decide whether normal bucket or merge bucket, if it is merge bucket
  * direct use the network shell implements.
  */
@@ -51,25 +53,22 @@ public class CosFileSystem extends FileSystem {
 
     static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
-
     static final Charset METADATA_ENCODING = StandardCharsets.UTF_8;
-    // The length of name:value pair should be less than or equal to 1024 bytes.
-    static final int MAX_XATTR_SIZE = 1024;
 
     private URI uri;
     private String bucket;
-    private boolean isMergeBucket;
-    private boolean checkMergeBucket;
+    private String formatBucket;
     private Path workingDir;
-    private String owner = "Unknown";
-    private String group = "Unknown";
+    private boolean isMergeBucket;
+    private boolean isGatewayMode;
     private NativeFileSystemStore store;
 
+    private String owner = "Unknown";
+    private String group = "Unknown";
     private UserGroupInformation currentUser;
     private boolean enableRangerPluginPermissionCheck = false;
     public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
 
-    private String formatBucket;
     private FileSystem actualImplFS = null;
 
 
@@ -121,20 +120,31 @@ public class CosFileSystem extends FileSystem {
                 uri, bucket, workingDir, owner, group, conf);
 
         this.isMergeBucket = false;
-        // for now all need to head bucket to check whether is the merge bucket
-        this.checkMergeBucket = true;
+        this.isGatewayMode = this.getConf().getBoolean(
+                CosNConfigKeys.COSN_MERGE_BUCKET_GATEWAY_MODE_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_MERGE_BUCKET_GATEWAY_MODE_ENABLED);
+
+        String mergeBucketNoGatewayImpl = this.getConf().get(
+                CosNConfigKeys.COSN_MERGE_BUCKET_NOGATEWAY_IMPL,
+                CosNConfigKeys.DEFAULT_COSN_MERGE_BUCKET_NOGATEWAY_IMPL);
+
         // head the bucket to judge whether the merge bucket
         HeadBucketResult headBucketResult = this.store.headBucket(this.bucket);
+        this.isMergeBucket = headBucketResult.isMergeBucket();
 
-        LOG.info("cos file system bucket is merged {}", this.isMergeBucket);
-        if (headBucketResult.isMergeBucket()) { // ofs implements
-            this.actualImplFS = getActualFileSystemByClassName("com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter");
-            this.isMergeBucket = true;
+        LOG.info("cos file system bucket is merged {}, is gateway mode {}",
+                isMergeBucket, isGatewayMode);
+        if (isMergeBucket && !isGatewayMode) { // ofs implements
+            // network version start from the 2.7
+            // sdk version start from the 1.0.4
+            this.actualImplFS = getActualFileSystemByClassName(mergeBucketNoGatewayImpl);
             this.store.setMergeBucket(true);
+            // before the init, must transfer the config and disable the range in ofs
+            this.transferOfsConfig();
         } else { // normal cos hadoop file system implements
             this.actualImplFS = getActualFileSystemByClassName("org.apache.hadoop.fs.CosHadoopFileSystem");
             ((CosHadoopFileSystem) this.actualImplFS).setNativeFileSystemStore(this.store, this.bucket, this.uri,
-                    this.owner, this.group);
+                    this.owner, this.group, isMergeBucket);
             this.actualImplFS.setWorkingDirectory(this.workingDir);
         }
 
@@ -264,6 +274,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FSDataOutputStream append(Path f, int bufferSize,
                                      Progressable progress) throws IOException {
+        LOG.debug("append file [{}] in COS.", f);
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.append(f, bufferSize, progress);
     }
@@ -274,6 +285,7 @@ public class CosFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
+        LOG.debug("Creating a new file [{}] in COS.", f);
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.create(f, permission, overwrite, bufferSize,
                 replication, blockSize, progress);
@@ -282,12 +294,14 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
+        LOG.debug("Ready to delete path: {}. recursive: {}.", f, recursive);
         checkPermission(f, RangerAccessType.DELETE);
         return this.actualImplFS.delete(f, recursive);
     }
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
+        LOG.debug("Get file status: {}.", f);
         return this.actualImplFS.getFileStatus(f);
     }
 
@@ -308,6 +322,7 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
+        LOG.debug("list status:" + f);
         checkPermission(f, RangerAccessType.LIST);
         return this.actualImplFS.listStatus(f);
     }
@@ -316,18 +331,21 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
+        LOG.debug("mkdirs path: {}.", f);
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.mkdirs(f, permission);
     }
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
+        LOG.debug("Open file [{}] to read, buffer [{}]", f, bufferSize);
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.open(f, bufferSize);
     }
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
+        LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
         checkPermission(src, RangerAccessType.DELETE);
         checkPermission(dst, RangerAccessType.WRITE);
         return this.actualImplFS.rename(src, dst);
@@ -411,6 +429,7 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
+        LOG.debug("call the checksum for the path: {}.", f);
         Preconditions.checkArgument(length >= 0);
 
         // The order of each file, must support both crc at same time, how to tell the difference crc request?
@@ -430,6 +449,7 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
+        LOG.debug("set XAttr: {}.", f);
         checkPermission(f, RangerAccessType.WRITE);
         this.actualImplFS.setXAttr(f, name, value, flag);
     }
@@ -444,6 +464,7 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public byte[] getXAttr(Path f, String name) throws IOException {
+        LOG.debug("get XAttr: {}.", f);
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getXAttr(f, name);
     }
@@ -458,12 +479,14 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
+        LOG.debug("get XAttrs: {}.", f);
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getXAttrs(f, names);
     }
 
     @Override
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
+        LOG.debug("get XAttrs: {}.", f);
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getXAttrs(f);
     }
@@ -477,12 +500,14 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
+        LOG.debug("remove XAttr: {}.", f);
         checkPermission(f, RangerAccessType.WRITE);
         this.actualImplFS.removeXAttr(f, name);
     }
 
     @Override
     public List<String> listXAttrs(Path f) throws IOException {
+        LOG.debug("list XAttrs: {}.", f);
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.listXAttrs(f);
     }
@@ -540,11 +565,6 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
-    @Override
-    public void close() throws IOException {
-        this.actualImplFS.close();
-    }
-
     public NativeFileSystemStore getStore() {
         return this.store;
     }
@@ -554,5 +574,33 @@ public class CosFileSystem extends FileSystem {
             return path;
         }
         return new Path(workingDir, path);
+    }
+
+    // exclude the ofs original config, filter the ofs config with COSN_CONFIG_TRANSFER_PREFIX
+    private void transferOfsConfig() {
+        // 1. list to get transfer prefix ofs config
+        Map<String, String> tmpConf = new HashMap<>();
+        for (Map.Entry<String, String> entry : this.getConf()) {
+            if (entry.getKey().startsWith(Constants.COSN_OFS_CONFIG_PREFIX)) {
+                this.getConf().unset(entry.getKey());
+            }
+            if (entry.getKey().startsWith(Constants.COSN_CONFIG_TRANSFER_PREFIX)) {
+                int pos = Constants.COSN_CONFIG_TRANSFER_PREFIX.length();
+                String subConfigKey = entry.getKey().substring(pos);
+                tmpConf.put(subConfigKey, entry.getValue());
+            }
+        }
+
+        // 2. trim the prefix and overwrite the config
+        for (Map.Entry<String, String> entry : tmpConf.entrySet()) {
+            LOG.info("transfer ofs config, key {}, value {}", entry.getKey(), entry.getValue());
+            this.getConf().set(entry.getKey(), entry.getValue());
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        LOG.info("begin to close cos file system");
+        this.actualImplFS.close();
     }
 }
