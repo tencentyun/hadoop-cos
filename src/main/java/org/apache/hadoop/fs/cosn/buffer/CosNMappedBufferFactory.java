@@ -26,8 +26,8 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             LOG.debug("Buffer dir: [{}] does not exists. create it first.",
                     file);
             if (file.mkdirs()) {
-                if (!file.setWritable(true) || !file.setReadable(true)
-                        || !file.setExecutable(true)) {
+                if (!file.setWritable(true, false) || !file.setReadable(true, false)
+                        || !file.setExecutable(true, false)) {
                     LOG.warn("Set the buffer dir: [{}]'s permission [writable,"
                             + "readable, executable] failed.", file);
                 }
@@ -72,7 +72,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
                     "rw");
             randomAccessFile.setLength(size);
             MappedByteBuffer buf =
-                    randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0 , size);
+                    randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, size);
             return new CosNMappedBuffer(buf, randomAccessFile, tmpFile);
         } catch (IOException e) {
             LOG.error("Create tmp file failed. Tmp dir: {}", this.tmpDir, e);
