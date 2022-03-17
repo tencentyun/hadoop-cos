@@ -31,8 +31,8 @@
     </developers>
 
     <scm>
-        <connection>scm:git:https://github.com/tencentyun/hadoop-cos</connection>
-        <developerConnection>scm:git:https://github.com/tencentyun/hadoop-cos</developerConnection>
+        <connection>scm:git:https://github.com/tencentyun/hadoop-cos.git</connection>
+        <developerConnection>scm:git:https://github.com/tencentyun/hadoop-cos.git</developerConnection>
         <url>https://github.com/tencentyun/hadoop-cos</url>
     </scm>
 
