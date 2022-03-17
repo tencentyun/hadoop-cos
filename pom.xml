@@ -18,8 +18,8 @@
 
     <licenses>
         <license>
-            <name>hadoop-cos</name>
-            <url>https://github.com/tencentyun/hadoop-cos</url>
+            <name>Tencent with MIT License</name>
+            <url>https://github.com/tencentyun/hadoop-cos/blob/master/LICENSE</url>
         </license>
     </licenses>
 
