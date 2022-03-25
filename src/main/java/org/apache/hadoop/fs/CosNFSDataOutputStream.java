@@ -97,6 +97,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             initCurrentBlock();
         }
         this.currentBlockOutputStream.flush();
+        if(!this.partEtagList.isEmpty()) {
+            waitForFinishPartUploads();
+        }
     }
 
     @Override
