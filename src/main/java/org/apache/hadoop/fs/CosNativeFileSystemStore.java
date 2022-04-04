@@ -2,6 +2,7 @@ package org.apache.hadoop.fs;
 
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.ClientConfig;
+import com.qcloud.cos.endpoint.EndpointResolver;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.exception.ResponseNotCompleteException;
@@ -54,6 +55,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean isMergeBucket;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
+    private EndpointResolver l5EndpointResolver;
+    private boolean useL5Id = false;
+    private int l5UpdateMaxRetryTimes;
+
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         this.cosCredentialProviderList =
                 CosNUtils.createCosCredentialsProviderSet(uri, conf);
@@ -84,6 +89,34 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 config.setEndPointSuffix(endpointSuffix);
             } else {
                 config = new ClientConfig(new Region(region));
+            }
+
+            this.useL5Id = conf.getBoolean(
+                    CosNConfigKeys.COSN_USE_L5_ENABLE,
+                    CosNConfigKeys.DEFAULT_COSN_USE_L5_ENABLE);
+            this.l5UpdateMaxRetryTimes = conf.getInt(CosNConfigKeys.COSN_L5_UPDATE_MAX_RETRIES_KEY,
+                    CosNConfigKeys.DEFAULT_COSN_L5_UPDATE_MAX_RETRIES);
+            if (useL5Id) {
+                String l5Id = conf.get(CosNConfigKeys.COSN_L5_KEY);
+                if (null != l5Id) {
+                    int l5modId = Integer.parseInt(l5Id.split(",")[0]);
+                    int l5cmdId = Integer.parseInt(l5Id.split(",")[1]);
+
+                    Class<?> l5EndpointResolverClass;
+                    try {
+                        l5EndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver");
+                        this.l5EndpointResolver = (EndpointResolver) l5EndpointResolverClass.newInstance();
+                        ((TencentCloudL5EndpointResolver)this.l5EndpointResolver).setModId(l5modId);
+                        ((TencentCloudL5EndpointResolver)this.l5EndpointResolver).setCmdId(l5cmdId);
+                    } catch (ClassNotFoundException e) {
+                        throw new IOException("The current version does not support L5 resolver.", e);
+                    } catch (InstantiationException e) {
+                        throw new IOException("The current version does not support L5 resolver.", e);
+                    } catch (IllegalAccessException e) {
+                        throw new IOException("The current version does not support L5 resolver.", e);
+                    }
+                    config.setEndpointResolver(l5EndpointResolver);
+                }
             }
         } else {
             config = new ClientConfig(new Region(""));
@@ -1290,6 +1323,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {
         String sdkMethod = "";
         int retryIndex = 1;
+        int l5ErrorCodeRetryIndex = 1;
         while (true) {
             try {
                 if (request instanceof PutObjectRequest) {
@@ -1396,6 +1430,19 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     }
                 } else if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
+
+                        if(statusCode == 503) {
+                            if (useL5Id) {
+                                if( l5ErrorCodeRetryIndex>= this.l5UpdateMaxRetryTimes) {
+                                    // L5上报，进行重试
+                                    ((TencentCloudL5EndpointResolver)l5EndpointResolver).l5RouteResultUpdate(-1);
+                                    l5ErrorCodeRetryIndex = 1;
+                                } else {
+                                    l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
+                                }
+                            }
+                        }
+
                         LOG.info(errMsg, cse);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
