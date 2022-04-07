@@ -378,11 +378,20 @@ public class CosFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
-
+        // check permission
         checkPermission(f, RangerAccessType.WRITE);
 
-        if (exists(f) && !overwrite) {
-            throw new FileAlreadyExistsException("File already exists: " + f);
+        // preconditions
+        try {
+            FileStatus targetFileStatus = this.getFileStatus(f);
+            if (null != targetFileStatus && !overwrite) {
+                throw new FileAlreadyExistsException("File already exists: " + f);
+            }
+            if (null != targetFileStatus && targetFileStatus.isDirectory()) {
+                throw new FileAlreadyExistsException("Directory already exists: " + f);
+            }
+        } catch (FileNotFoundException e) {
+            validatePath(f);
         }
 
         LOG.debug("Creating a new file [{}] in COS.", f);
@@ -679,13 +688,13 @@ public class CosFileSystem extends FileSystem {
         Path parent = path.getParent();
         do {
             try {
-                FileStatus fileStatus = getFileStatus(parent);
-                if (fileStatus.isDirectory()) {
+                FileStatus parentFileStatus = getFileStatus(parent);
+                if (null != parentFileStatus && parentFileStatus.isDirectory()) {
                     break;
-                } else {
-                    throw new FileAlreadyExistsException(String.format(
-                            "Can't make directory for path '%s', it is a file" +
-                                    ".", parent));
+                }
+                if (null != parentFileStatus && !parentFileStatus.isDirectory()) {
+                    throw new ParentNotDirectoryException(String.format(
+                            "Can't create under the path '%s', because it is a file.", parent));
                 }
             } catch (FileNotFoundException ignored) {
             }
