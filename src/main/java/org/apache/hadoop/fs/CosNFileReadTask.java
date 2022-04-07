@@ -47,14 +47,14 @@ public class CosNFileReadTask implements Runnable {
                 try {
                     this.retrieveBlock();
                     needRetry = false;
-                } catch (IOException se) {
+                } catch (IOException ioException) {
                     // if we get stream success, but exceptions occurs when read cos input stream
                     String errMsg = String.format("retrieve block sdk socket failed, " +
                                     "retryIndex: [%d / %d], key: %s, range: [%d , %d], exception: %s",
                             retryIndex, this.socketErrMaxRetryTimes, this.key,
-                            this.readBuffer.getStart(), this.readBuffer.getEnd(), se.toString());
+                            this.readBuffer.getStart(), this.readBuffer.getEnd(), ioException.toString());
                     if (retryIndex <= this.socketErrMaxRetryTimes) {
-                        LOG.info(errMsg, se);
+                        LOG.info(errMsg, ioException);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
@@ -62,12 +62,12 @@ public class CosNFileReadTask implements Runnable {
                                     nextLong(sleepLeast, sleepBound));
                             ++retryIndex;
                             needRetry = true;
-                        } catch (InterruptedException ie) {
-                            this.setFailResult(errMsg, new IOException(ie.toString()));
+                        } catch (InterruptedException interruptedException) {
+                            this.setFailResult(errMsg, new IOException(interruptedException.toString()));
                             break;
                         }
                     } else {
-                        this.setFailResult(errMsg, se);
+                        this.setFailResult(errMsg, ioException);
                         break;
                     }
                 }
