@@ -55,7 +55,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean isMergeBucket;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
-    private EndpointResolver l5EndpointResolver;
+    private TencentCloudL5EndpointResolver l5EndpointResolver;
     private boolean useL5Id = false;
     private int l5UpdateMaxRetryTimes;
 
@@ -104,10 +104,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
                     Class<?> l5EndpointResolverClass;
                     try {
-                        l5EndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver");
-                        this.l5EndpointResolver = (EndpointResolver) l5EndpointResolverClass.newInstance();
-                        ((TencentCloudL5EndpointResolver)this.l5EndpointResolver).setModId(l5modId);
-                        ((TencentCloudL5EndpointResolver)this.l5EndpointResolver).setCmdId(l5cmdId);
+                        l5EndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolverImpl");
+                        this.l5EndpointResolver = (TencentCloudL5EndpointResolver) l5EndpointResolverClass.newInstance();
+                        this.l5EndpointResolver.setModId(l5modId);
+                        this.l5EndpointResolver.setCmdId(l5cmdId);
                     } catch (ClassNotFoundException e) {
                         throw new IOException("The current version does not support L5 resolver.", e);
                     } catch (InstantiationException e) {
@@ -1435,7 +1435,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             if (useL5Id) {
                                 if( l5ErrorCodeRetryIndex>= this.l5UpdateMaxRetryTimes) {
                                     // L5上报，进行重试
-                                    ((TencentCloudL5EndpointResolver)l5EndpointResolver).l5RouteResultUpdate(-1);
+                                    l5EndpointResolver.updateRouteResult(-1);
                                     l5ErrorCodeRetryIndex = 1;
                                 } else {
                                     l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
