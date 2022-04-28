@@ -2,7 +2,6 @@ package org.apache.hadoop.fs;
 
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.ClientConfig;
-import com.qcloud.cos.endpoint.EndpointResolver;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.exception.ResponseNotCompleteException;
@@ -52,7 +51,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean crc32cEnabled;
     private boolean completeMPUCheckEnabled;
     private CosNEncryptionSecrets encryptionSecrets;
-    private boolean isMergeBucket;
+    private boolean isPosixBucket;
     private CustomerDomainEndpointResolver customerDomainEndpointResolver;
 
     private TencentCloudL5EndpointResolver l5EndpointResolver;
@@ -229,7 +228,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             initCOSClient(uri, conf);
             this.bucketName = uri.getHost();
-            this.isMergeBucket = false;
+            this.isPosixBucket = false;
             String storageClass = conf.get(CosNConfigKeys.COSN_STORAGE_CLASS_KEY);
             if (null != storageClass && !storageClass.isEmpty()) {
                 try {
@@ -253,8 +252,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     @Override
-    public void setMergeBucket(boolean isMergeBucket)  {
-        this.isMergeBucket = isMergeBucket;
+    public void setPosixBucket(boolean isPosixBucket)  {
+        this.isPosixBucket = isPosixBucket;
     }
 
     private void storeFileWithRetry(String key, InputStream inputStream,
@@ -568,7 +567,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 }
             }
 			boolean isFile = true;
-            if (isMergeBucket) {
+            if (isPosixBucket) {
                 if (objectMetadata.isFileModeDir() || key.equals(PATH_DELIMITER)) {
                     isFile = false;
                 }
@@ -1034,7 +1033,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     /**
-     * delete recursive only used on merge bucket to delete dir recursive
+     * delete recursive only used on posix bucket to delete dir recursive
      * @param key cos key
      * @throws IOException e
      */
@@ -1091,10 +1090,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      */
     @Override
     public void rename(String srcKey, String dstKey) throws IOException {
-        if (!isMergeBucket) {
+        if (!isPosixBucket) {
             normalBucketRename(srcKey, dstKey);
         } else {
-            mergeBucketRename(srcKey, dstKey);
+            posixBucketRename(srcKey, dstKey);
         }
     }
 
@@ -1132,14 +1131,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
-    public void mergeBucketRename(String srcKey, String dstKey) throws IOException {
-        LOG.debug("Rename merge bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
+    public void posixBucketRename(String srcKey, String dstKey) throws IOException {
+        LOG.debug("Rename posix bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
         try {
             RenameRequest renameRequest = new RenameRequest(bucketName, srcKey, dstKey);
             callCOSClientWithRetry(renameRequest);
         } catch (Exception e) {
             String errMsg = String.format(
-                    "Rename object failed, merge bucket, source cos key: %s, dest cos key: %s, " +
+                    "Rename object failed, posix bucket, source cos key: %s, dest cos key: %s, " +
                             "exception: %s", srcKey,
                     dstKey, e.toString());
             handleException(new Exception(errMsg), srcKey);
@@ -1317,7 +1316,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
-    // merge bucket mkdir if the middle part exist will return the 500 error,
+    // posix bucket mkdir if the middle part exist will return the 500 error,
     // and the rename if the dst exist will return the 500 status too,
     // which make the relate 5** retry useless. must to improve the resp info to filter.
     private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {

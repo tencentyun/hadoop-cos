@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>8.0.6</version>
+    <version>8.1.0</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Cloud COS Support</name>
@@ -68,6 +68,13 @@
             <artifactId>cosn-ranger-interface</artifactId>
             <version>1.0.3</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.qcloud</groupId>
+            <artifactId>chdfs_hadoop_plugin_network</artifactId>
+            <version>2.7</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 
