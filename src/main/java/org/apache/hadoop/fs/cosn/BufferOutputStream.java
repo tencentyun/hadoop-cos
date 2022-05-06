@@ -1,17 +1,16 @@
 package org.apache.hadoop.fs.cosn;
 
+import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
+
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
-
-import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 
 /**
  * The input stream class is used for buffered files.
  * The purpose of providing this class is to optimize buffer put performance.
  */
 public class BufferOutputStream extends OutputStream {
-    private ByteBuffer byteBuffer;
+    private CosNByteBuffer buffer;
     private boolean isFlush;
     private boolean isClosed;
 
@@ -19,31 +18,30 @@ public class BufferOutputStream extends OutputStream {
         if (null == buffer) {
             throw new IOException("buffer is null");
         }
-        this.byteBuffer = buffer.getByteBuffer();
-        this.byteBuffer.clear();
+        this.buffer = buffer;
+        this.buffer.flipWrite();
         this.isFlush = false;
         this.isClosed = false;
     }
 
     @Override
-    public void write(int b) throws IOException {
-        this.checkClosed();
+    public synchronized void write(int b) throws IOException {
+        this.checkOpened();
 
-        if(this.byteBuffer.remaining() == 0){
+        if(this.buffer.remaining() == 0){
             throw new IOException("The buffer is full");
         }
 
         byte[] singleBytes = new byte[1];
         singleBytes[0] = (byte) b;
-        this.byteBuffer.put(singleBytes, 0, 1);
+        this.buffer.put(singleBytes, 0, 1);
         this.isFlush = false;
     }
 
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
-        this.checkClosed();
+    public synchronized void write(byte[] b, int off, int len) throws IOException {
+        this.checkOpened();
 
-        // 检查被写入的缓冲区
         if (b == null) {
             throw new NullPointerException();
         } else if ((off < 0) || (off > b.length) || (len < 0) ||
@@ -53,44 +51,35 @@ public class BufferOutputStream extends OutputStream {
             return;
         }
 
-        // 检查缓冲区是否还可以继续写
-        if (this.byteBuffer.remaining() < len) {
-            throw new IOException(
-                    String.format("The buffer remaining[%d] is less than the write length[%d].",
-                            this.byteBuffer.remaining(), len));
-        }
-
-        this.byteBuffer.put(b, off, len);
+        this.buffer.put(b, off, len);
         this.isFlush = false;
     }
 
     @Override
-    public void flush() throws IOException {
-        this.checkClosed();
+    public synchronized void flush() throws IOException {
+        this.checkOpened();
 
         if (this.isFlush) {
             return;
         }
+        // TODO MappedByteBuffer can call the force method to flush.
         this.isFlush = true;
     }
 
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         if (this.isClosed) {
             return;
         }
-        if (null == this.byteBuffer) {
-            throw new IOException("Can not close a null object");
-        }
 
         this.flush();
-        this.byteBuffer.flip();
-        this.byteBuffer = null;
-        this.isFlush = false;
+
         this.isClosed = true;
+        this.isFlush = true;
+        this.buffer = null;
     }
 
-    private void checkClosed() throws IOException {
+    private void checkOpened() throws IOException {
         if (this.isClosed) {
             throw new IOException(
                     String.format("The BufferOutputStream[%d] has been closed.", this.hashCode()));

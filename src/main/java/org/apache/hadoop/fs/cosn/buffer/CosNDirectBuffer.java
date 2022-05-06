@@ -1,5 +1,6 @@
 package org.apache.hadoop.fs.cosn.buffer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
@@ -10,8 +11,20 @@ class CosNDirectBuffer extends CosNByteBuffer {
         super(byteBuffer);
     }
 
+    ByteBuffer getByteBuffer() {
+        return super.byteBuffer;
+    }
+
+    @Override
+    public boolean isDirect() {return true;}
+
     @Override
     boolean isMapped() {
         return false;
+    }
+
+    @Override
+    public void close() throws IOException {
+        super.close();
     }
 }

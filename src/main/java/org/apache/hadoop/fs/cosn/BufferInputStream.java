@@ -1,43 +1,44 @@
 package org.apache.hadoop.fs.cosn;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.InvalidMarkException;
 import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.InvalidMarkException;
+
 public class BufferInputStream extends InputStream {
-    private ByteBuffer byteBuffer;
+    private CosNByteBuffer buffer;
     private boolean isClosed = true;
 
     public BufferInputStream(CosNByteBuffer buffer) throws IOException {
         if (null == buffer) {
             throw new IOException("byte buffer is null");
         }
-        this.byteBuffer = buffer.getByteBuffer();
+        this.buffer = buffer;
+        this.buffer.flipRead();
         this.isClosed = false;
     }
 
     @Override
-    public int read() throws IOException {
-        this.checkClosed();
+    public synchronized int read() throws IOException {
+        this.checkOpened();
 
-        if (!this.byteBuffer.hasRemaining()) {
+        if (!this.buffer.hasRemaining()) {
             return -1;
         }
-        return this.byteBuffer.get() & 0xFF;
+        return this.buffer.get() & 0xFF;
     }
 
     @Override
-    public int read(byte[] b, int off, int len) throws IOException {
-        this.checkClosed();
+    public synchronized int read(byte[] b, int off, int len) throws IOException {
+        this.checkOpened();
 
-        if (!this.byteBuffer.hasRemaining()) {
+        if (!this.buffer.hasRemaining()) {
             return -1;
         }
 
-        int readLength = Math.min(this.byteBuffer.remaining(), len);
-        this.byteBuffer.get(b, off, readLength);
+        int readLength = Math.min(this.buffer.remaining(), len);
+        this.buffer.get(b, off, readLength);
         return readLength;
     }
 
@@ -46,7 +47,7 @@ public class BufferInputStream extends InputStream {
         if (!this.markSupported()) {
             return;
         }
-        this.byteBuffer.mark();
+        this.buffer.mark();
         // Parameter readLimit is ignored
     }
 
@@ -57,28 +58,28 @@ public class BufferInputStream extends InputStream {
 
     @Override
     public synchronized void reset() throws IOException {
-        this.checkClosed();
+        this.checkOpened();
 
         try {
-            this.byteBuffer.reset();
+            this.buffer.reset();
         } catch (InvalidMarkException e) {
             throw new IOException("Invalid mark");
         }
     }
 
     @Override
-    public int available() throws IOException {
-        return this.byteBuffer.remaining();
+    public synchronized int available() throws IOException {
+        this.checkOpened();
+        return this.buffer.remaining();
     }
 
     @Override
-    public void close() throws IOException {
-        this.byteBuffer.rewind();
-        this.byteBuffer = null;
+    public synchronized void close() throws IOException {
         this.isClosed = true;
+        this.buffer = null;
     }
 
-    private void checkClosed() throws IOException {
+    private void checkOpened() throws IOException {
         if (this.isClosed) {
             throw new IOException(
                     String.format("The BufferInputStream[%d] has been closed", this.hashCode()));

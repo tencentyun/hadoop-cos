@@ -25,8 +25,12 @@
 
     <developers>
         <developer>
-            <name>iainyu</name>
+            <id>iainyu</id>
+            <name>Yang Yu</name>
             <email>iainyu@tencent.com</email>
+            <organization>Tencent Cloud</organization>
+            <organizationUrl>https://cloud.tencent.com/</organizationUrl>
+            <url>https://github.com/yuyang733</url>
         </developer>
     </developers>
 
@@ -137,6 +141,11 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>

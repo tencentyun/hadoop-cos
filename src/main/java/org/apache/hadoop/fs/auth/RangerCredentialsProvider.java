@@ -6,6 +6,7 @@ import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CosFileSystem;
 import org.apache.hadoop.fs.CosNConfigKeys;
+import org.apache.hadoop.fs.CosNFileSystem;
 import org.apache.hadoop.fs.CosNUtils;
 import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.slf4j.Logger;
@@ -20,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class RangerCredentialsProvider extends AbstractCOSCredentialProvider implements COSCredentialsProvider {
     private static final Logger log = LoggerFactory.getLogger(RangerCredentialsProvider.class);
     private RangerCredentialsFetcher rangerCredentialsFetcher;
-    private final String bucketName;
+    private String bucketNameWithoutAppid;
     private String bucketRegion;
     private String appId;
 
@@ -29,17 +30,18 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
         super(uri, conf);
         if (null != conf) {
             this.appId = conf.get(CosNConfigKeys.COSN_APPID_KEY);
-        }
-        this.bucketName = CosNUtils.formatBucket(uri.getHost(), conf);
-        this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
-        if (this.bucketRegion == null || this.bucketRegion.isEmpty()) {
-            this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
-        }
+            this.bucketNameWithoutAppid = CosNUtils.getBucketNameWithoutAppid(
+                    uri.getHost(), conf.get(CosNConfigKeys.COSN_APPID_KEY));
+            this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
+            if (this.bucketRegion == null || this.bucketRegion.isEmpty()) {
+                this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
+            }
 
-        rangerCredentialsFetcher = new RangerCredentialsFetcher(
-                conf.getInt(
-                        CosNConfigKeys.COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL,
-                        CosNConfigKeys.DEFAULT_COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL));
+            rangerCredentialsFetcher = new RangerCredentialsFetcher(
+                    conf.getInt(
+                            CosNConfigKeys.COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL,
+                            CosNConfigKeys.DEFAULT_COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL));
+        }
     }
 
     class RangerCredentialsFetcher  {
@@ -74,8 +76,8 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
 
         private COSCredentials fetchNewCredentials() {
             try {
-                GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
-                        bucketName);
+                GetSTSResponse stsResp = CosNFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
+                        bucketNameWithoutAppid);
 
                 COSCredentials cosCredentials = null;
                 if (appId != null) {

@@ -10,6 +10,7 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 
@@ -22,7 +23,7 @@ public class CosNFSInputStream extends FSInputStream {
         public static final int SUCCESS = 0;
         public static final int ERROR = -1;
 
-        private final ReentrantLock lock = new ReentrantLock();
+        private final Lock lock = new ReentrantLock();
         private Condition readyCondition = lock.newCondition();
 
         private byte[] buffer;
@@ -249,6 +250,8 @@ public class CosNFSInputStream extends FSInputStream {
 
     @Override
     public void seek(long pos) throws IOException {
+        this.checkOpened();
+
         if (pos < 0) {
             throw new EOFException(FSExceptionMessages.NEGATIVE_SEEK);
         }
@@ -282,9 +285,7 @@ public class CosNFSInputStream extends FSInputStream {
 
     @Override
     public int read() throws IOException {
-        if (this.closed) {
-            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
-        }
+        this.checkOpened();
 
         if (this.partRemaining <= 0 && this.position < this.fileSize) {
             this.reopen(this.position);
@@ -308,9 +309,7 @@ public class CosNFSInputStream extends FSInputStream {
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
-        if (this.closed) {
-            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
-        }
+        this.checkOpened();
 
         if (len == 0) {
             return 0;
@@ -354,9 +353,7 @@ public class CosNFSInputStream extends FSInputStream {
 
     @Override
     public int available() throws IOException {
-        if(this.closed) {
-            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
-        }
+        this.checkOpened();
 
         long remaining = this.fileSize - this.position;
         if(remaining > Integer.MAX_VALUE) {
@@ -373,5 +370,11 @@ public class CosNFSInputStream extends FSInputStream {
 
         this.closed = true;
         this.buffer = null;
+    }
+
+    private void checkOpened() throws IOException {
+        if(this.closed) {
+            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
+        }
     }
 }

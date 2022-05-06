@@ -12,6 +12,11 @@ class CosNNonDirectBuffer extends CosNByteBuffer {
     }
 
     @Override
+    boolean isDirect() {
+        return false;
+    }
+
+    @Override
     boolean isMapped() {
         return false;
     }

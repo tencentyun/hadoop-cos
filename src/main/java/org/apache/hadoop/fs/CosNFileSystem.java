@@ -2,19 +2,31 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.qcloud.chdfs.permission.RangerAccessType;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
 import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
+import org.apache.hadoop.fs.cosn.Unit;
+import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionResponse;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.ServiceType;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -24,69 +36,87 @@ import java.util.concurrent.*;
 /*
  * the origin hadoop cos implements
  */
-public class CosHadoopFileSystem extends FileSystem {
-    static final Logger LOG = LoggerFactory.getLogger(CosHadoopFileSystem.class);
+public class CosNFileSystem extends FileSystem {
+    private static final Logger LOG = LoggerFactory.getLogger(CosNFileSystem.class);
 
+    static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
+    static final int BUCKET_LIST_LIMIT = 999;
+    static final int POSIX_BUCKET_LIST_LIMIT = 5000;
     static final Charset METADATA_ENCODING = StandardCharsets.UTF_8;
     // The length of name:value pair should be less than or equal to 1024 bytes.
     static final int MAX_XATTR_SIZE = 1024;
 
     private URI uri;
     private String bucket;
-    private Path workingDir;
     private boolean isPosixBucket;
-    private boolean checkPosixBucket;
-    private NativeFileSystemStore store;
-
+    private NativeFileSystemStore nativeStore;
+    private boolean isDefaultNativeStore;
+    private Path workingDir;
     private String owner = "Unknown";
     private String group = "Unknown";
-    private int normalBucketMaxListNum;
-    private int posixBucketMaxListNum;
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
 
+    // Authorization related.
+    private UserGroupInformation userGroupInformation;
+    private boolean enableRangerPluginPermissionCheck = false;
+    public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
+
     // todo: flink or some other case must replace with inner structure.
-    public CosHadoopFileSystem() {
-
+    public CosNFileSystem() {
     }
 
-    public CosHadoopFileSystem(NativeFileSystemStore store) {
-        this.store = store;
+    public CosNFileSystem(NativeFileSystemStore nativeStore) {
+        this.nativeStore = nativeStore;
+        this.isDefaultNativeStore = false;
     }
 
-    // used by transfer information from the shell
-    public void setNativeFileSystemStore(NativeFileSystemStore store, String bucket, URI uri,
-                                        String owner, String group, boolean isPosixBucket) {
-        this.store = store;
+    public CosNFileSystem withBucket(String bucket) {
         this.bucket = bucket;
-        this.uri = uri;
-        this.owner = owner;
-        this.group = group;
+        return this;
+    }
+
+    public CosNFileSystem withPosixBucket(boolean isPosixBucket) {
         this.isPosixBucket = isPosixBucket;
+        return this;
+    }
+
+    public CosNFileSystem withStore(NativeFileSystemStore nativeStore) {
+        this.nativeStore = nativeStore;
+        this.isDefaultNativeStore = false;
+        return this;
+    }
+
+    @Override
+    public String getScheme() {
+        return CosNFileSystem.SCHEME;
     }
 
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
         super.initialize(uri, conf);
         setConf(conf);
-        this.checkPosixBucket = true;
 
-        if (this.store == null) {
-            this.store = CosFileSystem.createDefaultStore(conf);
+        if (null == this.bucket) {
+            this.bucket = uri.getHost();
+        }
+        if (null == this.nativeStore) {
+            this.nativeStore = CosNUtils.createDefaultStore(conf);
+            this.isDefaultNativeStore = true;
+            this.nativeStore.initialize(uri, conf);
         }
 
-        // below is the cos hadoop file system init process
+        this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
+        this.workingDir = new Path("/user", System.getProperty("user.name"))
+                .makeQualified(this.uri, this.getWorkingDirectory());
+
+        this.owner = getOwnerId();
+        this.group = getGroupId();
+        LOG.debug("uri: {}, bucket: {}, working dir: {}, owner: {}, group: {}.\n" +
+                "configuration: {}.", uri, bucket, workingDir, owner, group, conf);
+
         BufferPool.getInstance().initialize(getConf());
-
-        this.normalBucketMaxListNum = this.getConf().getInt(
-                CosNConfigKeys.NORMAL_BUCKET_MAX_LIST_NUM,
-                CosNConfigKeys.DEFAULT_NORMAL_BUCKET_MAX_LIST_NUM);
-
-        this.posixBucketMaxListNum = this.getConf().getInt(
-                CosNConfigKeys.POSIX_BUCKET_MAX_LIST_NUM,
-                CosNConfigKeys.DEFAULT_POSIX_BUCKET_MAX_LIST_NUM
-        );
 
         // initialize the thread pool
         int uploadThreadPoolSize = this.getConf().getInt(
@@ -171,6 +201,11 @@ public class CosHadoopFileSystem extends FileSystem {
                     }
                 }
         );
+
+        // initialize the things authorization related.
+        UserGroupInformation.setConfiguration(conf);
+        this.userGroupInformation = UserGroupInformation.getCurrentUser();
+        this.initRangerClientImpl(conf);
     }
 
     @Override
@@ -178,13 +213,87 @@ public class CosHadoopFileSystem extends FileSystem {
         return this.uri;
     }
 
+    @Override
+    public Path getHomeDirectory() {
+        String homePrefix = this.getConf().get("dfs.user.home.dir.prefix");
+        if (null != homePrefix) {
+            return makeQualified(new Path(homePrefix + "/" + getOwnerId()));
+        }
+
+        return super.getHomeDirectory();
+    }
+
     /**
      * This optional operation is not yet supported.
      */
     @Override
     public FSDataOutputStream append(Path f, int bufferSize,
-                                     Progressable progress) {
-        throw new UnsupportedOperationException("Not supported currently");
+                                     Progressable progress) throws IOException {
+        // 这里还需要判断是否是文件存储桶，如果是则可以支持
+        if (!this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+            throw new UnsupportedOperationException("Not supported currently");
+        }
+
+        checkPermission(f, RangerAccessType.WRITE);
+
+        FileStatus fileStatus = this.getFileStatus(f);
+        if (fileStatus.isDirectory()) {
+            throw new FileAlreadyExistsException(f + " is a directory.");
+        }
+
+        LOG.debug("Append the file path: {}.", f);
+        Path absolutePath = makeAbsolute(f);
+        String cosKey = pathToKey(absolutePath);
+        return new FSDataOutputStream(new CosNPosixExtensionDataOutputStream(
+                this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, true),
+                statistics, fileStatus.getLen());
+    }
+
+    @Override
+    public boolean truncate(Path f, long newLength) throws IOException {
+        if (!this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+            throw new UnsupportedOperationException("Not supported currently.");
+        }
+
+        checkPermission(f, RangerAccessType.WRITE);
+
+        FileStatus fileStatus = this.getFileStatus(f);
+        if (fileStatus.isDirectory()) {
+            throw new FileNotFoundException(f + " is a directory.");
+        }
+
+        if (newLength < 0 || newLength > fileStatus.getLen()) {
+            throw new HadoopIllegalArgumentException(
+                    String.format("The new length [%d] of the truncate operation must be positive " +
+                            "and less than the origin length.", newLength));
+        }
+
+        LOG.debug("Truncate the file path: {} to the new length: {}.", f, newLength);
+        // Using the single thread to truncate
+        Path absolutePath = makeAbsolute(f);
+        String cosKey = pathToKey(absolutePath);
+
+        // Use the single thread to truncate.
+        try (OutputStream outputStream = new FSDataOutputStream(
+                new CosNPosixExtensionDataOutputStream(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool),
+                statistics)) {
+            // If the newLength is equal to 0, just wait for 'try finally' to close.
+            if (newLength > 0) {
+                try (InputStream inputStream =
+                             this.nativeStore.retrieveBlock(cosKey, 0, newLength - 1)) {
+                    byte[] chunk = new byte[(int) (4 * Unit.KB)];
+                    int readBytes = inputStream.read(chunk);
+                    while (readBytes != -1) {
+                        outputStream.write(chunk, 0, readBytes);
+                        readBytes = inputStream.read(chunk);
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     @Override
@@ -193,6 +302,8 @@ public class CosHadoopFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
+        checkPermission(f, RangerAccessType.WRITE);
+
         // preconditions
         try {
             FileStatus targetFileStatus = this.getFileStatus(f);
@@ -208,14 +319,16 @@ public class CosHadoopFileSystem extends FileSystem {
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        long uploadPartSize = this.getConf().getLong(
-                CosNConfigKeys.COSN_UPLOAD_PART_SIZE_KEY, CosNConfigKeys.DEFAULT_UPLOAD_PART_SIZE);
-        boolean uploadChecksEnabled = this.getConf().getBoolean(CosNConfigKeys.COSN_UPLOAD_CHECKS_ENABLE_KEY,
-                CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE);
-        return new FSDataOutputStream(
-                new CosNFSDataOutputStream(getConf(), store, key,
-                        uploadPartSize,
-                        this.boundedIOThreadPool, uploadChecksEnabled), statistics);
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+            return new FSDataOutputStream(
+                    new CosNPosixExtensionDataOutputStream(this.getConf(), nativeStore, key,
+                            this.boundedCopyThreadPool), statistics);
+        } else {
+            return new FSDataOutputStream(
+                    new CosNFSDataOutputStream(this.getConf(), nativeStore, key,
+                            this.boundedIOThreadPool), statistics);
+        }
     }
 
     private boolean rejectRootDirectoryDelete(boolean isEmptyDir,
@@ -233,6 +346,8 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
+        checkPermission(f, RangerAccessType.DELETE);
+
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -266,7 +381,7 @@ public class CosHadoopFileSystem extends FileSystem {
             }
         } else {
             LOG.debug("Delete the cos key [{}].", key);
-            store.delete(key);
+            nativeStore.delete(key);
         }
 
         if (!isPosixBucket) {
@@ -282,10 +397,10 @@ public class CosHadoopFileSystem extends FileSystem {
         String priorLastKey = null;
         do {
             CosNPartialListing listing =
-                    store.list(key, this.normalBucketMaxListNum, priorLastKey, true);
+                    nativeStore.list(key, this.BUCKET_LIST_LIMIT, priorLastKey, true);
             for (FileMetadata file : listing.getFiles()) {
                 this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                        this.store, file.getKey(), deleteFileContext));
+                        this.nativeStore, file.getKey(), deleteFileContext));
                 deleteToFinishes++;
                 if (!deleteFileContext.isDeleteSuccess()) {
                     break;
@@ -293,7 +408,7 @@ public class CosHadoopFileSystem extends FileSystem {
             }
             for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
                 this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                        this.store, commonPrefix.getKey(), deleteFileContext));
+                        this.nativeStore, commonPrefix.getKey(), deleteFileContext));
                 deleteToFinishes++;
                 if (!deleteFileContext.isDeleteSuccess()) {
                     break;
@@ -318,7 +433,7 @@ public class CosHadoopFileSystem extends FileSystem {
 
         try {
             LOG.debug("Delete the cos key [{}].", key);
-            store.delete(key);
+            nativeStore.delete(key);
         } catch (Exception e) {
             LOG.error("Delete the key failed.");
         }
@@ -327,11 +442,13 @@ public class CosHadoopFileSystem extends FileSystem {
     // use by posix bucket which support recursive delete dirs by setting flag parameter
     private void internalAutoRecursiveDelete(String key) throws IOException {
         LOG.debug("Delete the cos key auto recursive [{}].", key);
-        store.deleteRecursive(key);
+        nativeStore.deleteRecursive(key);
     }
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
+        checkPermission(f, RangerAccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -340,7 +457,7 @@ public class CosHadoopFileSystem extends FileSystem {
         }
 
         CosNResultInfo headInfo = new CosNResultInfo();
-        FileMetadata meta = store.retrieveMetadata(key, headInfo);
+        FileMetadata meta = nativeStore.retrieveMetadata(key, headInfo);
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
@@ -366,7 +483,7 @@ public class CosHadoopFileSystem extends FileSystem {
 
         LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
         CosNResultInfo listInfo = new CosNResultInfo();
-        CosNPartialListing listing = store.list(key, maxKeys, listInfo);
+        CosNPartialListing listing = nativeStore.list(key, maxKeys, listInfo);
         if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
             LOG.debug("List the cos key [{}] to find that it is a directory.", key);
             return newDirectory(absolutePath);
@@ -384,17 +501,19 @@ public class CosHadoopFileSystem extends FileSystem {
     }
 
     @Override
-    public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
+    public FileStatus[] listStatus(Path f) throws IOException {
+        checkPermission(f, RangerAccessType.LIST);
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        int listMaxLength = this.normalBucketMaxListNum;
-        if (checkPosixBucket && isPosixBucket) {
-            listMaxLength = this.posixBucketMaxListNum;
+        int listMaxLength = CosNFileSystem.BUCKET_LIST_LIMIT;
+        if (isPosixBucket) {
+            listMaxLength = CosNFileSystem.POSIX_BUCKET_LIST_LIMIT;
         }
 
 
         if (key.length() > 0) {
-            FileMetadata meta = store.retrieveMetadata(key);
+            FileMetadata meta = nativeStore.retrieveMetadata(key);
             if (meta != null && meta.isFile()) {
                 return new FileStatus[]{newFile(meta, absolutePath)};
             }
@@ -415,10 +534,10 @@ public class CosHadoopFileSystem extends FileSystem {
         }
 
         URI pathUri = absolutePath.toUri();
-        Set<FileStatus> status = new TreeSet<FileStatus>();
+        Set<FileStatus> status = new TreeSet<>();
         String priorLastKey = null;
         do {
-            CosNPartialListing listing = store.list(key, listMaxLength,
+            CosNPartialListing listing = nativeStore.list(key, listMaxLength,
                     priorLastKey, false);
             for (FileMetadata fileMetadata : listing.getFiles()) {
                 Path subPath = keyToPath(fileMetadata.getKey());
@@ -431,9 +550,9 @@ public class CosHadoopFileSystem extends FileSystem {
                 }
             }
             for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
-                Path subpath = keyToPath(commonPrefix.getKey());
+                Path subPath = keyToPath(commonPrefix.getKey());
                 String relativePath =
-                        pathUri.relativize(subpath.toUri()).getPath();
+                        pathUri.relativize(subPath.toUri()).getPath();
                 status.add(newDirectory(commonPrefix, new Path(absolutePath,
                         relativePath)));
             }
@@ -491,8 +610,9 @@ public class CosHadoopFileSystem extends FileSystem {
 
     // blew is the target
     @Override
-    public boolean mkdirs(Path f, FsPermission permission)
-            throws IOException {
+    public boolean mkdirs(Path f, FsPermission permission) throws IOException {
+        checkPermission(f, RangerAccessType.WRITE);
+
         try {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isDirectory()) {
@@ -555,7 +675,7 @@ public class CosHadoopFileSystem extends FileSystem {
                 if (!folderPath.endsWith(PATH_DELIMITER)) {
                     folderPath += PATH_DELIMITER;
                 }
-                store.storeEmptyFile(folderPath);
+                nativeStore.storeEmptyFile(folderPath);
             }
         }
         return true;
@@ -578,12 +698,14 @@ public class CosHadoopFileSystem extends FileSystem {
         if (!folderPath.endsWith(PATH_DELIMITER)) {
             folderPath += PATH_DELIMITER;
         }
-        store.storeEmptyFile(folderPath);
+        nativeStore.storeEmptyFile(folderPath);
         return true;
     }
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
+        checkPermission(f, RangerAccessType.READ);
+
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
         if (fileStatus.isDirectory()) {
@@ -593,13 +715,16 @@ public class CosHadoopFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataInputStream(new BufferedFSInputStream(
-                new CosNFSInputStream(this.getConf(), store, statistics, key,
+                new CosNFSInputStream(this.getConf(), nativeStore, statistics, key,
                         fileStatus.getLen(), this.boundedIOThreadPool),
                 bufferSize));
     }
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
+        checkPermission(src, RangerAccessType.DELETE);
+        checkPermission(dst, RangerAccessType.WRITE);
+
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
             LOG.debug("Cannot rename the root directory of a filesystem.");
@@ -713,14 +838,14 @@ public class CosHadoopFileSystem extends FileSystem {
     private boolean internalRename(Path srcPath, Path dstPath) throws IOException {
         String srcKey = pathToKey(srcPath);
         String dstKey = pathToKey(dstPath);
-        this.store.rename(srcKey, dstKey);
+        this.nativeStore.rename(srcKey, dstKey);
         return true;
     }
 
     private boolean copyFile(Path srcPath, Path dstPath) throws IOException {
         String srcKey = pathToKey(srcPath);
         String dstKey = pathToKey(dstPath);
-        this.store.copy(srcKey, dstKey);
+        this.nativeStore.copy(srcKey, dstKey);
         return true;
     }
 
@@ -739,10 +864,10 @@ public class CosHadoopFileSystem extends FileSystem {
                     " of self");
         }
 
-        if (this.store.retrieveMetadata(srcKey) == null) {
-            this.store.storeEmptyFile(srcKey);
+        if (this.nativeStore.retrieveMetadata(srcKey) == null) {
+            this.nativeStore.storeEmptyFile(srcKey);
         } else {
-            this.store.copy(srcKey, dstKey);
+            this.nativeStore.copy(srcKey, dstKey);
         }
 
         CosNCopyFileContext copyFileContext = new CosNCopyFileContext();
@@ -750,11 +875,11 @@ public class CosHadoopFileSystem extends FileSystem {
         int copiesToFinishes = 0;
         String priorLastKey = null;
         do {
-            CosNPartialListing objectList = this.store.list(srcKey,
-                    this.normalBucketMaxListNum, priorLastKey, true);
+            CosNPartialListing objectList = this.nativeStore.list(srcKey,
+                    this.BUCKET_LIST_LIMIT, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
-                        this.store,
+                        this.nativeStore,
                         file.getKey(),
                         dstKey.concat(file.getKey().substring(srcKey.length())),
                         copyFileContext));
@@ -786,7 +911,7 @@ public class CosHadoopFileSystem extends FileSystem {
                 if (!parentKey.endsWith("/")) {
                     parentKey += "/";
                 }
-                store.storeEmptyFile(parentKey);
+                nativeStore.storeEmptyFile(parentKey);
             }
         }
     }
@@ -812,14 +937,25 @@ public class CosHadoopFileSystem extends FileSystem {
     }
 
     @Override
+    public String getCanonicalServiceName() {
+        if (rangerQcloudObjectStorageStorageClient != null) {
+            return rangerQcloudObjectStorageStorageClient.getCanonicalServiceName();
+        }
+        return null;
+    }
+
+    @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         Preconditions.checkArgument(length >= 0);
+
+        checkPermission(f, RangerAccessType.READ);
+
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
             Path absolutePath = makeAbsolute(f);
             String key = pathToKey(absolutePath);
 
-            FileMetadata fileMetadata = this.store.retrieveMetadata(key);
+            FileMetadata fileMetadata = this.nativeStore.retrieveMetadata(key);
             if (null == fileMetadata) {
                 throw new FileNotFoundException("File or directory doesn't exist: " + f);
             }
@@ -829,7 +965,7 @@ public class CosHadoopFileSystem extends FileSystem {
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED)) {
             Path absolutePath = makeAbsolute(f);
             String key = pathToKey(absolutePath);
-            FileMetadata fileMetadata = this.store.retrieveMetadata(key);
+            FileMetadata fileMetadata = this.nativeStore.retrieveMetadata(key);
             if (null == fileMetadata) {
                 throw new FileNotFoundException("File or directory doesn't exist: " + f);
             }
@@ -853,6 +989,8 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
+        checkPermission(f, RangerAccessType.WRITE);
+
         // First, determine whether the length of the name and value exceeds the limit.
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
             throw new HadoopIllegalArgumentException(String.format("The maximum combined size of " +
@@ -863,7 +1001,7 @@ public class CosHadoopFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
             throw new FileNotFoundException("File or directory doesn't exist: " + f);
         }
@@ -871,9 +1009,9 @@ public class CosHadoopFileSystem extends FileSystem {
                 && fileMetadata.getUserAttributes().containsKey(name));
         XAttrSetFlag.validate(name, xAttrExists, flag);
         if (fileMetadata.isFile()) {
-            store.storeFileAttribute(key, name, value);
+            nativeStore.storeFileAttribute(key, name, value);
         } else {
-            store.storeDirAttribute(key, name, value);
+            nativeStore.storeDirAttribute(key, name, value);
         }
     }
 
@@ -887,9 +1025,11 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public byte[] getXAttr(Path f, String name) throws IOException {
+        checkPermission(f, RangerAccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
             throw new FileNotFoundException("File or directory doesn't exist: " + f);
         }
@@ -911,10 +1051,12 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
+        checkPermission(f, RangerAccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
             throw new FileNotFoundException("File or directory doesn't exist: " + f);
         }
@@ -934,10 +1076,12 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
+        checkPermission(f, RangerAccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
 
         String key = pathToKey(absolutePath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
             throw new FileNotFoundException("File or directory doesn't exist: " + f);
         }
@@ -954,9 +1098,11 @@ public class CosHadoopFileSystem extends FileSystem {
      */
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
+        checkPermission(f, RangerAccessType.WRITE);
+
         Path absolutPath = makeAbsolute(f);
         String key = pathToKey(absolutPath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
             throw new FileNotFoundException("File or directory doesn't exist: " + f);
         }
@@ -965,9 +1111,9 @@ public class CosHadoopFileSystem extends FileSystem {
                 && fileMetadata.getUserAttributes().containsKey(name));
         if (xAttrExists) {
             if (fileMetadata.isFile()) {
-                store.removeFileAttribute(key, name);
+                nativeStore.removeFileAttribute(key, name);
             } else {
-                store.removeDirAttribute(key, name);
+                nativeStore.removeDirAttribute(key, name);
             }
         }
 
@@ -976,9 +1122,11 @@ public class CosHadoopFileSystem extends FileSystem {
 
     @Override
     public List<String> listXAttrs(Path f) throws IOException {
+        checkPermission(f, RangerAccessType.READ);
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        FileMetadata fileMetadata = store.retrieveMetadata(key);
+        FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
             throw new FileNotFoundException("File or directory doesn't exist: " + f);
         }
@@ -987,19 +1135,197 @@ public class CosHadoopFileSystem extends FileSystem {
     }
 
     @Override
+    public Token<?> getDelegationToken(String renewer) throws IOException {
+        LOG.info("getDelegationToken, renewer: {}, stack: {}",
+                renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
+        if (rangerQcloudObjectStorageStorageClient != null) {
+            return rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
+        }
+        return super.getDelegationToken(renewer);
+    }
+
+    @Override
     public void close() throws IOException {
         try {
             super.close();
         } finally {
-            this.store.close();
             this.boundedIOThreadPool.shutdown();
             this.boundedCopyThreadPool.shutdown();
             BufferPool.getInstance().close();
+            if (null != this.nativeStore && this.isDefaultNativeStore) {
+                this.nativeStore.close();
+            }
         }
     }
 
     public NativeFileSystemStore getStore() {
-        return this.store;
+        return this.nativeStore;
+    }
+
+    // protected and private methods.
+    private String getOwnerId() {
+        UserGroupInformation currentUgi;
+        try {
+            currentUgi = UserGroupInformation.getCurrentUser();
+        } catch (IOException e) {
+            LOG.warn("get current user failed! use user.name prop", e);
+            return System.getProperty("user.name");
+        }
+
+        String shortUserName = "";
+        if (currentUgi != null) {
+            shortUserName = currentUgi.getShortUserName();
+        }
+
+        if (shortUserName == null) {
+            LOG.warn("get short user name failed! use user.name prop");
+            shortUserName = System.getProperty("user.name");
+        }
+        return shortUserName;
+    }
+
+    private String getGroupId() {
+        UserGroupInformation currentUgi = null;
+        try {
+            currentUgi = UserGroupInformation.getCurrentUser();
+        } catch (IOException e) {
+            LOG.warn("get current user failed! use user.name prop", e);
+            return System.getProperty("user.name");
+        }
+        if (currentUgi != null) {
+            String[] groupNames = currentUgi.getGroupNames();
+            if (groupNames.length != 0) {
+                return groupNames[0];
+            } else {
+                return getOwnerId();
+            }
+        }
+        return System.getProperty("user.name");
+    }
+
+    private String getOwnerInfo(boolean getOwnerId) {
+        String ownerInfoId = "";
+        try {
+            String userName = System.getProperty("user.name");
+            String command = "id -u " + userName;
+            if (!getOwnerId) {
+                command = "id -g " + userName;
+            }
+            Process child = Runtime.getRuntime().exec(command);
+            child.waitFor();
+
+            // Get the input stream and read from it
+            InputStream in = child.getInputStream();
+            StringBuilder strBuffer = new StringBuilder();
+            int c;
+            while ((c = in.read()) != -1) {
+                strBuffer.append((char) c);
+            }
+            in.close();
+            ownerInfoId = strBuffer.toString();
+        } catch (InterruptedException | IOException e) {
+            LOG.error("getOwnerInfo occur a exception", e);
+        }
+        return ownerInfoId;
+    }
+
+    private void initRangerClientImpl(Configuration conf) throws IOException {
+        Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
+                conf,
+                CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
+
+        if (cosClasses.length == 0) {
+            this.enableRangerPluginPermissionCheck = false;
+            return;
+        }
+
+        for (Class<?> credClass : cosClasses) {
+            if (credClass.getName().contains(RangerCredentialsProvider.class.getName())) {
+                this.enableRangerPluginPermissionCheck = true;
+                break;
+            }
+        }
+
+        if (!this.enableRangerPluginPermissionCheck) {
+            return;
+        }
+
+        Class<?> rangerClientImplClass = conf.getClass(CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL, null);
+        if (rangerClientImplClass == null) {
+            try {
+                rangerClientImplClass = conf.getClassByName(CosNConfigKeys.DEFAULT_COSN_RANGER_PLUGIN_CLIENT_IMPL);
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        if (rangerQcloudObjectStorageStorageClient == null) {
+            synchronized (CosFileSystem.class) {
+                if (rangerQcloudObjectStorageStorageClient == null) {
+                    try {
+                        RangerQcloudObjectStorageClient tmpClient =
+                                (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
+                        tmpClient.init(conf);
+                        rangerQcloudObjectStorageStorageClient = tmpClient;
+                    } catch (Exception e) {
+                        LOG.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
+                        throw new IOException(String.format("init %s failed",
+                                CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
+                    }
+                }
+            }
+        }
+
+    }
+
+    private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
+        if (!this.enableRangerPluginPermissionCheck) {
+            return;
+        }
+
+        AccessType accessType = null;
+        switch (rangerAccessType) {
+            case LIST:
+                accessType = AccessType.LIST;
+                break;
+            case WRITE:
+                accessType = AccessType.WRITE;
+                break;
+            case READ:
+                accessType = AccessType.READ;
+                break;
+            case DELETE:
+                accessType = AccessType.DELETE;
+                break;
+            default:
+                throw new IOException(String.format("unknown access type %s", rangerAccessType.toString()));
+        }
+
+        Path absolutePath = makeAbsolute(f);
+        String allowKey = CosNFileSystem.pathToKey(absolutePath);
+        if (allowKey.startsWith("/")) {
+            allowKey = allowKey.substring(1);
+        }
+
+        PermissionRequest permissionReq = new PermissionRequest(ServiceType.COS, accessType,
+                CosNUtils.getBucketNameWithoutAppid(this.bucket, this.getConf().get(CosNConfigKeys.COSN_APPID_KEY)),
+                allowKey, "", "");
+        boolean allowed = false;
+        PermissionResponse permission = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
+        if (permission != null) {
+            allowed = permission.isAllowed();
+        }
+        if (!allowed) {
+            throw new IOException(String.format("Permission denied, [key: %s], [user: %s], [operation: %s]",
+                    allowKey, this.userGroupInformation.getShortUserName(), rangerAccessType.name()));
+        }
+    }
+
+    private Path makeAbsolute(Path path) {
+        if (path.isAbsolute()) {
+            return path;
+        }
+        return new Path(workingDir, path);
     }
 
     // key and path relate
@@ -1025,13 +1351,6 @@ public class CosHadoopFileSystem extends FileSystem {
         } else {
             return new Path(key);
         }
-    }
-
-    private Path makeAbsolute(Path path) {
-        if (path.isAbsolute()) {
-            return path;
-        }
-        return new Path(workingDir, path);
     }
 
 }
