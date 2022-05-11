@@ -323,7 +323,7 @@ public class CosNFileSystem extends FileSystem {
                 CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
             return new FSDataOutputStream(
                     new CosNPosixExtensionDataOutputStream(this.getConf(), nativeStore, key,
-                            this.boundedCopyThreadPool), statistics);
+                            this.boundedIOThreadPool), statistics);
         } else {
             return new FSDataOutputStream(
                     new CosNFSDataOutputStream(this.getConf(), nativeStore, key,
