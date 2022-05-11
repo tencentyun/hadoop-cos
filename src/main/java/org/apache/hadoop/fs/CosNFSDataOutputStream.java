@@ -4,102 +4,177 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
+import com.qcloud.cos.thirdparty.org.apache.commons.codec.binary.Hex;
+import org.apache.commons.io.output.NullOutputStream;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.cosn.*;
+import org.apache.hadoop.fs.cosn.Abortable;
+import org.apache.hadoop.fs.cosn.BufferInputStream;
+import org.apache.hadoop.fs.cosn.BufferOutputStream;
+import org.apache.hadoop.fs.cosn.BufferPool;
+import org.apache.hadoop.fs.cosn.Constants;
+import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class CosNFSDataOutputStream extends OutputStream implements Abortable {
-    static final Logger LOG =
+    private static final Logger LOG =
             LoggerFactory.getLogger(CosNFSDataOutputStream.class);
 
-    private final Configuration conf;
-    private final NativeFileSystemStore store;
-    private MessageDigest digest;
-    private long blockSize;
-    private String key;
-    private int currentBlockId = 0;
-    private CosNByteBuffer currentBlockBuffer;
-    private OutputStream currentBlockOutputStream;
-    private String uploadId = null;
-    private final ListeningExecutorService executorService;
-    private final List<ListenableFuture<PartETag>> partEtagList =
-            new LinkedList<ListenableFuture<PartETag>>();
-    private int blockWritten = 0;
-    private WriteConsistencyChecker writeConsistencyChecker = null;
-    private boolean closed = false;
+    protected final Configuration conf;
+    protected final NativeFileSystemStore nativeStore;
+    protected final ListeningExecutorService executorService;
+    protected final String cosKey;
+    protected final long partSize;
+    protected MultipartUpload multipartUpload;
+    protected int currentPartNumber;
+    protected CosNByteBuffer currentPartBuffer;
+    protected OutputStream currentPartOutputStream;
+    protected long currentPartWriteBytes;
+    protected boolean dirty;
+    protected boolean committed;
+    protected boolean closed;
+    protected MessageDigest currentPartMessageDigest;
+    protected ConsistencyChecker consistencyChecker;
 
     /**
      * Output stream
      *
-     * @param conf config
-     * @param store native file system
-     * @param key cos key
-     * @param blockSize block config size
+     * @param conf            config
+     * @param nativeStore     native file system
+     * @param key             cos key
      * @param executorService thread executor
-     * @param checksEnabled check flag
      * @throws IOException
      */
     public CosNFSDataOutputStream(
             Configuration conf,
-            NativeFileSystemStore store,
-            String key, long blockSize,
-            ExecutorService executorService, boolean checksEnabled) throws IOException {
+            NativeFileSystemStore nativeStore,
+            String key, ExecutorService executorService) throws IOException {
         this.conf = conf;
-        this.store = store;
-        this.key = key;
-        this.blockSize = blockSize;
+        this.nativeStore = nativeStore;
+        this.executorService = MoreExecutors.listeningDecorator(executorService);
 
-        if (checksEnabled) {
-            LOG.info("The consistency checker is enabled.");
-            this.writeConsistencyChecker = new WriteConsistencyChecker(this.store, this.key);
-        } else {
-            LOG.warn("The consistency checker is disabled.");
-        }
-
-        if (this.blockSize < Constants.MIN_PART_SIZE) {
+        this.cosKey = key;
+        long partSize = conf.getLong(
+                CosNConfigKeys.COSN_UPLOAD_PART_SIZE_KEY, CosNConfigKeys.DEFAULT_UPLOAD_PART_SIZE);
+        if (partSize < Constants.MIN_PART_SIZE) {
             LOG.warn("The minimum size of a single block is limited to " +
                     "greater than or equal to {}.", Constants.MIN_PART_SIZE);
-            this.blockSize = Constants.MIN_PART_SIZE;
-        }
-        if (this.blockSize > Constants.MAX_PART_SIZE) {
+            this.partSize = Constants.MIN_PART_SIZE;
+        } else if (partSize > Constants.MAX_PART_SIZE) {
             LOG.warn("The maximum size of a single block is limited to " +
                     "smaller than or equal to {}.", Constants.MAX_PART_SIZE);
-            this.blockSize = Constants.MAX_PART_SIZE;
+            this.partSize = Constants.MAX_PART_SIZE;
+        } else {
+            this.partSize = partSize;
+        }
+        this.multipartUpload = null;
+        this.currentPartNumber = 0;
+        // malloc when trigger the write operations
+        this.currentPartBuffer = null;
+        this.currentPartOutputStream = null;
+        this.currentPartWriteBytes = 0;
+
+        this.dirty = true;
+        this.committed = false;
+        this.closed = false;
+
+        try {
+            this.currentPartMessageDigest = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            LOG.warn("Failed to MD5 digest, the upload will not check.");
+            this.currentPartMessageDigest = null;
         }
 
-        this.executorService =
-                MoreExecutors.listeningDecorator(executorService);
-
-        // malloc when trigger the write operations
-        this.currentBlockBuffer = null;
-        this.currentBlockOutputStream = null;
+        boolean uploadChecksEnabled = conf.getBoolean(CosNConfigKeys.COSN_UPLOAD_CHECKS_ENABLE_KEY,
+                CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE);
+        if (uploadChecksEnabled) {
+            LOG.info("The consistency checker is enabled.");
+            this.consistencyChecker = new ConsistencyChecker(this.nativeStore, this.cosKey);
+        } else {
+            LOG.warn("The consistency checker is disabled.");
+            this.consistencyChecker = null;
+        }
     }
 
     @Override
-    public void flush() throws IOException {
-        // create but not call write before
-        if (this.currentBlockOutputStream == null) {
-            initCurrentBlock();
+    public synchronized void write(byte[] b, int off, int len) throws IOException {
+        this.checkOpened();
+
+        if (this.currentPartBuffer == null) {
+            initNewCurrentPartResource();
         }
-        this.currentBlockOutputStream.flush();
-        if(!this.partEtagList.isEmpty()) {
-            waitForFinishPartUploads();
+
+        while (len > 0) {
+            long writeBytes;
+            if (this.currentPartWriteBytes + len > this.partSize) {
+                writeBytes = this.partSize - this.currentPartWriteBytes;
+            } else {
+                writeBytes = len;
+            }
+
+            this.currentPartOutputStream.write(b, off, (int) writeBytes);
+            this.dirty = true;
+            this.committed = false;
+            this.currentPartWriteBytes += writeBytes;
+            if (null != this.consistencyChecker) {
+                this.consistencyChecker.writeBytes(b, off, (int) writeBytes);
+            }
+            if (this.currentPartWriteBytes >= this.partSize) {
+                this.currentPartOutputStream.flush();
+                this.currentPartOutputStream.close();
+                this.uploadCurrentPart(false);
+                this.initNewCurrentPartResource();
+            }
+            len -= writeBytes;
+            off += writeBytes;
         }
+
+    }
+
+    @Override
+    public synchronized void write(int b) throws IOException {
+        this.checkOpened();
+
+        byte[] singleBytes = new byte[1];
+        singleBytes[0] = (byte) b;
+        this.write(singleBytes, 0, 1);
+    }
+
+    @Override
+    public synchronized void flush() throws IOException {
+        this.checkOpened();
+        if (!this.dirty) {
+            LOG.debug("The stream is up-to-date, no need to refresh.");
+            return;
+        }
+
+        // Create but not call write before.
+        if (null == this.currentPartBuffer) {
+            initNewCurrentPartResource();
+        }
+
+        this.doFlush();
+        // All data has been flushed to the Under Storage.
+        this.dirty = false;
     }
 
     @Override
@@ -108,288 +183,398 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             return;
         }
 
-        if (this.currentBlockOutputStream == null) {
-            initCurrentBlock();
-        }
-
+        LOG.info("Close the output stream [{}].", this);
         try {
-            this.currentBlockOutputStream.flush();
-            this.currentBlockOutputStream.close();
-            // 加到块列表中去
-            if (this.currentBlockId == 0) {
-                // 单个文件就可以上传完成
-                LOG.info("Single file upload...  key: {}, blockId: {}, blockWritten: {}.", this.key,
-                        this.currentBlockId,
-                        this.blockWritten);
-                byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-                int size = this.currentBlockBuffer.getByteBuffer().remaining();
-                store.storeFile(this.key,
-                        new BufferInputStream(this.currentBlockBuffer),
-                        md5Hash,
-                        this.currentBlockBuffer.getByteBuffer().remaining());
-                if (null != this.writeConsistencyChecker) {
-                    this.writeConsistencyChecker.incrementWrittenBytes(size);
-                }
-                if (null != this.writeConsistencyChecker) {
-                    this.writeConsistencyChecker.finish();
-                    if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
-                        String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.",
-                                this.key,
-                                this.writeConsistencyChecker.getCheckResult().getDescription());
-                        throw new IOException(exceptionMsg);
-                    }
-                    LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
-                            this.writeConsistencyChecker.getCheckResult().getDescription());
-                } else {
-                    LOG.info("OutputStream for key [{}] upload complete. But it is not checked.", key);
-                }
-            } else {
-                PartETag partETag = null;
-                if (this.blockWritten > 0) {
-                    this.currentBlockId++;
-                    LOG.info("Upload the last part. key: {}, blockId: [{}], blockWritten: [{}]",
-                            this.key, this.currentBlockId, this.blockWritten);
-                    byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-                    int size = this.currentBlockBuffer.getByteBuffer().remaining();
-                    partETag = store.uploadPart(
-                            new BufferInputStream(this.currentBlockBuffer), key,
-                            uploadId, currentBlockId,
-                            currentBlockBuffer.getByteBuffer().remaining(), md5Hash);
-                    if (null != this.writeConsistencyChecker) {
-                        this.writeConsistencyChecker.incrementWrittenBytes(size);
-                    }
-                }
-                final List<PartETag> futurePartEtagList = this.waitForFinishPartUploads();
-                if (null == futurePartEtagList) {
-                    throw new IOException("failed to multipart upload to cos, " +
-                            "abort it.");
-                }
-                List<PartETag> tempPartETagList = new LinkedList<PartETag>(futurePartEtagList);
-                if (null != partETag) {
-                    tempPartETagList.add(partETag);
-                }
-                store.completeMultipartUpload(this.key, this.uploadId,
-                        tempPartETagList);
-                if (null != this.writeConsistencyChecker) {
-                    this.writeConsistencyChecker.finish();
-                    if (!this.writeConsistencyChecker.getCheckResult().isSucceeded()) {
-                        String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.",
-                                this.key,
-                                this.writeConsistencyChecker.getCheckResult().getDescription());
-                        throw new IOException(exceptionMsg);
-                    }
-                    LOG.info("Upload the key [{}] successfully. check message: {}.", this.key,
-                            this.writeConsistencyChecker.getCheckResult().getDescription());
-                } else {
-                    LOG.info("OutputStream for key [{}] upload complete. But it is not checked.", key);
-                }
-            }
+            this.flush();
+            this.commit();
         } finally {
-            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
-            this.blockWritten = 0;
             this.closed = true;
-            this.writeConsistencyChecker = null;
-            this.currentBlockBuffer = null;
-            this.currentBlockOutputStream = null;
+            this.releaseCurrentPartResource();
+            this.resetContext();
         }
     }
 
     @Override
-    public void abort() throws IOException {
-        LOG.info("abort file upload, key:{}, uploadId:{}", key, uploadId);
+    public synchronized void abort() throws IOException {
         if (this.closed) {
             return;
         }
 
+        LOG.info("Abort the output stream [{}].", this);
         try {
-            if(currentBlockOutputStream != null) {
-                this.currentBlockOutputStream.flush();
-                this.currentBlockOutputStream.close();
-            }
-            if(uploadId != null) {
-                this.store.abortMultipartUpload(key, uploadId);
+            if (null != this.multipartUpload) {
+                this.multipartUpload.abort();
             }
         } finally {
             this.closed = true;
-            BufferPool.getInstance().returnBuffer(this.currentBlockBuffer);
-            this.blockWritten = 0;
-            this.writeConsistencyChecker = null;
-            this.currentBlockBuffer = null;
-            this.currentBlockOutputStream = null;
+            this.releaseCurrentPartResource();
+            this.resetContext();
         }
     }
 
-    private List<PartETag> waitForFinishPartUploads() throws IOException {
-        try {
-            LOG.info("Waiting for finish part uploads...");
-            return Futures.allAsList(this.partEtagList).get();
-        } catch (InterruptedException e) {
-            LOG.error("Interrupt the part upload...", e);
-            return null;
-        } catch (ExecutionException e) {
-            LOG.error("Cancelling futures...");
-            for (ListenableFuture<PartETag> future : this.partEtagList) {
-                future.cancel(true);
-            }
-            (store).abortMultipartUpload(this.key, this.uploadId);
-            String exceptionMsg = String.format("multipart upload with id: %s" +
-                    " to %s.", this.uploadId, this.key);
-            throw new IOException(exceptionMsg);
-        }
-    }
-
-    private void uploadPart() throws IOException {
-        this.currentBlockOutputStream.flush();
-        this.currentBlockOutputStream.close();
-
-        if (this.currentBlockId == 0) {
-            uploadId = (store).getUploadId(key);
+    /**
+     * commit the current file
+     */
+    protected void commit() throws IOException {
+        if (this.committed) {
+            return;
         }
 
-        this.currentBlockId++;
-        LOG.debug("upload part blockId: {}, uploadId: {}.", this.currentBlockId, this.uploadId);
-        final byte[] md5Hash = this.digest == null ? null : this.digest.digest();
-        ListenableFuture<PartETag> partETagListenableFuture =
-                this.executorService.submit(new Callable<PartETag>() {
-                    private final CosNByteBuffer buffer = currentBlockBuffer;
-                    private final String localKey = key;
-                    private final String localUploadId = uploadId;
-                    private final int blockId = currentBlockId;
-                    private final byte[] blockMD5Hash = md5Hash;
-
-                    @Override
-                    public PartETag call() throws Exception {
-                        // 设置线程的context class loader
-                        // 之前有客户通过spark-sql执行add jar命令, 当spark.eventLog.dir为cos, jar路径也在cos时, 会导致cos读取数据时，
-                        // http库的日志加载，又会加载cos上的文件，以此形成了逻辑死循环
-                        // 1 上层调用cos read
-                        //2 cos插件通过Apache http库读取数据
-                        //3 http库里面初始化日志对象时要读取日志配置，发现配置是在cos上
-                        //4 调用cos read
-
-                        // 分析后发现，日志库里面获取资源是通过context class loader, 而add jar会改变context class loader，将被add jar也加入classpath路径中
-                        // 因此这里通过设置context class loader为app class loader。 避免被上层add jar等改变context class loader行为污染
-                        Thread currentThread = Thread.currentThread();
-                        LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
-                                this.getClass().getClassLoader(), currentThread.getContextClassLoader());
-                        currentThread.setContextClassLoader(this.getClass().getClassLoader());
-
-                        try {
-                            PartETag partETag = (store).uploadPart(
-                                    new BufferInputStream(this.buffer),
-                                    this.localKey,
-                                    this.localUploadId,
-                                    this.blockId,
-                                    this.buffer.getByteBuffer().remaining(), this.blockMD5Hash);
-                            return partETag;
-                        } finally {
-                            BufferPool.getInstance().returnBuffer(this.buffer);
-                        }
-                    }
-                });
-        this.partEtagList.add(partETagListenableFuture);
-        try {
-            this.currentBlockBuffer =
-                    BufferPool.getInstance().getBuffer((int) this.blockSize);
-        } catch (InterruptedException e) {
-            String exceptionMsg = String.format("getting a buffer size: [%d] " +
-                            "from the buffer pool occurs an exception.",
-                    this.blockSize);
-            throw new IOException(exceptionMsg, e);
-        }
-
-        if (null != this.digest) {
-            this.digest.reset();
-            this.currentBlockOutputStream = new DigestOutputStream(
-                    new BufferOutputStream(this.currentBlockBuffer),
-                    this.digest);
+        if (this.currentPartNumber <= 1) {
+            // Single file upload
+            byte[] digestHash = this.currentPartMessageDigest == null ? null : this.currentPartMessageDigest.digest();
+            BufferInputStream currentPartBufferInputStream = new BufferInputStream(this.currentPartBuffer);
+            nativeStore.storeFile(this.cosKey, currentPartBufferInputStream,
+                    digestHash, this.currentPartBuffer.remaining());
         } else {
-            this.currentBlockOutputStream =
-                    new BufferOutputStream(this.currentBlockBuffer);
+            if (null != this.multipartUpload) {
+                this.multipartUpload.complete();
+            }
+        }
+
+        this.committed = true;
+
+        if (null != this.consistencyChecker) {
+            this.consistencyChecker.finish();
+            if (!this.consistencyChecker.getCheckResult().isSucceeded()) {
+                String exceptionMsg = String.format("Failed to upload the key: %s, error message: %s.",
+                        this.cosKey,
+                        this.consistencyChecker.getCheckResult().getDescription());
+                throw new IOException(exceptionMsg);
+            }
+            LOG.info("Upload the key [{}] successfully. check message: {}.", this.cosKey,
+                    this.consistencyChecker.getCheckResult().getDescription());
+        } else {
+            LOG.info("OutputStream for key [{}] upload complete. But it is not checked.", cosKey);
         }
     }
 
-    @Override
-    public void write(byte[] b, int off, int len) throws IOException {
+    protected void resetContext() throws IOException {
+        if (null != this.multipartUpload) {
+            if (!this.multipartUpload.isCompleted() && !this.multipartUpload.isAborted()) {
+                this.multipartUpload.abort();
+            }
+        }
+
+        if (null != this.currentPartOutputStream) {
+            this.currentPartOutputStream.close();
+        }
+
+        if (null != this.currentPartBuffer) {
+            BufferPool.getInstance().returnBuffer(this.currentPartBuffer);
+        }
+
+        this.multipartUpload = null;
+        this.currentPartNumber = 0;
+        this.currentPartBuffer = null;
+        this.currentPartOutputStream = null;
+        this.currentPartWriteBytes = 0;
+
+        this.dirty = true;
+        this.committed = false;
+
+        this.currentPartMessageDigest.reset();
+        this.consistencyChecker.reset();
+    }
+
+    protected void checkOpened() throws IOException {
         if (this.closed) {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
+    }
 
-        if (this.currentBlockOutputStream == null) {
-            initCurrentBlock();
-        }
-
-        while (len > 0) {
-            long writeBytes = 0;
-            if (this.blockWritten + len > this.blockSize) {
-                writeBytes = this.blockSize - this.blockWritten;
-            } else {
-                writeBytes = len;
-            }
-
-            this.currentBlockOutputStream.write(b, off, (int) writeBytes);
-            this.blockWritten += writeBytes;
-            if (this.blockWritten >= this.blockSize) {
-                this.uploadPart();
-                if (null != this.writeConsistencyChecker) {
-                    this.writeConsistencyChecker.incrementWrittenBytes(blockWritten);
+    /**
+     * inner flush operation.
+     */
+    private void doFlush() throws IOException {
+        this.currentPartOutputStream.flush();
+        try {
+            if (this.currentPartNumber > 1 && null != this.multipartUpload) {
+                if (this.currentPartWriteBytes > 0) {
+                    this.uploadCurrentPart(true);
                 }
-                this.blockWritten = 0;
+                this.multipartUpload.waitForFinishPartUploads();
             }
-            len -= writeBytes;
-            off += writeBytes;
+        } finally {
+            // resume for append write in last part.
+            this.resumeCurrentPartMessageDigest();
+            this.currentPartBuffer.flipWrite();
         }
     }
 
-    @Override
-    public void write(byte[] b) throws IOException {
-        this.write(b, 0, b.length);
-    }
-
-    @Override
-    public void write(int b) throws IOException {
-        if (this.closed) {
-            throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
-        }
-
-        if (this.currentBlockOutputStream == null) {
-            initCurrentBlock();
-        }
-
-        byte[] singleBytes = new byte[1];
-        singleBytes[0] = (byte) b;
-        this.currentBlockOutputStream.write(singleBytes, 0, 1);
-        this.blockWritten += 1;
-        if (this.blockWritten >= this.blockSize) {
-            this.uploadPart();
-            if (null != this.writeConsistencyChecker) {
-                this.writeConsistencyChecker.incrementWrittenBytes(blockWritten);
-            }
-            this.blockWritten = 0;
-        }
-    }
-
-    // init current block buffer and output stream when occur the write operation.
-    private void initCurrentBlock() throws IOException {
+    /**
+     * Initialize a new currentBlock and a new currentBlockOutputStream.
+     */
+    protected void initNewCurrentPartResource() throws IOException {
         // get the buffer
         try {
-            this.currentBlockBuffer = BufferPool.getInstance().getBuffer((int) this.blockSize);
+            this.currentPartBuffer = BufferPool.getInstance().getBuffer((int) this.partSize);
+            this.currentPartWriteBytes = 0;
+            this.currentPartNumber++;
         } catch (InterruptedException e) {
             String exceptionMsg = String.format("Getting a buffer size:[%d] " +
                             "from the buffer pool occurs an exception.",
-                    this.blockSize);
+                    this.partSize);
             throw new IOException(exceptionMsg);
         }
         // init the stream
-        try {
-            this.digest = MessageDigest.getInstance("MD5");
-            this.currentBlockOutputStream = new DigestOutputStream(
-                    new BufferOutputStream(this.currentBlockBuffer),
-                    this.digest);
-        } catch (NoSuchAlgorithmException e) {
-            this.digest = null;
-            this.currentBlockOutputStream =
-                    new BufferOutputStream(this.currentBlockBuffer);
+        this.currentPartMessageDigest.reset();
+        this.currentPartOutputStream = new DigestOutputStream(
+                new BufferOutputStream(this.currentPartBuffer), this.currentPartMessageDigest);
+    }
+
+    protected void releaseCurrentPartResource() throws IOException {
+        if (null != this.currentPartOutputStream) {
+            try {
+                this.currentPartOutputStream.close();
+            } catch (IOException e) {
+                LOG.warn("Fail to close current part output stream.", e);
+            }
+            this.currentPartOutputStream = null;
+        }
+
+        this.currentPartMessageDigest.reset();
+
+        if (null != this.currentPartBuffer) {
+            BufferPool.getInstance().returnBuffer(this.currentPartBuffer);
+        }
+        this.currentPartBuffer = null;
+    }
+
+    private void uploadCurrentPart(boolean isLastPart) throws IOException {
+        if (null == this.multipartUpload) {
+            this.multipartUpload = new MultipartUpload(this.cosKey);
+        }
+
+        byte[] digestHash = this.currentPartMessageDigest == null ? null : this.currentPartMessageDigest.digest();
+        UploadPart uploadPart = new UploadPart(this.currentPartNumber, this.currentPartBuffer,
+                digestHash, isLastPart);
+        this.multipartUpload.uploadPartAsync(uploadPart);
+    }
+
+    private void resumeCurrentPartMessageDigest() throws IOException {
+        if (null != this.currentPartMessageDigest) {
+            // recover the digest
+            this.currentPartMessageDigest.reset();
+            OutputStream tempOutputStream = new DigestOutputStream(
+                    new NullOutputStream(), this.currentPartMessageDigest);
+
+            InputStream tempInputStream = new BufferInputStream(this.currentPartBuffer);
+            byte[] tempChunk = new byte[(int) (4 * Unit.KB)];
+            int readBytes = tempInputStream.read(tempChunk);
+            while (readBytes != -1) {
+                tempOutputStream.write(tempChunk, 0, readBytes);
+                readBytes = tempInputStream.read(tempChunk);
+            }
+        }
+    }
+
+    protected class MultipartUpload {
+        protected final String uploadId;
+        protected final Map<Integer, ListenableFuture<PartETag>> partETagFutures;
+        protected final AtomicInteger partsSubmitted;
+        protected final AtomicInteger partsUploaded;
+        protected final AtomicLong bytesSubmitted;
+        protected final AtomicLong bytesUploaded;
+
+        protected volatile boolean aborted;
+        protected volatile boolean completed;
+
+        protected MultipartUpload(String cosKey) throws IOException {
+            this(cosKey, null);
+        }
+
+        protected MultipartUpload(String cosKey, String uploadId) throws IOException {
+            this(cosKey, uploadId, null, 0, 0, 0, 0);
+        }
+
+        protected MultipartUpload(String cosKey, String uploadId, Map<Integer, ListenableFuture<PartETag>> partETagFutures,
+                                  int partsSubmitted, int partsUploaded, long bytesSubmitted, long bytesUploaded) throws IOException {
+            if (null == uploadId) {
+                uploadId = nativeStore.getUploadId(cosKey);
+            }
+            this.uploadId = uploadId;
+            LOG.debug("Initial multi-part upload for the cos key [{}] with the upload id [{}].",
+                    cosKey, uploadId);
+
+            if (null == partETagFutures) {
+                this.partETagFutures = new HashMap<>();
+            } else {
+                this.partETagFutures = partETagFutures;
+            }
+
+            this.partsSubmitted = new AtomicInteger(partsSubmitted);
+            this.partsUploaded = new AtomicInteger(partsUploaded);
+            this.bytesSubmitted = new AtomicLong(bytesSubmitted);
+            this.bytesUploaded = new AtomicLong(bytesUploaded);
+            this.aborted = false;
+            this.completed = false;
+        }
+
+        protected String getUploadId() {
+            return uploadId;
+        }
+
+        protected int getPartsUploaded() {
+            return partsUploaded.get();
+        }
+
+        protected int getPartsSubmitted() {
+            return partsSubmitted.get();
+        }
+
+        protected long getBytesSubmitted() {
+            return bytesSubmitted.get();
+        }
+
+        protected long getBytesUploaded() {
+            return bytesUploaded.get();
+        }
+
+        protected boolean isAborted() {
+            return aborted;
+        }
+
+        protected boolean isCompleted() {
+            return completed;
+        }
+
+        @Override
+        public String toString() {
+            return "MultipartUpload{" +
+                    "uploadId='" + uploadId + '\'' +
+                    ", partETagFutures=" + partETagFutures +
+                    ", partsSubmitted=" + partsSubmitted +
+                    ", partsUploaded=" + partsUploaded +
+                    ", bytesSubmitted=" + bytesSubmitted +
+                    ", bytesUploaded=" + bytesUploaded +
+                    ", aborted=" + aborted +
+                    ", completed=" + completed +
+                    '}';
+        }
+
+        protected void uploadPartAsync(final UploadPart uploadPart) throws IOException {
+            if (this.isCompleted() || this.isAborted()) {
+                throw new IOException(String.format("The MPU [%s] has been closed or aborted. " +
+                        "Can not execute the upload operation.", this));
+            }
+
+            partsSubmitted.incrementAndGet();
+            bytesSubmitted.addAndGet(uploadPart.getPartSize());
+            ListenableFuture<PartETag> partETagListenableFuture =
+                    executorService.submit(new Callable<PartETag>() {
+                        private final String localKey = cosKey;
+                        private final String localUploadId = uploadId;
+
+                        @Override
+                        public PartETag call() throws Exception {
+                            Thread currentThread = Thread.currentThread();
+                            LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
+                                    this.getClass().getClassLoader(), currentThread.getContextClassLoader());
+                            currentThread.setContextClassLoader(this.getClass().getClassLoader());
+
+                            try {
+                                LOG.info("Start to upload the part: {}", uploadPart);
+                                PartETag partETag = (nativeStore).uploadPart(
+                                        new BufferInputStream(uploadPart.getCosNByteBuffer()),
+                                        this.localKey,
+                                        this.localUploadId,
+                                        uploadPart.getPartNumber(),
+                                        uploadPart.getPartSize(), uploadPart.getMd5Hash());
+                                partsUploaded.incrementAndGet();
+                                bytesUploaded.addAndGet(uploadPart.getPartSize());
+                                return partETag;
+                            } finally {
+                                if (!uploadPart.isLast) {
+                                    BufferPool.getInstance().returnBuffer(uploadPart.getCosNByteBuffer());
+                                }
+                            }
+                        }
+                    });
+            this.partETagFutures.put(uploadPart.partNumber, partETagListenableFuture);
+        }
+
+        protected List<PartETag> waitForFinishPartUploads() throws IOException {
+            try {
+                LOG.info("Waiting for finish part uploads...");
+                return Futures.allAsList(this.partETagFutures.values()).get();
+            } catch (InterruptedException e) {
+                LOG.error("Interrupt the part upload...", e);
+                return null;
+            } catch (ExecutionException e) {
+                LOG.error("Cancelling futures...", e);
+                for (ListenableFuture<PartETag> future : this.partETagFutures.values()) {
+                    future.cancel(true);
+                }
+                (nativeStore).abortMultipartUpload(cosKey, this.uploadId);
+                String exceptionMsg = String.format("multipart upload with id: %s" +
+                        " to %s.", this.uploadId, cosKey);
+                throw new IOException(exceptionMsg);
+            }
+        }
+
+        protected void complete() throws IOException {
+            LOG.info("Completing the MPU [{}].", this);
+            if (this.isCompleted() || this.isAborted()) {
+                throw new IOException(String.format("fail to complete the MPU [%s]. "
+                        + "It has been completed or aborted.", this));
+            }
+            final List<PartETag> futurePartETagList = this.waitForFinishPartUploads();
+            if (null == futurePartETagList) {
+                throw new IOException("failed to multipart upload to cos, abort it.");
+            }
+
+            CompleteMultipartUploadResult completeResult =
+                    nativeStore.completeMultipartUpload(cosKey, this.uploadId, new LinkedList<>(futurePartETagList));
+            this.completed = true;
+            LOG.info("The MPU [{}] has been completed.", this);
+        }
+
+        protected void abort() throws IOException {
+            LOG.info("Aborting the MPU [{}].", this);
+            if (this.isCompleted() || this.isAborted()) {
+                throw new IOException(String.format("fail to abort the MPU [%s]. "
+                        + "It has been completed or aborted.", this));
+            }
+            nativeStore.abortMultipartUpload(cosKey, this.uploadId);
+            this.aborted = true;
+            LOG.info("The MPU [{}] has been aborted.", this);
+        }
+    }
+
+    private static final class UploadPart {
+        private final int partNumber;
+        private final CosNByteBuffer cosNByteBuffer;
+        private final byte[] md5Hash;
+        private final boolean isLast;
+
+        private UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer, byte[] md5Hash, boolean isLast) {
+            this.partNumber = partNumber;
+            this.cosNByteBuffer = cosNByteBuffer;
+            this.md5Hash = md5Hash;
+            this.isLast = isLast;
+        }
+
+        public int getPartNumber() {
+            return this.partNumber;
+        }
+
+        public CosNByteBuffer getCosNByteBuffer() {
+            return this.cosNByteBuffer;
+        }
+
+        public long getPartSize() {
+            return this.cosNByteBuffer.remaining();
+        }
+
+        public byte[] getMd5Hash() {
+            return this.md5Hash;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("UploadPart{partNumber:%d, partSize: %d, md5Hash: %s, isLast: %s}", this.partNumber,
+                    this.cosNByteBuffer.flipRead().remaining(), Hex.encodeHexString(this.md5Hash), this.isLast);
         }
     }
 }

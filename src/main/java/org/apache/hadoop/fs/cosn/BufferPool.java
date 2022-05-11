@@ -252,7 +252,7 @@ public final class BufferPool {
             this.bufferFactory.release(buffer);
         } else {
             LOG.debug("Return the buffer to the buffer pool.");
-            buffer.getByteBuffer().clear();
+            buffer.clear();
             if (!this.bufferPool.offer(buffer)) {
                 LOG.error("Return the buffer to buffer pool failed.");
             }

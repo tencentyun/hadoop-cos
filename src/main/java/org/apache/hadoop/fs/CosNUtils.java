@@ -3,6 +3,9 @@ package org.apache.hadoop.fs;
 import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.*;
+import org.apache.hadoop.io.retry.RetryPolicies;
+import org.apache.hadoop.io.retry.RetryPolicy;
+import org.apache.hadoop.io.retry.RetryProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,17 +15,40 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public final class CosNUtils {
     private static final Logger LOG = LoggerFactory.getLogger(CosNUtils.class);
 
     static final String INSTANTIATION_EXCEPTION = "instantiation exception";
-    static final String NOT_COS_CREDENTIAL_PROVIDER = "is not cos credential " +
-            "provider";
-    static final String ABSTRACT_CREDENTIAL_PROVIDER = "is abstract and " +
-            "therefore cannot be created";
+    static final String NOT_COS_CREDENTIAL_PROVIDER = "is not cos credential provider";
+    static final String ABSTRACT_CREDENTIAL_PROVIDER = "is abstract and therefore cannot be created";
 
     private CosNUtils() {
+    }
+
+    public static NativeFileSystemStore createDefaultStore(Configuration conf) {
+        NativeFileSystemStore store = new CosNativeFileSystemStore();
+        RetryPolicy basePolicy =
+                RetryPolicies.retryUpToMaximumCountWithFixedSleep(
+                        conf.getInt(CosNConfigKeys.COSN_MAX_RETRIES_KEY,
+                                CosNConfigKeys.DEFAULT_MAX_RETRIES),
+                        conf.getLong(CosNConfigKeys.COSN_RETRY_INTERVAL_KEY,
+                                CosNConfigKeys.DEFAULT_RETRY_INTERVAL),
+                        TimeUnit.SECONDS);
+        Map<Class<? extends Exception>, RetryPolicy> exceptionToPolicyMap =
+                new HashMap<Class<? extends Exception>, RetryPolicy>();
+
+        exceptionToPolicyMap.put(IOException.class, basePolicy);
+        RetryPolicy methodPolicy =
+                RetryPolicies.retryByException(RetryPolicies.TRY_ONCE_THEN_FAIL,
+                        exceptionToPolicyMap);
+        Map<String, RetryPolicy> methodNameToPolicyMap = new HashMap<String, RetryPolicy>();
+
+        return (NativeFileSystemStore) RetryProxy.create(NativeFileSystemStore.class, store,
+                methodNameToPolicyMap);
     }
 
     /**
@@ -173,8 +199,7 @@ public final class CosNUtils {
         }
     }
 
-    public static String formatBucket(String originBucketName, Configuration conf) {
-        String appidStr = conf.get(CosNConfigKeys.COSN_APPID_KEY);
+    public static String getBucketNameWithoutAppid(String originBucketName, String appidStr) {
         if (appidStr == null || appidStr.isEmpty()) {
             return originBucketName;
         }

@@ -24,10 +24,7 @@ public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
 
-    void setPosixBucket(boolean isPosixBucket);
-
     HeadBucketResult headBucket(String bucketName) throws IOException;
-
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
@@ -37,7 +34,7 @@ public interface NativeFileSystemStore {
     void storeEmptyFile(String key) throws IOException;
 
     // must notice some mpu chunk error might have double head check.
-    // which means some times CompleteMultipartUploadResult might be null.
+    // which means sometimes CompleteMultipartUploadResult might be null.
     CompleteMultipartUploadResult completeMultipartUpload(String key,
                                                           String uploadId,
                                                           List<PartETag> partETagList) throws IOException;
@@ -50,6 +47,9 @@ public interface NativeFileSystemStore {
 
     PartETag uploadPart(InputStream inputStream, String key, String uploadId,
                         int partNum, long partSize, byte[] md5hash) throws IOException;
+
+    PartETag uploadPartCopy(String uploadId, String srcKey, String destKey, int partNum,
+                            long firstByte, long lastByte) throws IOException;
 
     FileMetadata retrieveMetadata(String key) throws IOException;
 
@@ -92,7 +92,9 @@ public interface NativeFileSystemStore {
     void delete(String key) throws IOException;
 
     void deleteRecursive(String key) throws IOException;
+
     void copy(String srcKey, String dstKey) throws IOException;
+
     void rename(String srcKey, String dstKey) throws IOException;
 
     /**

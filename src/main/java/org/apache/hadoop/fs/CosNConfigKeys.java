@@ -60,9 +60,11 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_UPLOAD_BUFFER_SIZE_PREV_KEY = "fs.cosn.buffer.size";
     public static final int DEFAULT_UPLOAD_BUFFER_SIZE = -1;
 
+    public static final String COSN_POSIX_EXTENSION_ENABLED = "fs.cosn.posix_extension.enabled";
+    public static final boolean DEFAULT_COSN_POSIX_EXTENSION_ENABLED = false;
+
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final long DEFAULT_BLOCK_SIZE = 128 * Unit.MB;
-
     public static final String COSN_MAX_RETRIES_KEY = "fs.cosn.maxRetries";
     public static final int DEFAULT_MAX_RETRIES = 200;
     public static final String COSN_RETRY_INTERVAL_KEY = "fs.cosn.retry.interval.seconds";
@@ -99,10 +101,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_MAX_CONNECTION_NUM = 2048;
 
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
-    public static final String POSIX_BUCKET_MAX_LIST_NUM = "fs.cosn.posix.bucket.max.list.num";
-    public static final int DEFAULT_POSIX_BUCKET_MAX_LIST_NUM = 5000;
-    public static final String NORMAL_BUCKET_MAX_LIST_NUM = "fs.cosn.normal.bucket.max.list.num";
-    public static final int DEFAULT_NORMAL_BUCKET_MAX_LIST_NUM = 999;
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_CONTEXT = "fs.cosn.server-side-encryption.context";
@@ -140,11 +138,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // default disable emr v2 instance url.
     public static final String COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = "fs.cosn.emrv2.instance.provider.enabled";
     public static final boolean DEFAULT_COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = false;
-
-    public static final String COSN_POSIX_BUCKET_GATEWAY_MODE_ENABLED = "fs.cosn.posix.bucket.gateway.mode.enabled";
-    public static final boolean DEFAULT_COSN_POSIX_BUCKET_GATEWAY_MODE_ENABLED = false;
-    public static final String COSN_POSIX_BUCKET_NOGATEWAY_IMPL = "fs.cosn.posix.bucket.nogateway.impl";
-    public static final String DEFAULT_COSN_POSIX_BUCKET_NOGATEWAY_IMPL =
-            "com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter";
-
+    public static final String COSN_POSIX_BUCKET_FS_IMPL = "fs.cosn.posix_bucket.fs.impl";
+    public static final String DEFAULT_COSN_POSIX_BUCKET_FS_IMPL = Constants.COSN_POSIX_BUCKET_FS_CHDFS_IMPL;
 }

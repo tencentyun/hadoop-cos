@@ -1,5 +1,6 @@
 package org.apache.hadoop.fs.cosn.buffer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import org.apache.hadoop.util.DirectBufferPool;
@@ -25,11 +26,16 @@ public class CosNDirectBufferFactory implements CosNBufferFactory {
             return;
         }
 
-        if (null == cosNByteBuffer.getByteBuffer()) {
+        if (null == ((CosNDirectBuffer)cosNByteBuffer).getByteBuffer()) {
             LOG.warn("The byte buffer returned is null. can not be released.");
             return;
         }
+        this.directBufferPool.returnBuffer(((CosNDirectBuffer)cosNByteBuffer).getByteBuffer());
 
-        this.directBufferPool.returnBuffer(cosNByteBuffer.getByteBuffer());
+        try {
+            cosNByteBuffer.close();
+        } catch (IOException e) {
+            LOG.error("Release the direct byte buffer failed.", e);
+        }
     }
 }
