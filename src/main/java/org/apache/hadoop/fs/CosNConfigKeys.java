@@ -47,7 +47,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String DEFAULT_TMP_DIR = "/tmp/hadoop_cos";
 
     // upload checks, turn on default.
-    public static final String COSN_UPLOAD_CHECKS_ENABLE_KEY = "fs.cosn.upload.checks.enable";
+    public static final String COSN_UPLOAD_CHECKS_ENABLED_KEY = "fs.cosn.upload.checks.enabled";
     public static final boolean DEFAULT_COSN_UPLOAD_CHECKS_ENABLE = true;
 
     public static final String COSN_UPLOAD_PART_SIZE_KEY = "fs.cosn.upload.part.size";
@@ -55,6 +55,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_UPLOAD_BUFFER_TYPE_KEY = "fs.cosn.upload.buffer";
     public static final String DEFAULT_UPLOAD_BUFFER_TYPE = "mapped_disk";
+
+    public static final String COSN_UPLOAD_PART_CHECKSUM_ENABLED_KEY = "fs.cosn.upload.part.checksum.enabled";
+    public static final boolean DEFAULT_UPLOAD_PART_CHECKSUM_ENABLED = true;
 
     public static final String COSN_UPLOAD_BUFFER_SIZE_KEY = "fs.cosn.upload.buffer.size";
     public static final String COSN_UPLOAD_BUFFER_SIZE_PREV_KEY = "fs.cosn.buffer.size";
@@ -125,7 +128,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_HTTP_PROXY_PORT = -1;
     public static final String HTTP_PROXY_USERNAME = "fs.cosn.http.proxy.username";
     public static final String HTTP_PROXY_PASSWORD = "fs.cosn.http.proxy.password";
-
     public static final String COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL = "fs.cosn.ranger.temp.token.refresh.interval";
     public static final int DEFAULT_COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL = 20;
 

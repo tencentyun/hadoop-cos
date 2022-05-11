@@ -97,14 +97,22 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         this.committed = false;
         this.closed = false;
 
-        try {
-            this.currentPartMessageDigest = MessageDigest.getInstance("MD5");
-        } catch (NoSuchAlgorithmException e) {
-            LOG.warn("Failed to MD5 digest, the upload will not check.");
+        if (conf.getBoolean(CosNConfigKeys.COSN_UPLOAD_PART_CHECKSUM_ENABLED_KEY,
+                CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE)) {
+            LOG.info("The MPU-UploadPart checksum is enabled, and the message digest algorithm is {}.", "MD5");
+            try {
+                this.currentPartMessageDigest = MessageDigest.getInstance("MD5");
+            } catch (NoSuchAlgorithmException e) {
+                LOG.warn("Failed to MD5 digest, the upload will not check.");
+                this.currentPartMessageDigest = null;
+            }
+        } else {
+            // close the current part message digest.
+            LOG.warn("The MPU-UploadPart checksum is disabled.");
             this.currentPartMessageDigest = null;
         }
 
-        boolean uploadChecksEnabled = conf.getBoolean(CosNConfigKeys.COSN_UPLOAD_CHECKS_ENABLE_KEY,
+        boolean uploadChecksEnabled = conf.getBoolean(CosNConfigKeys.COSN_UPLOAD_CHECKS_ENABLED_KEY,
                 CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE);
         if (uploadChecksEnabled) {
             LOG.info("The consistency checker is enabled.");
@@ -183,7 +191,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             return;
         }
 
-        LOG.info("Close the output stream [{}].", this);
+        LOG.info("Closing the output stream [{}].", this);
         try {
             this.flush();
             this.commit();
@@ -200,7 +208,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             return;
         }
 
-        LOG.info("Abort the output stream [{}].", this);
+        LOG.info("Aborting the output stream [{}].", this);
         try {
             if (null != this.multipartUpload) {
                 this.multipartUpload.abort();
@@ -273,8 +281,12 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         this.dirty = true;
         this.committed = false;
 
-        this.currentPartMessageDigest.reset();
-        this.consistencyChecker.reset();
+        if (this.currentPartMessageDigest != null) {
+            this.currentPartMessageDigest.reset();
+        }
+        if (this.consistencyChecker != null) {
+            this.consistencyChecker.reset();
+        }
     }
 
     protected void checkOpened() throws IOException {
@@ -318,9 +330,13 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             throw new IOException(exceptionMsg);
         }
         // init the stream
-        this.currentPartMessageDigest.reset();
-        this.currentPartOutputStream = new DigestOutputStream(
-                new BufferOutputStream(this.currentPartBuffer), this.currentPartMessageDigest);
+        if (null != this.currentPartMessageDigest) {
+            this.currentPartMessageDigest.reset();
+            this.currentPartOutputStream = new DigestOutputStream(
+                    new BufferOutputStream(this.currentPartBuffer), this.currentPartMessageDigest);
+        } else {
+            this.currentPartOutputStream = new BufferOutputStream(this.currentPartBuffer);
+        }
     }
 
     protected void releaseCurrentPartResource() throws IOException {
@@ -333,7 +349,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             this.currentPartOutputStream = null;
         }
 
-        this.currentPartMessageDigest.reset();
+        if (null != this.currentPartMessageDigest) {
+            this.currentPartMessageDigest.reset();
+        }
 
         if (null != this.currentPartBuffer) {
             BufferPool.getInstance().returnBuffer(this.currentPartBuffer);
@@ -514,7 +532,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         }
 
         protected void complete() throws IOException {
-            LOG.info("Completing the MPU [{}].", this);
+            LOG.info("Completing the MPU [{}].", this.getUploadId());
             if (this.isCompleted() || this.isAborted()) {
                 throw new IOException(String.format("fail to complete the MPU [%s]. "
                         + "It has been completed or aborted.", this));
@@ -527,18 +545,18 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             CompleteMultipartUploadResult completeResult =
                     nativeStore.completeMultipartUpload(cosKey, this.uploadId, new LinkedList<>(futurePartETagList));
             this.completed = true;
-            LOG.info("The MPU [{}] has been completed.", this);
+            LOG.info("The MPU [{}] has been completed.", this.getUploadId());
         }
 
         protected void abort() throws IOException {
-            LOG.info("Aborting the MPU [{}].", this);
+            LOG.info("Aborting the MPU [{}].", this.getUploadId());
             if (this.isCompleted() || this.isAborted()) {
                 throw new IOException(String.format("fail to abort the MPU [%s]. "
-                        + "It has been completed or aborted.", this));
+                        + "It has been completed or aborted.", this.getUploadId()));
             }
             nativeStore.abortMultipartUpload(cosKey, this.uploadId);
             this.aborted = true;
-            LOG.info("The MPU [{}] has been aborted.", this);
+            LOG.info("The MPU [{}] has been aborted.", this.getUploadId());
         }
     }
 
@@ -573,8 +591,11 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
 
         @Override
         public String toString() {
-            return String.format("UploadPart{partNumber:%d, partSize: %d, md5Hash: %s, isLast: %s}", this.partNumber,
-                    this.cosNByteBuffer.flipRead().remaining(), Hex.encodeHexString(this.md5Hash), this.isLast);
+            return String.format("UploadPart{partNumber:%d, partSize: %d, md5Hash: %s, isLast: %s}",
+                    this.partNumber,
+                    this.cosNByteBuffer.flipRead().remaining(),
+                    (this.md5Hash != null ? Hex.encodeHexString(this.md5Hash): "NULL"),
+                    this.isLast);
         }
     }
 }
