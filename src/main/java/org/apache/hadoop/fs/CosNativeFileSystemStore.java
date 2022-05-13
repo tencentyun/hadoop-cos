@@ -1437,8 +1437,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 String errorCode = cse.getErrorCode();
                 LOG.debug("fail to retry statusCode {}, errorCode {}", statusCode, errorCode);
                 // 对5xx错误进行重试
-                if (request instanceof CopyObjectRequest && statusCode / 100 == 2
-                        && errorCode != null && !errorCode.isEmpty()) {
+                if (request instanceof CopyObjectRequest && hasErrorCode(statusCode, errorCode)) {
                     if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg, cse);
                         ++retryIndex;
@@ -1446,8 +1445,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         LOG.error(errMsg, cse);
                         throw new IOException(errMsg);
                     }
-                } else if (request instanceof  CompleteMultipartUploadRequest && statusCode / 100 ==2
-                        && errorCode != null && !errorCode.isEmpty()) {
+                } else if (request instanceof  CompleteMultipartUploadRequest && hasErrorCode(statusCode, errorCode)) {
                     // complete mpu error code might be in body when status code is 200
                     // double check to head object only works in big data job case which key is not same.
                     String key = ((CompleteMultipartUploadRequest) request).getKey();
@@ -1507,6 +1505,21 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                                     throw cse;
                                 }
                             }
+
+                            // mpu might occur 503 access time out but already completed,
+                            // if direct retry may occur 403 not found the upload id.
+                            if (request instanceof CompleteMultipartUploadRequest && statusCode == 503) {
+                                String key = ((CompleteMultipartUploadRequest) request).getKey();
+                                FileMetadata fileMetadata = this.queryObjectMetadata(key);
+                                if (null != fileMetadata) {
+                                    // if file exist direct return.
+                                    LOG.info("complete mpu error might access time out, " +
+                                                    "but key {} already exist, length {}",
+                                            key, fileMetadata.getLength());
+                                    return new CompleteMultipartUploadResult();
+                                }
+                            }
+
                             Thread.sleep(
                                     ThreadLocalRandom.current().nextLong(sleepLeast, sleepBound));
                             ++retryIndex;
@@ -1529,6 +1542,15 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private static String ensureValidAttributeName(String attributeName) {
         return attributeName.replace('.', '-').toLowerCase();
     }
+
+    private boolean hasErrorCode(int statusCode, String errCode) {
+        return statusCode / 100 == 2 && errCode != null && !errCode.isEmpty();
+    }
+
+    public COSClient getCOSClient(){
+        return this.cosClient;
+    }
+
     private String getPluginVersionInfo() {
         Properties versionProperties = new Properties();
         InputStream inputStream= null;

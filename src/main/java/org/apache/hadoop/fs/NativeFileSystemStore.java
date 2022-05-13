@@ -6,6 +6,7 @@ import com.qcloud.cos.model.PartETag;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+import com.qcloud.cos.COSClient;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +24,9 @@ import java.util.List;
 public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
+
+    // must init first
+    COSClient getCOSClient();
 
     HeadBucketResult headBucket(String bucketName) throws IOException;
 
