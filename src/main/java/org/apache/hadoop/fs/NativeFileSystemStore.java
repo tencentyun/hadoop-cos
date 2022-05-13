@@ -25,9 +25,6 @@ public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
 
-    // must init first
-    COSClient getCOSClient();
-
     HeadBucketResult headBucket(String bucketName) throws IOException;
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
