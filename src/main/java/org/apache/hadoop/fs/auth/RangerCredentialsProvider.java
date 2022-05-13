@@ -42,7 +42,7 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
                         CosNConfigKeys.DEFAULT_COSN_RANGER_TEMP_TOKEN_REFRESH_INTERVAL));
     }
 
-    class RangerCredentialsFetcher  {
+    class RangerCredentialsFetcher {
         private int refreshIntervalSeconds;
         private AtomicReference<COSCredentials> lastCredentialsRef;
         private AtomicLong lastGetCredentialsTimeStamp;
@@ -77,9 +77,12 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
                 GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
                         bucketName);
 
+                if (!stsResp.isCheckAuthPass()) {
+                    return null;
+                }
                 COSCredentials cosCredentials = null;
                 if (appId != null) {
-                    cosCredentials =  new BasicSessionCredentials(appId, stsResp.getTempAK(), stsResp.getTempSK(),
+                    cosCredentials = new BasicSessionCredentials(appId, stsResp.getTempAK(), stsResp.getTempSK(),
                             stsResp.getTempToken());
                 } else {
                     cosCredentials = new BasicSessionCredentials(stsResp.getTempAK(), stsResp.getTempSK(),

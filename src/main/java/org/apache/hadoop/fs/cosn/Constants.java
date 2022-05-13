@@ -29,4 +29,6 @@ public final class Constants {
     // Environments variables for the COS secretId and secretKey.
     public static final String COSN_SECRET_ID_ENV = "COSN_SECRET_ID";
     public static final String COSN_SECRET_KEY_ENV = "COSN_SECRET_KEY";
+
+    public static final String CUSTOM_AUTHENTICATION = "custom authentication";
 }
