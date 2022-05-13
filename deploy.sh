@@ -21,7 +21,7 @@ do
           # 外部maven 中央仓库
           deploy_repository_id="oss"
           deploy_repository_url="https://oss.sonatype.org/service/local/staging/deploy/maven2"
-        elif ["$OPT" = "$INTER" ]; then
+        elif [ "$OPT" = "$INTER" ]; then
           deploy_repository_id="cos-inner-maven-repository"
           deploy_repository_url="http://mirrors.tencent.com/repository/maven/QCLOUD_COS"
         fi
