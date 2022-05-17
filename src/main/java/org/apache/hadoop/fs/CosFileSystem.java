@@ -87,6 +87,11 @@ public class CosFileSystem extends FileSystem {
         super.initialize(uri, conf);
         setConf(conf);
 
+        // initialize the things authorization related.
+        UserGroupInformation.setConfiguration(conf);
+        this.userGroupInformation = UserGroupInformation.getCurrentUser();
+        this.initRangerClientImpl(conf);
+
         String bucket = uri.getHost();
         this.bucket = bucket;
         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
@@ -138,10 +143,6 @@ public class CosFileSystem extends FileSystem {
             ((CosNFileSystem) this.actualImplFS).withPosixBucket(this.isPosixFSStore);
         }
 
-        // initialize the things authorization related.
-        UserGroupInformation.setConfiguration(conf);
-        this.userGroupInformation = UserGroupInformation.getCurrentUser();
-        this.initRangerClientImpl(conf);
 
         this.actualImplFS.initialize(uri, conf);
     }
@@ -265,12 +266,13 @@ public class CosFileSystem extends FileSystem {
      */
     @Override
     public void setWorkingDirectory(Path newDir) {
+        this.workingDir = newDir;
         this.actualImplFS.setWorkingDirectory(newDir);
     }
 
     @Override
     public Path getWorkingDirectory() {
-        return this.actualImplFS.getWorkingDirectory();
+        return this.workingDir;
     }
 
     @Override
