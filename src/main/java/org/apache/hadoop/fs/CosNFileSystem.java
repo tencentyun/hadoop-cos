@@ -2,23 +2,15 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.qcloud.chdfs.permission.RangerAccessType;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
 import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
 import org.apache.hadoop.fs.cosn.Unit;
-import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionResponse;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.ServiceType;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,11 +49,6 @@ public class CosNFileSystem extends FileSystem {
     private String group = "Unknown";
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
-
-    // Authorization related.
-    private UserGroupInformation userGroupInformation;
-    private boolean enableRangerPluginPermissionCheck = false;
-    public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
 
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
@@ -201,11 +188,6 @@ public class CosNFileSystem extends FileSystem {
                     }
                 }
         );
-
-        // initialize the things authorization related.
-        UserGroupInformation.setConfiguration(conf);
-        this.userGroupInformation = UserGroupInformation.getCurrentUser();
-        this.initRangerClientImpl(conf);
     }
 
     @Override
@@ -235,8 +217,6 @@ public class CosNFileSystem extends FileSystem {
             throw new UnsupportedOperationException("Not supported currently");
         }
 
-        checkPermission(f, RangerAccessType.WRITE);
-
         FileStatus fileStatus = this.getFileStatus(f);
         if (fileStatus.isDirectory()) {
             throw new FileAlreadyExistsException(f + " is a directory.");
@@ -256,8 +236,6 @@ public class CosNFileSystem extends FileSystem {
                 CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
             throw new UnsupportedOperationException("Not supported currently.");
         }
-
-        checkPermission(f, RangerAccessType.WRITE);
 
         FileStatus fileStatus = this.getFileStatus(f);
         if (fileStatus.isDirectory()) {
@@ -302,8 +280,6 @@ public class CosNFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
-        checkPermission(f, RangerAccessType.WRITE);
-
         // preconditions
         try {
             FileStatus targetFileStatus = this.getFileStatus(f);
@@ -346,8 +322,6 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
-        checkPermission(f, RangerAccessType.DELETE);
-
         FileStatus status;
         try {
             status = getFileStatus(f);
@@ -447,8 +421,6 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
-        checkPermission(f, RangerAccessType.READ);
-
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -502,8 +474,6 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FileStatus[] listStatus(Path f) throws IOException {
-        checkPermission(f, RangerAccessType.LIST);
-
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         int listMaxLength = CosNFileSystem.BUCKET_LIST_LIMIT;
@@ -611,8 +581,6 @@ public class CosNFileSystem extends FileSystem {
     // blew is the target
     @Override
     public boolean mkdirs(Path f, FsPermission permission) throws IOException {
-        checkPermission(f, RangerAccessType.WRITE);
-
         try {
             FileStatus fileStatus = getFileStatus(f);
             if (fileStatus.isDirectory()) {
@@ -704,8 +672,6 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
-        checkPermission(f, RangerAccessType.READ);
-
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         // exist
         if (fileStatus.isDirectory()) {
@@ -722,9 +688,6 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
-        checkPermission(src, RangerAccessType.DELETE);
-        checkPermission(dst, RangerAccessType.WRITE);
-
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
             LOG.debug("Cannot rename the root directory of a filesystem.");
@@ -937,18 +900,8 @@ public class CosNFileSystem extends FileSystem {
     }
 
     @Override
-    public String getCanonicalServiceName() {
-        if (rangerQcloudObjectStorageStorageClient != null) {
-            return rangerQcloudObjectStorageStorageClient.getCanonicalServiceName();
-        }
-        return null;
-    }
-
-    @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         Preconditions.checkArgument(length >= 0);
-
-        checkPermission(f, RangerAccessType.READ);
 
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
@@ -989,8 +942,6 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
-        checkPermission(f, RangerAccessType.WRITE);
-
         // First, determine whether the length of the name and value exceeds the limit.
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
             throw new HadoopIllegalArgumentException(String.format("The maximum combined size of " +
@@ -1025,8 +976,6 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public byte[] getXAttr(Path f, String name) throws IOException {
-        checkPermission(f, RangerAccessType.READ);
-
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
@@ -1051,10 +1000,8 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
-        checkPermission(f, RangerAccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
-
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
@@ -1076,10 +1023,8 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
-        checkPermission(f, RangerAccessType.READ);
 
         Path absolutePath = makeAbsolute(f);
-
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
@@ -1098,8 +1043,6 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
-        checkPermission(f, RangerAccessType.WRITE);
-
         Path absolutPath = makeAbsolute(f);
         String key = pathToKey(absolutPath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
@@ -1122,8 +1065,6 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public List<String> listXAttrs(Path f) throws IOException {
-        checkPermission(f, RangerAccessType.READ);
-
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
@@ -1132,16 +1073,6 @@ public class CosNFileSystem extends FileSystem {
         }
 
         return new ArrayList<>(fileMetadata.getUserAttributes().keySet());
-    }
-
-    @Override
-    public Token<?> getDelegationToken(String renewer) throws IOException {
-        LOG.info("getDelegationToken, renewer: {}, stack: {}",
-                renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
-        if (rangerQcloudObjectStorageStorageClient != null) {
-            return rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
-        }
-        return super.getDelegationToken(renewer);
     }
 
     @Override
@@ -1227,98 +1158,6 @@ public class CosNFileSystem extends FileSystem {
             LOG.error("getOwnerInfo occur a exception", e);
         }
         return ownerInfoId;
-    }
-
-    private void initRangerClientImpl(Configuration conf) throws IOException {
-        Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
-                conf,
-                CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
-
-        if (cosClasses.length == 0) {
-            this.enableRangerPluginPermissionCheck = false;
-            return;
-        }
-
-        for (Class<?> credClass : cosClasses) {
-            if (credClass.getName().contains(RangerCredentialsProvider.class.getName())) {
-                this.enableRangerPluginPermissionCheck = true;
-                break;
-            }
-        }
-
-        if (!this.enableRangerPluginPermissionCheck) {
-            return;
-        }
-
-        Class<?> rangerClientImplClass = conf.getClass(CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL, null);
-        if (rangerClientImplClass == null) {
-            try {
-                rangerClientImplClass = conf.getClassByName(CosNConfigKeys.DEFAULT_COSN_RANGER_PLUGIN_CLIENT_IMPL);
-            } catch (ClassNotFoundException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        if (rangerQcloudObjectStorageStorageClient == null) {
-            synchronized (CosFileSystem.class) {
-                if (rangerQcloudObjectStorageStorageClient == null) {
-                    try {
-                        RangerQcloudObjectStorageClient tmpClient =
-                                (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
-                        tmpClient.init(conf);
-                        rangerQcloudObjectStorageStorageClient = tmpClient;
-                    } catch (Exception e) {
-                        LOG.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
-                        throw new IOException(String.format("init %s failed",
-                                CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
-                    }
-                }
-            }
-        }
-
-    }
-
-    private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
-        if (!this.enableRangerPluginPermissionCheck) {
-            return;
-        }
-
-        AccessType accessType = null;
-        switch (rangerAccessType) {
-            case LIST:
-                accessType = AccessType.LIST;
-                break;
-            case WRITE:
-                accessType = AccessType.WRITE;
-                break;
-            case READ:
-                accessType = AccessType.READ;
-                break;
-            case DELETE:
-                accessType = AccessType.DELETE;
-                break;
-            default:
-                throw new IOException(String.format("unknown access type %s", rangerAccessType.toString()));
-        }
-
-        Path absolutePath = makeAbsolute(f);
-        String allowKey = CosNFileSystem.pathToKey(absolutePath);
-        if (allowKey.startsWith("/")) {
-            allowKey = allowKey.substring(1);
-        }
-
-        PermissionRequest permissionReq = new PermissionRequest(ServiceType.COS, accessType,
-                CosNUtils.getBucketNameWithoutAppid(this.bucket, this.getConf().get(CosNConfigKeys.COSN_APPID_KEY)),
-                allowKey, "", "");
-        boolean allowed = false;
-        PermissionResponse permission = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
-        if (permission != null) {
-            allowed = permission.isAllowed();
-        }
-        if (!allowed) {
-            throw new IOException(String.format("Permission denied, [key: %s], [user: %s], [operation: %s]",
-                    allowKey, this.userGroupInformation.getShortUserName(), rangerAccessType.name()));
-        }
     }
 
     private Path makeAbsolute(Path path) {

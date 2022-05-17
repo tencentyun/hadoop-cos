@@ -76,7 +76,7 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
 
         private COSCredentials fetchNewCredentials() {
             try {
-                GetSTSResponse stsResp = CosNFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
+                GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
                         bucketNameWithoutAppid);
 
                 COSCredentials cosCredentials = null;
