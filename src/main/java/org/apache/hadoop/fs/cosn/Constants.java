@@ -35,4 +35,6 @@ public final class Constants {
 
     public static final String COSN_POSIX_BUCKET_FS_COSN_IMPL = "org.apache.hadoop.fs.CosNFileSystem";
     public static final String COSN_POSIX_BUCKET_FS_CHDFS_IMPL="com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter";
+
+    public static final String CUSTOM_AUTHENTICATION = "custom authentication";
 }
