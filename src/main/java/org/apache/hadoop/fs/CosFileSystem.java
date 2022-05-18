@@ -1313,6 +1313,9 @@ public class CosFileSystem extends FileSystem {
     }
 
     private void checkCustomAuth(Configuration conf) throws IOException {
+        if (!this.enableRangerPluginPermissionCheck) {
+            return;
+        }
         this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
         if (this.bucketRegion == null || this.bucketRegion.isEmpty()) {
             this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
