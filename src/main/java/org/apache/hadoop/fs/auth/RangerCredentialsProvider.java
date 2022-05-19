@@ -44,7 +44,7 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
         }
     }
 
-    class RangerCredentialsFetcher  {
+    class RangerCredentialsFetcher {
         private int refreshIntervalSeconds;
         private AtomicReference<COSCredentials> lastCredentialsRef;
         private AtomicLong lastGetCredentialsTimeStamp;
@@ -78,10 +78,17 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
             try {
                 GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
                         bucketNameWithoutAppid);
-
+                /**
+                 * some customers feel that kerberos authentication is heavy, so we have implemented a relatively
+                 * lightweight authentication method
+                 */
+                // if the custom authentication fails, there will be no temporary AK/SK
+                if (!stsResp.isCheckAuthPass()) {
+                    return null;
+                }
                 COSCredentials cosCredentials = null;
                 if (appId != null) {
-                    cosCredentials =  new BasicSessionCredentials(appId, stsResp.getTempAK(), stsResp.getTempSK(),
+                    cosCredentials = new BasicSessionCredentials(appId, stsResp.getTempAK(), stsResp.getTempSK(),
                             stsResp.getTempToken());
                 } else {
                     cosCredentials = new BasicSessionCredentials(stsResp.getTempAK(), stsResp.getTempSK(),

@@ -6,6 +6,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Constants;
+import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
@@ -29,6 +30,8 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.apache.hadoop.fs.cosn.Constants.CUSTOM_AUTHENTICATION;
 
 
 /**
@@ -103,6 +106,8 @@ public class CosFileSystem extends FileSystem {
             this.nativeStore.initialize(uri, conf);
             this.isDefaultNativeStore = true;
         }
+        // required checkCustomAuth if ranger is enabled and custom authentication is enabled
+        checkCustomAuth(conf);
 
         this.isPosixFSStore = this.nativeStore.headBucket(bucket).isMergeBucket();
         LOG.info("The cos bucket {} bucket.", isPosixFSStore ? "is the posix" : "is the normal");
@@ -494,13 +499,59 @@ public class CosFileSystem extends FileSystem {
                 CosNUtils.getBucketNameWithoutAppid(this.bucket, this.getConf().get(CosNConfigKeys.COSN_APPID_KEY)),
                 allowKey, "", "");
         boolean allowed = false;
+        String checkPermissionActualUserName = getOwnerId();
         PermissionResponse permission = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
         if (permission != null) {
             allowed = permission.isAllowed();
+            if (permission.getRealUserName() != null && !permission.getRealUserName().isEmpty()) {
+                checkPermissionActualUserName = permission.getRealUserName();
+            }
         }
         if (!allowed) {
             throw new IOException(String.format("Permission denied, [key: %s], [user: %s], [operation: %s]",
-                    allowKey, this.userGroupInformation.getShortUserName(), rangerAccessType.name()));
+                    allowKey, checkPermissionActualUserName, rangerAccessType.name()));
+        }
+    }
+
+    private String getOwnerId() {
+        UserGroupInformation currentUgi;
+        try {
+            currentUgi = UserGroupInformation.getCurrentUser();
+        } catch (IOException e) {
+            LOG.warn("get current user failed! use user.name prop", e);
+            return System.getProperty("user.name");
+        }
+
+        String shortUserName = "";
+        if (currentUgi != null) {
+            shortUserName = currentUgi.getShortUserName();
+        }
+
+        if (shortUserName == null) {
+            LOG.warn("get short user name failed! use user.name prop");
+            shortUserName = System.getProperty("user.name");
+        }
+        return shortUserName;
+    }
+
+    /**
+     * @param conf
+     * @throws IOException
+     */
+    private void checkCustomAuth(Configuration conf) throws IOException {
+        if (!enableRangerPluginPermissionCheck) {
+            return;
+        }
+        String bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
+        if (bucketRegion == null || bucketRegion.isEmpty()) {
+            bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
+        }
+
+        GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
+                bucket);
+        if (!stsResp.isCheckAuthPass()) {
+            throw new IOException(String.format("Permission denied, [operation: %s], please check user and " +
+                    "password", CUSTOM_AUTHENTICATION));
         }
     }
 
