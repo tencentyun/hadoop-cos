@@ -512,8 +512,27 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             partETagList);
             completeMultipartUploadRequest.setObjectMetadata(objectMetadata);
             return (CompleteMultipartUploadResult) this.callCOSClientWithRetry(completeMultipartUploadRequest);
+        } catch (CosServiceException cse) {
+            // 避免并发上传的问题
+            int statusCode = cse.getStatusCode();
+            if (statusCode == 409) {
+                // Check一下这个文件是否已经存在
+                FileMetadata fileMetadata = this.queryObjectMetadata(key);
+                if (null == fileMetadata) {
+                    // 如果文件不存在，则需要抛出异常
+                    handleException(cse, key);
+                }
+                LOG.warn("Upload the cos key [{}] complete mpu concurrently", key);
+            } else {
+                // 其他错误都要抛出来
+                String errMsg = String.format("Complete the multipart upload failed. " +
+                        "cos service exception, cos key: %s, upload id: %s, " +
+                        "exception: %s", key, uploadId, cse.toString());
+                handleException(new Exception(errMsg), key);
+            }
         } catch (Exception e) {
-            String errMsg = String.format("Complete the multipart upload failed. cos key: %s, upload id: %s, " +
+            String errMsg = String.format("Complete the multipart upload failed. " +
+                    "cos key: %s, upload id: %s, " +
                     "exception: %s", key, uploadId, e.toString());
             handleException(new Exception(errMsg), key);
         }
