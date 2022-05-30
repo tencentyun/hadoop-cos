@@ -6,7 +6,6 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Constants;
-import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
@@ -15,12 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.qcloud.chdfs.permission.RangerAccessType;
-import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
-import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionResponse;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.ServiceType;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -30,8 +23,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.apache.hadoop.fs.cosn.Constants.CUSTOM_AUTHENTICATION;
 
 
 /**
@@ -59,12 +50,10 @@ public class CosFileSystem extends FileSystem {
     private FileSystem actualImplFS = null;
 
     private URI uri;
-    private String bucket;
     private Path workingDir;
     // Authorization related.
-    private UserGroupInformation userGroupInformation;
-    private boolean enableRangerPluginPermissionCheck = false;
-    public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
+
+    private RangerCredentialsClient rangerCredentialsClient;
 
 
     public CosFileSystem() {
@@ -92,11 +81,8 @@ public class CosFileSystem extends FileSystem {
 
         // initialize the things authorization related.
         UserGroupInformation.setConfiguration(conf);
-        this.userGroupInformation = UserGroupInformation.getCurrentUser();
-        this.initRangerClientImpl(conf);
 
         String bucket = uri.getHost();
-        this.bucket = bucket;
         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());
         this.workingDir = new Path("/user", System.getProperty("user.name"))
                 .makeQualified(this.uri, this.getWorkingDirectory());
@@ -106,6 +92,10 @@ public class CosFileSystem extends FileSystem {
             this.nativeStore.initialize(uri, conf);
             this.isDefaultNativeStore = true;
         }
+
+        rangerCredentialsClient = new RangerCredentialsClient();
+        this.rangerCredentialsClient.doInitialize(conf, bucket);
+
         // required checkCustomAuth if ranger is enabled and custom authentication is enabled
         checkCustomAuth(conf);
 
@@ -132,9 +122,8 @@ public class CosFileSystem extends FileSystem {
                 this.nativeStore.close();
                 this.nativeStore = null;
             } else if (this.actualImplFS instanceof CosNFileSystem) {
-                ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore);
-                ((CosNFileSystem) this.actualImplFS).withBucket(bucket);
-                ((CosNFileSystem) this.actualImplFS).withPosixBucket(isPosixFSStore);
+                ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
+                        .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
             } else {
                 // Another class
                 throw new IOException(
@@ -143,9 +132,8 @@ public class CosFileSystem extends FileSystem {
             }
         } else { // normal cos hadoop file system implements
             this.actualImplFS = getActualFileSystemByClassName("org.apache.hadoop.fs.CosNFileSystem");
-            ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore);
-            ((CosNFileSystem) this.actualImplFS).withBucket(bucket);
-            ((CosNFileSystem) this.actualImplFS).withPosixBucket(this.isPosixFSStore);
+            ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
+                    .withPosixBucket(this.isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
         }
 
 
@@ -367,9 +355,9 @@ public class CosFileSystem extends FileSystem {
     public Token<?> getDelegationToken(String renewer) throws IOException {
         LOG.info("getDelegationToken, renewer: {}, stack: {}",
                 renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
-        if (rangerQcloudObjectStorageStorageClient != null) {
-            return rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
-        }
+        Token<?> token = this.rangerCredentialsClient.doGetDelegationToken(renewer);
+        if (token != null)
+            return token;
         return super.getDelegationToken(renewer);
     }
 
@@ -411,106 +399,12 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public String getCanonicalServiceName() {
-        if (rangerQcloudObjectStorageStorageClient != null) {
-            return rangerQcloudObjectStorageStorageClient.getCanonicalServiceName();
-        }
-        return null;
+        return this.rangerCredentialsClient.doGetCanonicalServiceName();
     }
 
-    private void initRangerClientImpl(Configuration conf) throws IOException {
-        Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
-                conf,
-                CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
-
-        if (cosClasses.length == 0) {
-            this.enableRangerPluginPermissionCheck = false;
-            return;
-        }
-
-        for (Class<?> credClass : cosClasses) {
-            if (credClass.getName().contains(RangerCredentialsProvider.class.getName())) {
-                this.enableRangerPluginPermissionCheck = true;
-                break;
-            }
-        }
-
-        if (!this.enableRangerPluginPermissionCheck) {
-            return;
-        }
-
-        Class<?> rangerClientImplClass = conf.getClass(CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL, null);
-        if (rangerClientImplClass == null) {
-            try {
-                rangerClientImplClass = conf.getClassByName(CosNConfigKeys.DEFAULT_COSN_RANGER_PLUGIN_CLIENT_IMPL);
-            } catch (ClassNotFoundException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        if (rangerQcloudObjectStorageStorageClient == null) {
-            synchronized (CosFileSystem.class) {
-                if (rangerQcloudObjectStorageStorageClient == null) {
-                    try {
-                        RangerQcloudObjectStorageClient tmpClient =
-                                (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
-                        tmpClient.init(conf);
-                        rangerQcloudObjectStorageStorageClient = tmpClient;
-                    } catch (Exception e) {
-                        LOG.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
-                        throw new IOException(String.format("init %s failed",
-                                CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
-                    }
-                }
-            }
-        }
-
-    }
 
     private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
-        if (!this.enableRangerPluginPermissionCheck) {
-            return;
-        }
-
-        AccessType accessType = null;
-        switch (rangerAccessType) {
-            case LIST:
-                accessType = AccessType.LIST;
-                break;
-            case WRITE:
-                accessType = AccessType.WRITE;
-                break;
-            case READ:
-                accessType = AccessType.READ;
-                break;
-            case DELETE:
-                accessType = AccessType.DELETE;
-                break;
-            default:
-                throw new IOException(String.format("unknown access type %s", rangerAccessType.toString()));
-        }
-
-        Path absolutePath = makeAbsolute(f);
-        String allowKey = CosNFileSystem.pathToKey(absolutePath);
-        if (allowKey.startsWith("/")) {
-            allowKey = allowKey.substring(1);
-        }
-
-        PermissionRequest permissionReq = new PermissionRequest(ServiceType.COS, accessType,
-                CosNUtils.getBucketNameWithoutAppid(this.bucket, this.getConf().get(CosNConfigKeys.COSN_APPID_KEY)),
-                allowKey, "", "");
-        boolean allowed = false;
-        String checkPermissionActualUserName = getOwnerId();
-        PermissionResponse permission = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
-        if (permission != null) {
-            allowed = permission.isAllowed();
-            if (permission.getRealUserName() != null && !permission.getRealUserName().isEmpty()) {
-                checkPermissionActualUserName = permission.getRealUserName();
-            }
-        }
-        if (!allowed) {
-            throw new IOException(String.format("Permission denied, [key: %s], [user: %s], [operation: %s]",
-                    allowKey, checkPermissionActualUserName, rangerAccessType.name()));
-        }
+        this.rangerCredentialsClient.doCheckPermission(f, rangerAccessType, getOwnerId(), getWorkingDirectory());
     }
 
     private String getOwnerId() {
@@ -539,29 +433,8 @@ public class CosFileSystem extends FileSystem {
      * @throws IOException
      */
     private void checkCustomAuth(Configuration conf) throws IOException {
-        if (!enableRangerPluginPermissionCheck) {
-            return;
-        }
-        String bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
-        if (bucketRegion == null || bucketRegion.isEmpty()) {
-            bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
-        }
-
-        GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
-                bucket);
-        if (!stsResp.isCheckAuthPass()) {
-            throw new IOException(String.format("Permission denied, [operation: %s], please check user and " +
-                    "password", CUSTOM_AUTHENTICATION));
-        }
+        this.rangerCredentialsClient.doCheckCustomAuth(conf);
     }
-
-    private Path makeAbsolute(Path path) {
-        if (path.isAbsolute()) {
-            return path;
-        }
-        return new Path(workingDir, path);
-    }
-
 
     @Override
     public void close() throws IOException {

@@ -2,6 +2,7 @@ package org.apache.hadoop.fs;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.qcloud.chdfs.permission.RangerAccessType;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
@@ -50,6 +51,8 @@ public class CosNFileSystem extends FileSystem {
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
 
+    private RangerCredentialsClient rangerCredentialsClient;
+
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
     }
@@ -72,6 +75,11 @@ public class CosNFileSystem extends FileSystem {
     public CosNFileSystem withStore(NativeFileSystemStore nativeStore) {
         this.nativeStore = nativeStore;
         this.isDefaultNativeStore = false;
+        return this;
+    }
+
+    public CosNFileSystem withRangerCredentialsClient(RangerCredentialsClient rc) {
+        this.rangerCredentialsClient = rc;
         return this;
     }
 
@@ -373,6 +381,7 @@ public class CosNFileSystem extends FileSystem {
             CosNPartialListing listing =
                     nativeStore.list(key, this.BUCKET_LIST_LIMIT, priorLastKey, true);
             for (FileMetadata file : listing.getFiles()) {
+                checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
                         this.nativeStore, file.getKey(), deleteFileContext));
                 deleteToFinishes++;
@@ -381,6 +390,7 @@ public class CosNFileSystem extends FileSystem {
                 }
             }
             for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
+                checkPermission(new Path(commonPrefix.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
                         this.nativeStore, commonPrefix.getKey(), deleteFileContext));
                 deleteToFinishes++;
@@ -841,6 +851,7 @@ public class CosNFileSystem extends FileSystem {
             CosNPartialListing objectList = this.nativeStore.list(srcKey,
                     this.BUCKET_LIST_LIMIT, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
+                checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
                         this.nativeStore,
                         file.getKey(),
@@ -1158,6 +1169,10 @@ public class CosNFileSystem extends FileSystem {
             LOG.error("getOwnerInfo occur a exception", e);
         }
         return ownerInfoId;
+    }
+
+    private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
+        this.rangerCredentialsClient.doCheckPermission(f, rangerAccessType, getOwnerId(), getWorkingDirectory());
     }
 
     private Path makeAbsolute(Path path) {

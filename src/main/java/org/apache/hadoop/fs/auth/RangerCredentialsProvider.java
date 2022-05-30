@@ -4,10 +4,9 @@ import com.qcloud.cos.auth.BasicSessionCredentials;
 import com.qcloud.cos.auth.COSCredentials;
 import com.qcloud.cos.auth.COSCredentialsProvider;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.CosFileSystem;
 import org.apache.hadoop.fs.CosNConfigKeys;
-import org.apache.hadoop.fs.CosNFileSystem;
 import org.apache.hadoop.fs.CosNUtils;
+import org.apache.hadoop.fs.RangerCredentialsClient;
 import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,7 +75,7 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
 
         private COSCredentials fetchNewCredentials() {
             try {
-                GetSTSResponse stsResp = CosFileSystem.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
+                GetSTSResponse stsResp = RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
                         bucketNameWithoutAppid);
                 /**
                  * some customers feel that kerberos authentication is heavy, so we have implemented a relatively
