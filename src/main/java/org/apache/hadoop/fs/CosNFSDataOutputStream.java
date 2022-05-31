@@ -542,6 +542,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 throw new IOException("failed to multipart upload to cos, abort it.");
             }
 
+            // notice sometimes complete result may be null
             CompleteMultipartUploadResult completeResult =
                     nativeStore.completeMultipartUpload(cosKey, this.uploadId, new LinkedList<>(futurePartETagList));
             this.completed = true;
