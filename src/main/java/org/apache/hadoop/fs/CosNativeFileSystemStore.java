@@ -544,7 +544,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     /**
-     * complete cos mpu
+     * complete cos mpu, sometimes return null complete mpu result
      * @param key cos key
      * @param uploadId upload id
      * @param partETagList each part etag list
@@ -569,9 +569,28 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             partETagList);
             completeMultipartUploadRequest.setObjectMetadata(objectMetadata);
             return (CompleteMultipartUploadResult) this.callCOSClientWithRetry(completeMultipartUploadRequest);
+        } catch (CosServiceException cse) {
+            // when first calling with 503 access time out, next retry will 409.
+            int statusCode = cse.getStatusCode();
+            if (statusCode == 409) {
+                // check file whether exist
+                FileMetadata fileMetadata = this.queryObjectMetadata(key);
+                if (null == fileMetadata) {
+                    // if file not exist through exception
+                    handleException(cse, key);
+                }
+                LOG.warn("Upload the cos key [{}] complete mpu concurrently", key);
+            } else {
+                // other exception
+                String errMsg = String.format("Complete the multipart upload failed. " +
+                        "cos service exception, cos key: %s, upload id: %s, " +
+                        "exception: %s", key, uploadId, cse.toString());
+                handleException(new Exception(errMsg), key);
+            }
         } catch (Exception e) {
-            String errMsg = String.format("Complete the multipart upload failed. cos key: %s, upload id: %s, " +
-                    "exception: %s", key, uploadId, e);
+            String errMsg = String.format("Complete the multipart upload failed. " +
+                    "cos key: %s, upload id: %s, " +
+                    "exception: %s", key, uploadId, e.toString());
             handleException(new Exception(errMsg), key);
         }
         return null;
