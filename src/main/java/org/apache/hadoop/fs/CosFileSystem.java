@@ -122,6 +122,7 @@ public class CosFileSystem extends FileSystem {
                 this.nativeStore.close();
                 this.nativeStore = null;
             } else if (this.actualImplFS instanceof CosNFileSystem) {
+                this.nativeStore.isPosixBucket(true);
                 ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                         .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
             } else {
@@ -132,6 +133,7 @@ public class CosFileSystem extends FileSystem {
             }
         } else { // normal cos hadoop file system implements
             this.actualImplFS = getActualFileSystemByClassName("org.apache.hadoop.fs.CosNFileSystem");
+            this.nativeStore.isPosixBucket(false);
             ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                     .withPosixBucket(this.isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
         }

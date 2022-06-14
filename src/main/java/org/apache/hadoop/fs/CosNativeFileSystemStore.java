@@ -1223,6 +1223,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         this.cosClient = null;
     }
 
+    @Override
+    public void isPosixBucket(boolean isPosixBucket) {
+        this.isPosixBucket = isPosixBucket;
+    }
+
     // process Exception and print detail
     private void handleException(Exception e, String key) throws IOException {
         String cosPath = "cosn://" + bucketName + key;
