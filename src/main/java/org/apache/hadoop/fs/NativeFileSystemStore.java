@@ -112,5 +112,12 @@ public interface NativeFileSystemStore {
      */
     void dump() throws IOException;
 
+    /**
+     * Used for outer to decide inner process.
+     * if you use the CosNFileSystem gateway mode,
+     * must set native store to posix process
+     */
+    void isPosixBucket(boolean isPosixBucket);
+
     void close();
 }
