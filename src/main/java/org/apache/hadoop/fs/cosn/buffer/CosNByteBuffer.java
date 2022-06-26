@@ -15,16 +15,19 @@ public abstract class CosNByteBuffer implements Closeable {
             LoggerFactory.getLogger(CosNByteBuffer.class);
 
     protected ByteBuffer byteBuffer;
-    private int lastWritePosition;
+    private int nextWritePosition;
 
     public CosNByteBuffer(ByteBuffer byteBuffer) {
         this.byteBuffer = byteBuffer;
-        this.lastWritePosition = this.byteBuffer.position();
+        this.nextWritePosition = this.byteBuffer.position();
     }
 
-    public CosNByteBuffer put(byte b) {
+    public CosNByteBuffer put(byte b) throws IOException {
+        if (this.byteBuffer.hasRemaining()) {
+            throw new IOException("There is no remaining in the buffer.");
+        }
         this.byteBuffer.put(b);
-        this.lastWritePosition = this.byteBuffer.position();
+        this.nextWritePosition = this.byteBuffer.position();
         return this;
     }
 
@@ -37,7 +40,7 @@ public abstract class CosNByteBuffer implements Closeable {
         }
 
         this.byteBuffer.put(src, offset, length);
-        this.lastWritePosition = this.byteBuffer.position();
+        this.nextWritePosition = this.byteBuffer.position();
         return this;
     }
 
@@ -84,6 +87,7 @@ public abstract class CosNByteBuffer implements Closeable {
 
     public CosNByteBuffer clear() {
         this.byteBuffer.clear();
+        this.nextWritePosition = 0;
         return this;
     }
 
@@ -98,13 +102,13 @@ public abstract class CosNByteBuffer implements Closeable {
     }
 
     public CosNByteBuffer flipRead() {
-        this.limit(this.lastWritePosition);
+        this.limit(this.nextWritePosition);
         this.position(0);
         return this;
     }
 
     public CosNByteBuffer flipWrite() {
-        this.position(this.lastWritePosition);
+        this.position(this.nextWritePosition);
         this.limit(this.byteBuffer.capacity());
         return this;
     }
@@ -129,6 +133,6 @@ public abstract class CosNByteBuffer implements Closeable {
         this.byteBuffer.clear();
 
         this.byteBuffer = null;
-        this.lastWritePosition = -1;
+        this.nextWritePosition = -1;
     }
 }
