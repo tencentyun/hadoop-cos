@@ -29,9 +29,9 @@ public class CustomerDomainEndpointResolver implements EndpointBuilder {
     }
 
     @Override
-    public String buildGeneralApiEndpoint(String s) {
+    public String buildGeneralApiEndpoint(String bucketName) {
         if (this.endPoint != null) {
-            return this.endPoint;
+            return this.endPoint.replace("<bucketName>", bucketName);
         } else {
             log.error("Get customer domain is null");
         }
