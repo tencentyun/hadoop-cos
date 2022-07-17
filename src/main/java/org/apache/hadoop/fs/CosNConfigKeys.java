@@ -143,6 +143,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_POSIX_BUCKET_FS_IMPL = "fs.cosn.posix_bucket.fs.impl";
     public static final String DEFAULT_COSN_POSIX_BUCKET_FS_IMPL = Constants.COSN_POSIX_BUCKET_FS_CHDFS_IMPL;
 
+    public static final String COSN_SYMBOLIC_SIZE_THRESHOLD = "fs.cosn.symbolic_link.sizeThreshold";
+    public static final int DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD = 4096;
+
+
     public static final String COSN_FLUSH_ENABLED = "fs.cosn.flush.enabled";
     public static final boolean DEFAULT_COSN_FLUSH_ENABLED = true;
     public static final String COSN_MAPDISK_DELETEONEXIT_ENABLED = "fs.cosn.map_disk.delete_on_exit.enabled";

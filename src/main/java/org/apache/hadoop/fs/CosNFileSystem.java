@@ -11,6 +11,7 @@ import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
@@ -52,6 +53,8 @@ public class CosNFileSystem extends FileSystem {
     private ExecutorService boundedCopyThreadPool;
 
     private RangerCredentialsClient rangerCredentialsClient;
+
+    private int symbolicLinkSizeThreshold;
 
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
@@ -196,6 +199,9 @@ public class CosNFileSystem extends FileSystem {
                     }
                 }
         );
+
+        this.symbolicLinkSizeThreshold = this.getConf().getInt(
+                CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
     }
 
     @Override
@@ -226,6 +232,10 @@ public class CosNFileSystem extends FileSystem {
         }
 
         FileStatus fileStatus = this.getFileStatus(f);
+        if (fileStatus.isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+            fileStatus = this.getFileStatus(f);
+        }
         if (fileStatus.isDirectory()) {
             throw new FileAlreadyExistsException(f + " is a directory.");
         }
@@ -246,6 +256,10 @@ public class CosNFileSystem extends FileSystem {
         }
 
         FileStatus fileStatus = this.getFileStatus(f);
+        if (fileStatus.isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+            fileStatus = this.getFileStatus(f);
+        }
         if (fileStatus.isDirectory()) {
             throw new FileNotFoundException(f + " is a directory.");
         }
@@ -291,10 +305,16 @@ public class CosNFileSystem extends FileSystem {
         // preconditions
         try {
             FileStatus targetFileStatus = this.getFileStatus(f);
-            if (null != targetFileStatus && !overwrite) {
+            if (targetFileStatus.isSymlink()) {
+                f = this.resolveFinalTargetPathFromLink(f);
+                // call the getFileStatus for the latest path again.
+                targetFileStatus = getFileStatus(f);
+            }
+
+            if (targetFileStatus.isFile() && !overwrite) {
                 throw new FileAlreadyExistsException("File already exists: " + f);
             }
-            if (null != targetFileStatus && targetFileStatus.isDirectory()) {
+            if (targetFileStatus.isDirectory()) {
                 throw new FileAlreadyExistsException("Directory already exists: " + f);
             }
         } catch (FileNotFoundException e) {
@@ -426,7 +446,7 @@ public class CosNFileSystem extends FileSystem {
     // use by posix bucket which support recursive delete dirs by setting flag parameter
     private void internalAutoRecursiveDelete(String key) throws IOException {
         LOG.debug("Delete the cos key auto recursive [{}].", key);
-        nativeStore.deleteRecursive(key);
+        this.nativeStore.deleteRecursive(key);
     }
 
     @Override
@@ -438,8 +458,14 @@ public class CosNFileSystem extends FileSystem {
             return newDirectory(absolutePath);
         }
 
-        CosNResultInfo headInfo = new CosNResultInfo();
-        FileMetadata meta = nativeStore.retrieveMetadata(key, headInfo);
+        CosNResultInfo getSymlinkResultInfo = new CosNResultInfo();
+        CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(key, getSymlinkResultInfo);
+        if (null != cosNSymlinkMetadata) {
+            return newSymlink(cosNSymlinkMetadata, absolutePath);
+        }
+
+        CosNResultInfo getObjectMetadataResultInfo = new CosNResultInfo();
+        FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo);
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
@@ -464,18 +490,19 @@ public class CosNFileSystem extends FileSystem {
         );
 
         LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
-        CosNResultInfo listInfo = new CosNResultInfo();
-        CosNPartialListing listing = nativeStore.list(key, maxKeys, listInfo);
+        CosNResultInfo listObjectsResultInfo = new CosNResultInfo();
+        CosNPartialListing listing = this.nativeStore.list(key, maxKeys, listObjectsResultInfo);
         if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
             LOG.debug("List the cos key [{}] to find that it is a directory.", key);
             return newDirectory(absolutePath);
         }
 
-        if (listInfo.isKeySameToPrefix()) {
-            LOG.info("List the cos key [{}] same to prefix, head-id:[{}], " +
-                            "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]",
-                    key, headInfo.getRequestID(), listInfo.getRequestID(),
-                    listInfo.isKeySameToPrefix(), Thread.currentThread().getId(), Thread.currentThread().getName());
+        if (listObjectsResultInfo.isKeySameToPrefix()) {
+            LOG.info("List the cos key [{}] same to prefix, getSymlink-id:[{}] head-id:[{}], " +
+                            "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key,
+                    getSymlinkResultInfo.getRequestID(), getObjectMetadataResultInfo.getRequestID(),
+                    listObjectsResultInfo.getRequestID(), listObjectsResultInfo.isKeySameToPrefix(),
+                    Thread.currentThread().getId(), Thread.currentThread().getName());
         }
         LOG.debug("Can not find the cos key [{}] on COS.", key);
 
@@ -491,11 +518,10 @@ public class CosNFileSystem extends FileSystem {
             listMaxLength = CosNFileSystem.POSIX_BUCKET_LIST_LIMIT;
         }
 
-
         if (key.length() > 0) {
-            FileMetadata meta = nativeStore.retrieveMetadata(key);
-            if (meta != null && meta.isFile()) {
-                return new FileStatus[]{newFile(meta, absolutePath)};
+            FileStatus fileStatus = this.getFileStatus(f);
+            if (fileStatus.isFile() || fileStatus.isSymlink()) {
+                return new FileStatus[]{fileStatus};
             }
         }
 
@@ -517,7 +543,7 @@ public class CosNFileSystem extends FileSystem {
         Set<FileStatus> status = new TreeSet<>();
         String priorLastKey = null;
         do {
-            CosNPartialListing listing = nativeStore.list(key, listMaxLength,
+            CosNPartialListing listing = this.nativeStore.list(key, listMaxLength,
                     priorLastKey, false);
             for (FileMetadata fileMetadata : listing.getFiles()) {
                 Path subPath = keyToPath(fileMetadata.getKey());
@@ -526,6 +552,14 @@ public class CosNFileSystem extends FileSystem {
                     LOG.debug("This is just the directory we have been asked to list. cos key: {}.",
                             fileMetadata.getKey());
                 } else {
+                    if (fileMetadata.getLength() < this.symbolicLinkSizeThreshold) {
+                        CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(
+                                fileMetadata.getKey());
+                        if (null != cosNSymlinkMetadata) {
+                            status.add(newSymlink(cosNSymlinkMetadata, subPath));
+                            continue;
+                        }
+                    }
                     status.add(newFile(fileMetadata, subPath));
                 }
             }
@@ -552,6 +586,13 @@ public class CosNFileSystem extends FileSystem {
     private FileStatus newDirectory(Path path) {
         return new CosNFileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()));
+    }
+
+    private FileStatus newSymlink(CosNSymlinkMetadata metadata, Path path) {
+        FileStatus symlinkStatus = newFile(metadata, path);
+        Path targetPath = keyToPath(metadata.getTarget());
+        symlinkStatus.setSymlink(makeAbsolute(targetPath).makeQualified(this.getUri(), this.getWorkingDirectory()));
+        return symlinkStatus;
     }
 
     private FileStatus newDirectory(FileMetadata meta, Path path) {
@@ -683,6 +724,11 @@ public class CosNFileSystem extends FileSystem {
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
         FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
+        if (fileStatus.isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+            fileStatus = getFileStatus(f);
+        }
+
         // exist
         if (fileStatus.isDirectory()) {
             throw new FileNotFoundException("'" + f + "' is a directory");
@@ -914,6 +960,10 @@ public class CosNFileSystem extends FileSystem {
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         Preconditions.checkArgument(length >= 0);
 
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
+
         if (this.getConf().getBoolean(CosNConfigKeys.CRC64_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC64_CHECKSUM_ENABLED)) {
             Path absolutePath = makeAbsolute(f);
@@ -960,8 +1010,11 @@ public class CosNFileSystem extends FileSystem {
                     MAX_XATTR_SIZE));
         }
 
-        Path absolutePath = makeAbsolute(f);
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
 
+        Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
         if (null == fileMetadata) {
@@ -987,6 +1040,10 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public byte[] getXAttr(Path f, String name) throws IOException {
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
@@ -1011,6 +1068,9 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
@@ -1034,6 +1094,9 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
@@ -1054,6 +1117,10 @@ public class CosNFileSystem extends FileSystem {
      */
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
+
         Path absolutPath = makeAbsolute(f);
         String key = pathToKey(absolutPath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
@@ -1076,6 +1143,10 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public List<String> listXAttrs(Path f) throws IOException {
+        if (this.getFileStatus(f).isSymlink()) {
+            f = this.resolveFinalTargetPathFromLink(f);
+        }
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         FileMetadata fileMetadata = nativeStore.retrieveMetadata(key);
@@ -1084,6 +1155,102 @@ public class CosNFileSystem extends FileSystem {
         }
 
         return new ArrayList<>(fileMetadata.getUserAttributes().keySet());
+    }
+
+    @Override
+    public void createSymlink(Path target, Path link, boolean createParent)
+            throws AccessControlException, FileAlreadyExistsException, FileNotFoundException,
+            ParentNotDirectoryException, UnsupportedFileSystemException, IOException {
+        FileStatus fileStatus = this.getFileStatus(link);
+        if (null != fileStatus && (fileStatus.isFile() || fileStatus.isSymlink())) {
+            throw new FileAlreadyExistsException("File already exists: " + link);
+        }
+        if (null != fileStatus && fileStatus.isDirectory()) {
+            link = new Path(fileStatus.getPath(), link);
+        }
+
+        Path targetAbsolutePath = makeAbsolute(target);
+        Path linkAbsolutePath = makeAbsolute(link);
+        String targetKey = pathToKey(targetAbsolutePath);
+        String linkKey = pathToKey(linkAbsolutePath);
+
+        this.nativeStore.createSymlink(linkKey, targetKey);
+    }
+
+    @Override
+    public FileStatus getFileLinkStatus(final Path f)
+            throws AccessControlException, FileNotFoundException,
+            UnsupportedFileSystemException, IOException {
+        Path absolutePath = makeAbsolute(f);
+        String symlinkKey = pathToKey(absolutePath);
+        CosNSymlinkMetadata cosNSymlinkMetadata = nativeStore.retrieveSymlinkMetadata(symlinkKey);
+        FileStatus fileStatus;
+        if (null != cosNSymlinkMetadata) {
+            fileStatus = newSymlink(cosNSymlinkMetadata, absolutePath);
+        } else {
+            throw new FileNotFoundException("Symbolic does not exist: " + f);
+        }
+
+        if (fileStatus.isSymlink()) {
+            Path targetQual = FSLinkResolver.qualifySymlinkTarget(uri,
+                    fileStatus.getPath(), fileStatus.getSymlink());
+            fileStatus.setSymlink(targetQual);
+        }
+        return fileStatus;
+    }
+
+    @Override
+    public boolean supportsSymlinks() {
+        return true;
+    }
+
+    @Override
+    public Path getLinkTarget(final Path f) throws IOException {
+        Path absolutePath = makeAbsolute(f);
+        String symlinkKey = pathToKey(absolutePath);
+        String targetKey = this.nativeStore.getSymlink(symlinkKey);
+        if (targetKey != null) {
+            Path targetPath = keyToPath(targetKey);
+            return this.makeAbsolute(targetPath).makeQualified(getUri(), getWorkingDirectory());
+        } else {
+            throw new FileNotFoundException("Symbolic does not exist: " + f);
+        }
+    }
+
+    @Override
+    protected Path resolveLink(Path f) throws IOException {
+        Path absolutePath = makeAbsolute(f);
+        String symlinkKey = pathToKey(absolutePath);
+        String targetKey = this.nativeStore.getSymlink(symlinkKey);
+        if (null == targetKey) {
+            throw new FileNotFoundException("Symbolic does not exist: " + f);
+        }
+
+        Path targetPath = keyToPath(targetKey);
+        return this.makeAbsolute(targetPath).makeQualified(this.getUri(), this.getWorkingDirectory());
+    }
+
+    private Path resolveFinalTargetPathFromLink(Path link) throws IOException {
+        final Path originalAbsolutePath = makeAbsolute(link);
+        return new FileSystemLinkResolver<Path>() {
+            @Override
+            public Path doCall(Path path) throws IOException, UnresolvedLinkException {
+                Path targetPath = getLinkTarget(path);
+                try {
+                    FileStatus targetFileStatus = getFileStatus(targetPath);
+                    if (targetFileStatus.isSymlink()) {
+                        throw new UnresolvedLinkException();
+                    }
+                } catch (FileNotFoundException ignored) {
+                }
+                return targetPath;
+            }
+
+            @Override
+            public Path next(FileSystem fileSystem, Path path) throws IOException {
+                return fileSystem.getLinkTarget(path);
+            }
+        }.resolve(this, originalAbsolutePath);
     }
 
     @Override
@@ -1206,5 +1373,4 @@ public class CosNFileSystem extends FileSystem {
             return new Path(key);
         }
     }
-
 }
