@@ -15,9 +15,11 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             LoggerFactory.getLogger(CosNMappedBufferFactory.class);
 
     private final File tmpDir;
+    private final boolean deleteOnExist;
 
-    public CosNMappedBufferFactory(String tmpDir) throws IOException {
+    public CosNMappedBufferFactory(String tmpDir, boolean deleteOnExist) throws IOException {
         this.tmpDir = CosNMappedBufferFactory.createDir(tmpDir);
+        this.deleteOnExist = deleteOnExist;
     }
 
     private static File createDir(String tmpDir) throws IOException {
@@ -67,7 +69,11 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
                     Constants.BLOCK_TMP_FILE_SUFFIX,
                     this.tmpDir
             );
-            tmpFile.deleteOnExit();
+
+            // delete on exit hold the path in link list which release when jvm quit only
+            if (this.deleteOnExist) {
+                tmpFile.deleteOnExit();
+            }
             RandomAccessFile randomAccessFile = new RandomAccessFile(tmpFile,
                     "rw");
             randomAccessFile.setLength(size);
