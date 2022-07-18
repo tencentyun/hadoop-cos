@@ -124,7 +124,9 @@ public final class BufferPool {
         } else if (this.bufferType == CosNBufferType.MAPPED_DISK) {
             String tmpDir = conf.get(CosNConfigKeys.COSN_TMP_DIR,
                     CosNConfigKeys.DEFAULT_TMP_DIR);
-            this.bufferFactory = new CosNMappedBufferFactory(tmpDir);
+            boolean deleteOnExit = conf.getBoolean(CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED,
+                    CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
+            this.bufferFactory = new CosNMappedBufferFactory(tmpDir, deleteOnExit);
         } else {
             String exceptionMsg = String.format("The type of the upload " +
                     "buffer is "

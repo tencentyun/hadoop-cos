@@ -52,6 +52,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     protected boolean dirty;
     protected boolean committed;
     protected boolean closed;
+    protected boolean flushCOSEnabled;
     protected MessageDigest currentPartMessageDigest;
     protected ConsistencyChecker consistencyChecker;
 
@@ -86,6 +87,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         } else {
             this.partSize = partSize;
         }
+
+        this.flushCOSEnabled = conf.getBoolean(CosNConfigKeys.COSN_FLUSH_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_FLUSH_ENABLED);
         this.multipartUpload = null;
         this.currentPartNumber = 0;
         // malloc when trigger the write operations
@@ -300,6 +304,12 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
      */
     private void doFlush() throws IOException {
         this.currentPartOutputStream.flush();
+
+        // frequent flush may cause qps lower because of need wait upload finish
+        if (!this.flushCOSEnabled) {
+            return;
+        }
+
         try {
             if (this.currentPartNumber > 1 && null != this.multipartUpload) {
                 if (this.currentPartWriteBytes > 0) {

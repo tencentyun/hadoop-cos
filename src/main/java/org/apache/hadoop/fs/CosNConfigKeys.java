@@ -12,7 +12,7 @@ import org.apache.hadoop.fs.cosn.Unit;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.1.4";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.1.5";
 
     public static final String TENCENT_EMR_VERSION_KEY = "fs.emr.version";
 
@@ -142,4 +142,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final boolean DEFAULT_COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = false;
     public static final String COSN_POSIX_BUCKET_FS_IMPL = "fs.cosn.posix_bucket.fs.impl";
     public static final String DEFAULT_COSN_POSIX_BUCKET_FS_IMPL = Constants.COSN_POSIX_BUCKET_FS_CHDFS_IMPL;
+
+    public static final String COSN_FLUSH_ENABLED = "fs.cosn.flush.enabled";
+    public static final boolean DEFAULT_COSN_FLUSH_ENABLED = true;
+    public static final String COSN_MAPDISK_DELETEONEXIT_ENABLED = "fs.cosn.map_disk.delete_on_exit.enabled";
+    public static final boolean DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED = true;
 }
