@@ -178,7 +178,10 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
 
     private void innerFlush(boolean closeStream) throws IOException {
         this.checkOpened();
-        if (!this.dirty) {
+        // when close flush data to cos, each time data not upload,
+        // at this time if we close stream, it is not dirty but also has data need to upload
+        // so the dirty flag only useful when flush cos enabled.
+        if (!this.dirty && this.flushCOSEnabled) {
             LOG.debug("The stream is up-to-date, no need to refresh.");
             return;
         }
