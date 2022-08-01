@@ -34,8 +34,6 @@ public class CosNFileSystem extends FileSystem {
 
     static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
-    static final int BUCKET_LIST_LIMIT = 999;
-    static final int POSIX_BUCKET_LIST_LIMIT = 5000;
     static final Charset METADATA_ENCODING = StandardCharsets.UTF_8;
     // The length of name:value pair should be less than or equal to 1024 bytes.
     static final int MAX_XATTR_SIZE = 1024;
@@ -357,7 +355,11 @@ public class CosNFileSystem extends FileSystem {
             }
             // how to tell the result
             if (!isPosixBucket) {
-                internalRecursiveDelete(key);
+                int listMaxLength = this.getConf().getInt(
+                        CosNConfigKeys.LISTSTATUS_LIST_MAX_KEYS,
+                        CosNConfigKeys.DEFAULT_LISTSTATUS_LIST_MAX_KEYS
+                );
+                internalRecursiveDelete(key, listMaxLength);
             } else {
                 internalAutoRecursiveDelete(key);
             }
@@ -372,14 +374,14 @@ public class CosNFileSystem extends FileSystem {
         return true;
     }
 
-    private void internalRecursiveDelete(String key) throws IOException {
+    private void internalRecursiveDelete(String key, int listMaxLength) throws IOException {
         CosNDeleteFileContext deleteFileContext = new CosNDeleteFileContext();
         int deleteToFinishes = 0;
 
         String priorLastKey = null;
         do {
             CosNPartialListing listing =
-                    nativeStore.list(key, this.BUCKET_LIST_LIMIT, priorLastKey, true);
+                    nativeStore.list(key, listMaxLength, priorLastKey, true);
             for (FileMetadata file : listing.getFiles()) {
                 checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
@@ -486,11 +488,17 @@ public class CosNFileSystem extends FileSystem {
     public FileStatus[] listStatus(Path f) throws IOException {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        int listMaxLength = CosNFileSystem.BUCKET_LIST_LIMIT;
-        if (isPosixBucket) {
-            listMaxLength = CosNFileSystem.POSIX_BUCKET_LIST_LIMIT;
-        }
 
+        int listMaxLength = this.getConf().getInt(
+                CosNConfigKeys.LISTSTATUS_LIST_MAX_KEYS,
+                CosNConfigKeys.DEFAULT_LISTSTATUS_LIST_MAX_KEYS
+        );
+        if (isPosixBucket) {
+            listMaxLength = this.getConf().getInt(
+                    CosNConfigKeys.LISTSTATUS_POSIX_BUCKET__LIST_MAX_KEYS,
+                    CosNConfigKeys.DEFAULT_LISTSTATUS_POSIX_BUCKET_LIST_MAX_KEYS
+            );
+        }
 
         if (key.length() > 0) {
             FileMetadata meta = nativeStore.retrieveMetadata(key);
@@ -784,16 +792,21 @@ public class CosNFileSystem extends FileSystem {
         }
 
         if (!isPosixBucket) {
-            return internalCopyAndDelete(src, dst, srcFileStatus.isDirectory());
+            int listMaxLength = this.getConf().getInt(
+                    CosNConfigKeys.LISTSTATUS_LIST_MAX_KEYS,
+                    CosNConfigKeys.DEFAULT_LISTSTATUS_LIST_MAX_KEYS
+            );
+            return internalCopyAndDelete(src, dst, srcFileStatus.isDirectory(), listMaxLength);
         } else {
             return internalRename(src, dst);
         }
     }
 
-    private boolean internalCopyAndDelete(Path srcPath, Path dstPath, boolean isDir) throws IOException {
+    private boolean internalCopyAndDelete(Path srcPath, Path dstPath,
+                                          boolean isDir, int listMaxLength) throws IOException {
         boolean result = false;
         if (isDir) {
-            result = this.copyDirectory(srcPath, dstPath);
+            result = this.copyDirectory(srcPath, dstPath, listMaxLength);
         } else {
             result = this.copyFile(srcPath, dstPath);
         }
@@ -822,7 +835,7 @@ public class CosNFileSystem extends FileSystem {
         return true;
     }
 
-    private boolean copyDirectory(Path srcPath, Path dstPath) throws IOException {
+    private boolean copyDirectory(Path srcPath, Path dstPath, int listMaxLength) throws IOException {
         String srcKey = pathToKey(srcPath);
         if (!srcKey.endsWith(PATH_DELIMITER)) {
             srcKey += PATH_DELIMITER;
@@ -849,7 +862,7 @@ public class CosNFileSystem extends FileSystem {
         String priorLastKey = null;
         do {
             CosNPartialListing objectList = this.nativeStore.list(srcKey,
-                    this.BUCKET_LIST_LIMIT, priorLastKey, true);
+                    listMaxLength, priorLastKey, true);
             for (FileMetadata file : objectList.getFiles()) {
                 checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
