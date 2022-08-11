@@ -4,10 +4,7 @@ import com.qcloud.chdfs.permission.RangerAccessType;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.RangerCredentialsProvider;
 import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.AccessType;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionRequest;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.PermissionResponse;
-import org.apache.hadoop.fs.cosn.ranger.security.authorization.ServiceType;
+import org.apache.hadoop.fs.cosn.ranger.security.authorization.*;
 import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.apache.hadoop.security.token.Token;
 import org.slf4j.Logger;
@@ -28,6 +25,10 @@ public class RangerCredentialsClient {
     public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
 
     private boolean enableRangerPluginPermissionCheck = false;
+
+    private String rangerPolicyUrl;
+
+    private String authJarMd5;
 
     public RangerCredentialsClient() {
     }
@@ -168,6 +169,20 @@ public class RangerCredentialsClient {
                                 (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
                         tmpClient.init(conf);
                         RangerCredentialsClient.rangerQcloudObjectStorageStorageClient = tmpClient;
+
+                        // set ranger policy url and other auth info.
+                        // when use posix mode to query bucket. server side also auth the policy url.
+                        // so need to pass these configurations to ofs java sdk which carried on when mount fs.
+                        RangerAuthPolicyResponse rangerAuthPolicyResp =
+                                rangerQcloudObjectStorageStorageClient.getRangerAuthPolicy();
+                        if (rangerAuthPolicyResp != null) {
+                            if (rangerAuthPolicyResp.getRangerPolicyUrl() != null) {
+                                this.rangerPolicyUrl = rangerAuthPolicyResp.getRangerPolicyUrl();
+                            }
+                            if (rangerAuthPolicyResp.getAuthJarMd5() != null) {
+                                this.authJarMd5 = rangerAuthPolicyResp.getAuthJarMd5();
+                            }
+                        }
                     } catch (Exception e) {
                         log.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
                         throw new IOException(String.format("init %s failed",
@@ -176,6 +191,19 @@ public class RangerCredentialsClient {
                 }
             }
         }
+    } // end of init ranger impl
 
+    // must call after init
+    public String getRangerPolicyUrl() {
+        return this.rangerPolicyUrl;
     }
+
+    public String getAuthJarMd5() {
+        return this.authJarMd5;
+    }
+
+    public boolean isEnableRangerPluginPermissionCheck() {
+        return this.enableRangerPluginPermissionCheck;
+    }
+
 }

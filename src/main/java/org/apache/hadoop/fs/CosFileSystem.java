@@ -116,15 +116,19 @@ public class CosFileSystem extends FileSystem {
             // network version start from the 2.7.
             // sdk version start from the 1.0.4.
             this.actualImplFS = getActualFileSystemByClassName(posixBucketFSImpl);
-            if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
+
+            // judge normal impl first, skip the class nodef error when only use normal bucket
+            if (this.actualImplFS instanceof CosNFileSystem) {
+                this.nativeStore.isPosixBucket(true);
+                ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
+                        .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
+            } else if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
+                // judge whether ranger client contains policy url or other config need to pass to ofs
+                this.passThroughRangerConfig();
                 // before the init, must transfer the config and disable the range in ofs
                 this.transferOfsConfig();
                 this.nativeStore.close();
                 this.nativeStore = null;
-            } else if (this.actualImplFS instanceof CosNFileSystem) {
-                this.nativeStore.isPosixBucket(true);
-                ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
-                        .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
             } else {
                 // Another class
                 throw new IOException(
@@ -202,7 +206,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
         LOG.debug("Get file status: {}.", f);
-        checkPermission(f, RangerAccessType.READ);
+        // keep same not change ranger permission here
         return this.actualImplFS.getFileStatus(f);
     }
 
@@ -367,6 +371,25 @@ public class CosFileSystem extends FileSystem {
         return this.nativeStore;
     }
 
+    // pass ofs ranger client config to ofs
+    private void passThroughRangerConfig() {
+        if (!this.rangerCredentialsClient.isEnableRangerPluginPermissionCheck()) {
+            LOG.info("not enable ranger plugin permission check");
+            return;
+        }
+        // todo: alantong, ofs java sdk decide the key
+        if (this.rangerCredentialsClient.getRangerPolicyUrl() != null) {
+            String policyUrlKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                    concat(Constants.COSN_POSIX_BUCKET_RANGER_POLICY_URL);
+            this.getConf().set(policyUrlKey, this.rangerCredentialsClient.getRangerPolicyUrl());
+        }
+        if (this.rangerCredentialsClient.getAuthJarMd5() != null) {
+            String authJarMd5Key = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                    concat(Constants.COSN_POSIX_BUCKET_RANGER_AUTH_JAR_MD5);
+            this.getConf().set(authJarMd5Key, this.rangerCredentialsClient.getAuthJarMd5());
+        }
+    }
+
     // exclude the ofs original config, filter the ofs config with COSN_CONFIG_TRANSFER_PREFIX
     private void transferOfsConfig() {
         // 1. list to get transfer prefix ofs config
@@ -404,9 +427,16 @@ public class CosFileSystem extends FileSystem {
         return this.rangerCredentialsClient.doGetCanonicalServiceName();
     }
 
-
     private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
         this.rangerCredentialsClient.doCheckPermission(f, rangerAccessType, getOwnerId(), getWorkingDirectory());
+    }
+
+    /**
+     * @param conf
+     * @throws IOException
+     */
+    private void checkCustomAuth(Configuration conf) throws IOException {
+        this.rangerCredentialsClient.doCheckCustomAuth(conf);
     }
 
     private String getOwnerId() {
@@ -428,14 +458,6 @@ public class CosFileSystem extends FileSystem {
             shortUserName = System.getProperty("user.name");
         }
         return shortUserName;
-    }
-
-    /**
-     * @param conf
-     * @throws IOException
-     */
-    private void checkCustomAuth(Configuration conf) throws IOException {
-        this.rangerCredentialsClient.doCheckCustomAuth(conf);
     }
 
     @Override

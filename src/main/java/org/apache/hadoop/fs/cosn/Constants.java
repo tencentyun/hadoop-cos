@@ -37,4 +37,8 @@ public final class Constants {
     public static final String COSN_POSIX_BUCKET_FS_CHDFS_IMPL="com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter";
 
     public static final String CUSTOM_AUTHENTICATION = "custom authentication";
+
+    // posix bucket ranger config need to pass through
+    public static final String COSN_POSIX_BUCKET_RANGER_POLICY_URL = "fs.ofs.cosn.ranger.policy.url";
+    public static final String COSN_POSIX_BUCKET_RANGER_AUTH_JAR_MD5 = "fs.ofs.cosn.ranger.auth.jar.md5";
 }
