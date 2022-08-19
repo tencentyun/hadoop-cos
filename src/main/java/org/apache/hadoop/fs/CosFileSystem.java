@@ -18,11 +18,7 @@ import com.qcloud.chdfs.permission.RangerAccessType;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
-import java.util.Arrays;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 
 /**
@@ -47,6 +43,8 @@ public class CosFileSystem extends FileSystem {
     private NativeFileSystemStore nativeStore;
     private boolean isPosixFSStore;
     private boolean isDefaultNativeStore;
+    private boolean isPosixUseOFSRanger;
+    private boolean isPosixImpl = false;
     private FileSystem actualImplFS = null;
 
     private URI uri;
@@ -93,6 +91,9 @@ public class CosFileSystem extends FileSystem {
             this.isDefaultNativeStore = true;
         }
         this.rangerCredentialsClient = this.nativeStore.getRangerCredentialsClient();
+        this.isPosixUseOFSRanger = this.getConf().
+                getBoolean(CosNConfigKeys.COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED);
 
         // required checkCustomAuth if ranger is enabled and custom authentication is enabled
         checkCustomAuth(conf);
@@ -108,8 +109,8 @@ public class CosFileSystem extends FileSystem {
                         CosNConfigKeys.DEFAULT_COSN_POSIX_BUCKET_FS_IMPL);
             }
 
-            LOG.info("The posix bucket [{}] use the class [{}] as the filesystem implementation.",
-                    bucket, posixBucketFSImpl);
+            LOG.info("The posix bucket [{}] use the class [{}] as the filesystem implementation, " +
+                            "use each ranger [{}]", bucket, posixBucketFSImpl, this.isPosixUseOFSRanger);
             // if ofs impl.
             // network version start from the 2.7.
             // sdk version start from the 1.0.4.
@@ -121,6 +122,7 @@ public class CosFileSystem extends FileSystem {
                 ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                         .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
             } else if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
+                this.isPosixImpl = true;
                 // judge whether ranger client contains policy url or other config need to pass to ofs
                 this.passThroughRangerConfig();
                 // before the init, must transfer the config and disable the range in ofs
@@ -358,6 +360,9 @@ public class CosFileSystem extends FileSystem {
     public Token<?> getDelegationToken(String renewer) throws IOException {
         LOG.info("getDelegationToken, renewer: {}, stack: {}",
                 renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
+        if (useOFSRanger()) {
+            return this.actualImplFS.getDelegationToken(renewer);
+        }
         Token<?> token = this.rangerCredentialsClient.doGetDelegationToken(renewer);
         if (token != null)
             return token;
@@ -370,11 +375,23 @@ public class CosFileSystem extends FileSystem {
 
     // pass ofs ranger client config to ofs
     private void passThroughRangerConfig() {
+        // ofs ranger init get ranger policy auto
+        String ofsRangerKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                concat(Constants.COSN_POSIX_BUCKCET_OFS_RANGER_FLAG);
+        if (useOFSRanger()) {
+            // set ofs ranger open
+            this.getConf().setBoolean(ofsRangerKey, true);
+            return;
+        } else {
+            // set false, avoid sdk change the default value
+            this.getConf().setBoolean(ofsRangerKey, false);
+        }
+
         if (!this.rangerCredentialsClient.isEnableRangerPluginPermissionCheck()) {
             LOG.info("not enable ranger plugin permission check");
             return;
         }
-        // todo: alantong, ofs java sdk decide the key
+
         if (this.rangerCredentialsClient.getRangerPolicyUrl() != null) {
             String policyUrlKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
                     concat(Constants.COSN_POSIX_BUCKET_RANGER_POLICY_URL);
@@ -421,11 +438,24 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public String getCanonicalServiceName() {
+        if (useOFSRanger()) {
+            return this.actualImplFS.getCanonicalServiceName();
+        }
         return this.rangerCredentialsClient.doGetCanonicalServiceName();
     }
 
     private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
+        if (useOFSRanger()) {
+            return;
+        }
         this.rangerCredentialsClient.doCheckPermission(f, rangerAccessType, getOwnerId(), getWorkingDirectory());
+    }
+
+    private boolean useOFSRanger() {
+        if (this.isPosixImpl && this.isPosixUseOFSRanger) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -433,6 +463,7 @@ public class CosFileSystem extends FileSystem {
      * @throws IOException
      */
     private void checkCustomAuth(Configuration conf) throws IOException {
+        // todo: need get token first
         this.rangerCredentialsClient.doCheckCustomAuth(conf);
     }
 

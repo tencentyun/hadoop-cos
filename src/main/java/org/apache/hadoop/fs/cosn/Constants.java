@@ -41,4 +41,5 @@ public final class Constants {
     // posix bucket ranger config need to pass through
     public static final String COSN_POSIX_BUCKET_RANGER_POLICY_URL = "fs.ofs.cosn.ranger.policy.url";
     public static final String COSN_POSIX_BUCKET_RANGER_AUTH_JAR_MD5 = "fs.ofs.cosn.ranger.auth.jar.md5";
+    public static final String COSN_POSIX_BUCKCET_OFS_RANGER_FLAG = "fs.ofs.ranger.enable.flag";
 }
