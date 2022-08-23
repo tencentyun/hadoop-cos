@@ -463,6 +463,8 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         LOG.info("begin to close cos file system");
+        // close range client first
+        this.rangerCredentialsClient.close();
         this.actualImplFS.close();
         if (null != this.nativeStore && this.isDefaultNativeStore) {
             this.nativeStore.close();

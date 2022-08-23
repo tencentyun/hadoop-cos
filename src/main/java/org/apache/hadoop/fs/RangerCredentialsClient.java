@@ -206,4 +206,10 @@ public class RangerCredentialsClient {
         return this.enableRangerPluginPermissionCheck;
     }
 
+    public void close() {
+        if (RangerCredentialsClient.rangerQcloudObjectStorageStorageClient != null) {
+            RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.close();
+            RangerCredentialsClient.rangerQcloudObjectStorageStorageClient = null;
+        }
+    }
 }
