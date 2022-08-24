@@ -7,6 +7,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CosNConfigKeys;
 import org.apache.hadoop.fs.CosNUtils;
 import org.apache.hadoop.fs.RangerCredentialsClient;
+import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
 import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,18 +21,23 @@ import java.util.concurrent.atomic.AtomicReference;
 public class RangerCredentialsProvider extends AbstractCOSCredentialProvider implements COSCredentialsProvider {
     private static final Logger log = LoggerFactory.getLogger(RangerCredentialsProvider.class);
     private RangerCredentialsFetcher rangerCredentialsFetcher;
+    private RangerCredentialsClient rangerClient;
     private String bucketNameWithoutAppid;
     private String bucketRegion;
     private String appId;
 
 
-    public RangerCredentialsProvider(@Nullable URI uri, Configuration conf) {
+    public RangerCredentialsProvider(@Nullable URI uri, Configuration conf,
+                                     RangerCredentialsClient rangerClient) {
         super(uri, conf);
         if (null != conf) {
             this.appId = conf.get(CosNConfigKeys.COSN_APPID_KEY);
             this.bucketNameWithoutAppid = CosNUtils.getBucketNameWithoutAppid(
                     uri.getHost(), conf.get(CosNConfigKeys.COSN_APPID_KEY));
             this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
+            // native store keep the ranger client not null.
+            this.rangerClient = rangerClient;
+
             if (this.bucketRegion == null || this.bucketRegion.isEmpty()) {
                 this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
             }
@@ -75,13 +81,19 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
 
         private COSCredentials fetchNewCredentials() {
             try {
-                GetSTSResponse stsResp = RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
-                        bucketNameWithoutAppid);
+                if (rangerClient == null)  {
+                    log.error("ranger provider's ranger client is null, impossible!");
+                }
+                GetSTSResponse stsResp = rangerClient.getSTS(bucketRegion, bucketNameWithoutAppid);
                 /**
                  * some customers feel that kerberos authentication is heavy, so we have implemented a relatively
                  * lightweight authentication method
                  */
                 // if the custom authentication fails, there will be no temporary AK/SK
+                if (stsResp == null) {
+                    log.error("ranger provider get fetch new credentials get sts resp null");
+                    return null;
+                }
                 if (!stsResp.isCheckAuthPass()) {
                     return null;
                 }
