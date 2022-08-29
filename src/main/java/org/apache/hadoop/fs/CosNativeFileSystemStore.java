@@ -87,11 +87,13 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean completeMPUCheckEnabled;
     private CosNEncryptionSecrets encryptionSecrets;
     private TencentCloudL5EndpointResolver l5EndpointResolver;
+    private RangerCredentialsClient rangerCredentialsClient = null;
     private boolean useL5Id = false;
     private int l5UpdateMaxRetryTimes;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
-        COSCredentialProviderList cosCredentialProviderList = CosNUtils.createCosCredentialsProviderSet(uri, conf);
+        COSCredentialProviderList cosCredentialProviderList =
+                CosNUtils.createCosCredentialsProviderSet(uri, conf, this.rangerCredentialsClient);
 
         ClientConfig config;
 
@@ -253,11 +255,24 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {
+        String bucket = uri.getHost();
+        RangerCredentialsClient rangerCredentialsClient = new RangerCredentialsClient();
+        rangerCredentialsClient.doInitialize(conf, bucket);
+        this.initialize(uri, conf, rangerCredentialsClient);
+    }
+
+    @Override
+    public void initialize(URI uri, Configuration conf, RangerCredentialsClient rangerClient) throws IOException {
         // Close previously unreleased resources first
-        this.close();
+        this.preClose();
 
         // Begin to initialize.
         try {
+            if (null == rangerClient) {
+                // avoid NPE
+                throw new IOException("native store ranger client param is null");
+            }
+            this.rangerCredentialsClient = rangerClient;
             initCOSClient(uri, conf);
             if (null == this.bucketName) {
                 this.bucketName = uri.getHost();
@@ -272,6 +287,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             StorageClass.Standard, StorageClass.Standard_IA,
                             StorageClass.Maz_Standard, StorageClass.Maz_Standard_IA,
                             StorageClass.Archive);
+
                     throw new IllegalArgumentException(exceptionMessage);
                 }
             }
@@ -1220,6 +1236,19 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             this.cosClient.shutdown();
         }
 
+        if (null != this.rangerCredentialsClient) {
+            this.rangerCredentialsClient.close();
+        }
+
+        this.rangerCredentialsClient = null;
+        this.cosClient = null;
+    }
+
+    private void preClose() {
+        if (null != this.cosClient) {
+            this.cosClient.shutdown();
+        }
+
         this.cosClient = null;
     }
 
@@ -1573,6 +1602,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     public COSClient getCOSClient(){
         return this.cosClient;
+    }
+
+    public RangerCredentialsClient getRangerCredentialsClient() {
+        return this.rangerCredentialsClient;
     }
 
     private String getPluginVersionInfo() {

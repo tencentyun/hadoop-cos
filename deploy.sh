@@ -2,7 +2,7 @@
 
 base_dir=$(cd `dirname $0`;pwd)
 
-hadoop_version_array=("2.6.5" "2.7.5" "2.8.5" "3.1.0" "3.3.0")
+hadoop_version_array=("2.7.5" "2.8.5" "3.1.0" "3.3.0")
 
 NORMAL="normal"
 INTER="inter"

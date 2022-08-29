@@ -25,6 +25,8 @@ public interface NativeFileSystemStore {
 
     void initialize(URI uri, Configuration conf) throws IOException;
 
+    void initialize(URI uri, Configuration conf, RangerCredentialsClient rangerClient) throws IOException;
+
     HeadBucketResult headBucket(String bucketName) throws IOException;
 
     void storeFile(String key, File file, byte[] md5Hash) throws IOException;
@@ -118,6 +120,8 @@ public interface NativeFileSystemStore {
      * must set native store to posix process
      */
     void isPosixBucket(boolean isPosixBucket);
+
+    RangerCredentialsClient getRangerCredentialsClient();
 
     void close();
 }

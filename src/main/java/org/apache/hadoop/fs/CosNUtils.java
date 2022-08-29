@@ -59,8 +59,8 @@ public final class CosNUtils {
      * @throws IOException
      */
     public static COSCredentialProviderList createCosCredentialsProviderSet(
-            URI uri,
-            Configuration conf) throws IOException {
+            URI uri, Configuration conf,
+            RangerCredentialsClient rangerClient) throws IOException {
         COSCredentialProviderList credentialProviderList =
                 new COSCredentialProviderList();
 
@@ -78,9 +78,7 @@ public final class CosNUtils {
             credentialProviderList.add(new EMRInstanceCredentialsProvider(uri, conf));
         } else {
             for (Class<?> credClass : cosClasses) {
-                credentialProviderList.add(createCOSCredentialProvider(uri,
-                        conf,
-                        credClass));
+                credentialProviderList.add(createCOSCredentialProvider(uri, conf, rangerClient, credClass));
             }
         }
 
@@ -108,8 +106,8 @@ public final class CosNUtils {
      * @throws IOException
      */
     public static COSCredentialsProvider createCOSCredentialProvider(
-            URI uri,
-            Configuration conf,
+            URI uri, Configuration conf,
+            RangerCredentialsClient rangerClient,
             Class<?> credClass) throws IOException {
         COSCredentialsProvider credentialsProvider;
         if (!COSCredentialsProvider.class.isAssignableFrom(credClass)) {
@@ -143,6 +141,16 @@ public final class CosNUtils {
                 credentialsProvider =
                         (COSCredentialsProvider) constructor.newInstance(uri,
                                 conf);
+                return credentialsProvider;
+            }
+
+            // new credClass(uri, conf, rangerClient)
+            constructor = getConstructor(credClass, URI.class, Configuration.class, RangerCredentialsClient.class);
+            if (null != constructor) {
+                LOG.info("success get constructor of ranger provider");
+                credentialsProvider =
+                        (COSCredentialsProvider) constructor.newInstance(uri,
+                                conf, rangerClient);
                 return credentialsProvider;
             }
 

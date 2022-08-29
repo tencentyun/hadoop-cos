@@ -22,7 +22,7 @@ public class RangerCredentialsClient {
 
     private String bucket;
 
-    public static RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
+    public RangerQcloudObjectStorageClient rangerQcloudObjectStorageStorageClient = null;
 
     private boolean enableRangerPluginPermissionCheck = false;
 
@@ -78,7 +78,7 @@ public class RangerCredentialsClient {
                 allowKey, "", "");
         boolean allowed = false;
         String checkPermissionActualUserName = ownerId;
-        PermissionResponse permission = rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
+        PermissionResponse permission = this.rangerQcloudObjectStorageStorageClient.checkPermission(permissionReq);
         if (permission != null) {
             allowed = permission.isAllowed();
             if (permission.getRealUserName() != null && !permission.getRealUserName().isEmpty()) {
@@ -100,7 +100,7 @@ public class RangerCredentialsClient {
             bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
         }
 
-        GetSTSResponse stsResp = RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
+        GetSTSResponse stsResp = this.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
                 bucket);
         if (!stsResp.isCheckAuthPass()) {
             throw new IOException(String.format("Permission denied, [operation: %s], please check user and " +
@@ -111,15 +111,15 @@ public class RangerCredentialsClient {
     public Token<?> doGetDelegationToken(String renewer) throws IOException {
         log.info("getDelegationToken, renewer: {}, stack: {}",
                 renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
-        if (RangerCredentialsClient.rangerQcloudObjectStorageStorageClient != null) {
-            return RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
+        if (this.rangerQcloudObjectStorageStorageClient != null) {
+            return this.rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
         }
         return null;
     }
 
     public String doGetCanonicalServiceName() {
-        if (RangerCredentialsClient.rangerQcloudObjectStorageStorageClient != null) {
-            return RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.getCanonicalServiceName();
+        if (this.rangerQcloudObjectStorageStorageClient != null) {
+            return this.rangerQcloudObjectStorageStorageClient.getCanonicalServiceName();
         }
         return null;
     }
@@ -135,6 +135,7 @@ public class RangerCredentialsClient {
         Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
                 conf,
                 CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
+        log.info("begin to init ranger client, impl {}", Arrays.toString(cosClasses));
 
         if (cosClasses.length == 0) {
             this.enableRangerPluginPermissionCheck = false;
@@ -148,6 +149,7 @@ public class RangerCredentialsClient {
             }
         }
 
+        log.info("begin to init ranger client, enable ranger plugins {}", this.enableRangerPluginPermissionCheck);
         if (!this.enableRangerPluginPermissionCheck) {
             return;
         }
@@ -161,18 +163,19 @@ public class RangerCredentialsClient {
             }
         }
 
-        if (RangerCredentialsClient.rangerQcloudObjectStorageStorageClient == null) {
+        if (this.rangerQcloudObjectStorageStorageClient == null) {
             synchronized (RangerCredentialsClient.class) {
-                if (RangerCredentialsClient.rangerQcloudObjectStorageStorageClient == null) {
+                if (this.rangerQcloudObjectStorageStorageClient == null) {
                     try {
                         RangerQcloudObjectStorageClient tmpClient =
                                 (RangerQcloudObjectStorageClient) rangerClientImplClass.newInstance();
                         tmpClient.init(conf);
-                        RangerCredentialsClient.rangerQcloudObjectStorageStorageClient = tmpClient;
+                        this.rangerQcloudObjectStorageStorageClient = tmpClient;
 
                         // set ranger policy url and other auth info.
                         // when use posix mode to query bucket. server side also auth the policy url.
                         // so need to pass these configurations to ofs java sdk which carried on when mount fs.
+                        log.info("begin to init ranger client, to get auth policy url");
                         RangerAuthPolicyResponse rangerAuthPolicyResp =
                                 rangerQcloudObjectStorageStorageClient.getRangerAuthPolicy();
                         if (rangerAuthPolicyResp != null) {
@@ -183,6 +186,8 @@ public class RangerCredentialsClient {
                                 this.authJarMd5 = rangerAuthPolicyResp.getAuthJarMd5();
                             }
                         }
+                        log.info("begin to init ranger client, finish to get auth policy url {}, auth md5 {}",
+                                this.rangerPolicyUrl, this.authJarMd5);
                     } catch (Exception e) {
                         log.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
                         throw new IOException(String.format("init %s failed",
@@ -190,6 +195,8 @@ public class RangerCredentialsClient {
                     }
                 }
             }
+        } else {
+            log.info("begin to init ranger client, but client is not null, impossible!");
         }
     } // end of init ranger impl
 
@@ -206,10 +213,17 @@ public class RangerCredentialsClient {
         return this.enableRangerPluginPermissionCheck;
     }
 
+    public GetSTSResponse getSTS(String bucketRegion, String bucketNameWithoutAppid) throws IOException {
+        if (this.rangerQcloudObjectStorageStorageClient != null) {
+            return this.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion, bucketNameWithoutAppid);
+        }
+        return null;
+    }
+
     public void close() {
-        if (RangerCredentialsClient.rangerQcloudObjectStorageStorageClient != null) {
-            RangerCredentialsClient.rangerQcloudObjectStorageStorageClient.close();
-            RangerCredentialsClient.rangerQcloudObjectStorageStorageClient = null;
+        if (this.rangerQcloudObjectStorageStorageClient != null) {
+            this.rangerQcloudObjectStorageStorageClient.close();
+            this.rangerQcloudObjectStorageStorageClient = null;
         }
     }
 }

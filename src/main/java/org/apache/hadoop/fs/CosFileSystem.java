@@ -55,7 +55,6 @@ public class CosFileSystem extends FileSystem {
 
     private RangerCredentialsClient rangerCredentialsClient;
 
-
     public CosFileSystem() {
     }
 
@@ -89,12 +88,11 @@ public class CosFileSystem extends FileSystem {
 
         if (null == this.nativeStore) {
             this.nativeStore = CosNUtils.createDefaultStore(conf);
+            // init ranger client inside the native store
             this.nativeStore.initialize(uri, conf);
             this.isDefaultNativeStore = true;
         }
-
-        rangerCredentialsClient = new RangerCredentialsClient();
-        this.rangerCredentialsClient.doInitialize(conf, bucket);
+        this.rangerCredentialsClient = this.nativeStore.getRangerCredentialsClient();
 
         // required checkCustomAuth if ranger is enabled and custom authentication is enabled
         checkCustomAuth(conf);
@@ -127,8 +125,7 @@ public class CosFileSystem extends FileSystem {
                 this.passThroughRangerConfig();
                 // before the init, must transfer the config and disable the range in ofs
                 this.transferOfsConfig();
-                this.nativeStore.close();
-                this.nativeStore = null;
+                // not close native store here, emr use.
             } else {
                 // Another class
                 throw new IOException(
@@ -463,10 +460,9 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         LOG.info("begin to close cos file system");
-        // close range client first
-        this.rangerCredentialsClient.close();
         this.actualImplFS.close();
         if (null != this.nativeStore && this.isDefaultNativeStore) {
+            // close range client later, inner native store
             this.nativeStore.close();
         }
     }
