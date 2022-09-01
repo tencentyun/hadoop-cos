@@ -60,7 +60,14 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
         }
 
         if (!this.tmpDir.exists()) {
-            LOG.error("The tmp dir does not exist.");
+            LOG.warn("The tmp dir does not exist.");
+            // try to create the tmp directory.
+            try {
+                CosNMappedBufferFactory.createDir(this.tmpDir.getAbsolutePath());
+            } catch (IOException e) {
+                LOG.error("Try to create the tmp dir [{}] failed.", this.tmpDir.getAbsolutePath(), e);
+                return null;
+            }
         }
 
         try {
@@ -79,7 +86,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             randomAccessFile.setLength(size);
             MappedByteBuffer buf =
                     randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, size);
-            return new CosNMappedBuffer(buf, randomAccessFile, tmpFile);
+            return (null != buf) ? new CosNMappedBuffer(buf, randomAccessFile, tmpFile) : null;
         } catch (IOException e) {
             LOG.error("Create tmp file failed. Tmp dir: {}", this.tmpDir, e);
             return null;
