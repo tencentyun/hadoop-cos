@@ -23,7 +23,7 @@ public abstract class CosNByteBuffer implements Closeable {
     }
 
     public CosNByteBuffer put(byte b) throws IOException {
-        if (this.byteBuffer.hasRemaining()) {
+        if (!this.byteBuffer.hasRemaining()) {
             throw new IOException("There is no remaining in the buffer.");
         }
         this.byteBuffer.put(b);
