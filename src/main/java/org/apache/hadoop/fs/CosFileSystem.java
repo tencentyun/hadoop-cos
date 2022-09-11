@@ -43,7 +43,7 @@ public class CosFileSystem extends FileSystem {
     private NativeFileSystemStore nativeStore;
     private boolean isPosixFSStore;
     private boolean isDefaultNativeStore;
-    private volatile boolean healthyFlag = false;
+    private volatile boolean initialized = false;
     private boolean isPosixUseOFSRanger;
     private boolean isPosixImpl = false;
     private FileSystem actualImplFS = null;
@@ -145,7 +145,7 @@ public class CosFileSystem extends FileSystem {
 
         this.actualImplFS.initialize(uri, conf);
         // init status
-        this.healthyFlag = true;
+        this.initialized = true;
     }
 
     // load class to get relate file system
@@ -174,7 +174,7 @@ public class CosFileSystem extends FileSystem {
     public FSDataOutputStream append(Path f, int bufferSize,
                                      Progressable progress) throws IOException {
         LOG.debug("append file [{}] in COS.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.append(f, bufferSize, progress);
     }
@@ -182,7 +182,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean truncate(Path f, long newLength) throws IOException {
         LOG.debug("truncate file [{}] in COS.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.truncate(f, newLength);
     }
@@ -194,7 +194,7 @@ public class CosFileSystem extends FileSystem {
                                      long blockSize, Progressable progress)
             throws IOException {
         LOG.debug("Creating a new file [{}] in COS.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.create(f, permission, overwrite, bufferSize,
                 replication, blockSize, progress);
@@ -204,7 +204,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
         LOG.debug("Ready to delete path: {}. recursive: {}.", f, recursive);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.DELETE);
         return this.actualImplFS.delete(f, recursive);
     }
@@ -212,7 +212,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
         LOG.debug("Get file status: {}.", f);
-        healthyCheck();
+        checkInitialized();
         // keep same not change ranger permission here
         return this.actualImplFS.getFileStatus(f);
     }
@@ -235,7 +235,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FileStatus[] listStatus(Path f) throws FileNotFoundException, IOException {
         LOG.debug("list status:" + f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.LIST);
         return this.actualImplFS.listStatus(f);
     }
@@ -244,7 +244,7 @@ public class CosFileSystem extends FileSystem {
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
         LOG.debug("mkdirs path: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.WRITE);
         return this.actualImplFS.mkdirs(f, permission);
     }
@@ -252,7 +252,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
         LOG.debug("Open file [{}] to read, buffer [{}]", f, bufferSize);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.open(f, bufferSize);
     }
@@ -260,7 +260,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
         LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
-        healthyCheck();
+        checkInitialized();
         checkPermission(src, RangerAccessType.DELETE);
         checkPermission(dst, RangerAccessType.WRITE);
         return this.actualImplFS.rename(src, dst);
@@ -288,7 +288,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public FileChecksum getFileChecksum(Path f, long length) throws IOException {
         LOG.debug("call the checksum for the path: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.READ);
         Preconditions.checkArgument(length >= 0);
         return this.actualImplFS.getFileChecksum(f, length);
@@ -307,7 +307,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
         LOG.debug("set XAttr: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.WRITE);
         this.actualImplFS.setXAttr(f, name, value, flag);
     }
@@ -323,7 +323,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public byte[] getXAttr(Path f, String name) throws IOException {
         LOG.debug("get XAttr: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getXAttr(f, name);
     }
@@ -339,7 +339,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public Map<String, byte[]> getXAttrs(Path f, List<String> names) throws IOException {
         LOG.debug("get XAttrs: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getXAttrs(f, names);
     }
@@ -347,7 +347,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public Map<String, byte[]> getXAttrs(Path f) throws IOException {
         LOG.debug("get XAttrs: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getXAttrs(f);
     }
@@ -362,7 +362,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void removeXAttr(Path f, String name) throws IOException {
         LOG.debug("remove XAttr: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.WRITE);
         this.actualImplFS.removeXAttr(f, name);
     }
@@ -370,7 +370,7 @@ public class CosFileSystem extends FileSystem {
     @Override
     public List<String> listXAttrs(Path f) throws IOException {
         LOG.debug("list XAttrs: {}.", f);
-        healthyCheck();
+        checkInitialized();
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.listXAttrs(f);
     }
@@ -448,7 +448,7 @@ public class CosFileSystem extends FileSystem {
     // CHDFS Support Only
     public void releaseFileLock(Path f) throws IOException {
         LOG.debug("Release the file lock: {}.", f);
-        healthyCheck();
+        checkInitialized();
         if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
             ((CHDFSHadoopFileSystemAdapter) this.actualImplFS).releaseFileLock(f);
         } else {
@@ -484,7 +484,7 @@ public class CosFileSystem extends FileSystem {
      */
     private void checkCustomAuth(Configuration conf) throws IOException {
         // todo: need get token first
-        healthyCheck();
+        checkInitialized();
         this.rangerCredentialsClient.doCheckCustomAuth(conf);
     }
 
@@ -509,9 +509,9 @@ public class CosFileSystem extends FileSystem {
         return shortUserName;
     }
 
-    private void healthyCheck() throws IOException {
-        if (!this.healthyFlag) {
-            throw new IOException("fileSystem has been closed or not init");
+    private void checkInitialized() throws IOException {
+        if (!this.initialized) {
+            throw new IOException("The FileSystem has been closed or not initialized.");
         }
     }
 
@@ -523,6 +523,6 @@ public class CosFileSystem extends FileSystem {
             // close range client later, inner native store
             this.nativeStore.close();
         }
-        this.healthyFlag = false;
+        this.initialized = false;
     }
 }
