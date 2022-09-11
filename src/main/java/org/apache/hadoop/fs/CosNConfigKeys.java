@@ -155,4 +155,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final boolean DEFAULT_COSN_FLUSH_ENABLED = true;
     public static final String COSN_MAPDISK_DELETEONEXIT_ENABLED = "fs.cosn.map_disk.delete_on_exit.enabled";
     public static final boolean DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED = true;
+
+    // range control, whether meta engine need query own ranger. can be used when transfer from ofs to cos ranger
+    public static final String COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = "fs.cosn.posix.bucket.use_ofs_ranger.enabled";
+    public static final boolean DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = false;
+
 }
