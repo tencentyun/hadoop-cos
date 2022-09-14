@@ -160,4 +160,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = "fs.cosn.posix.bucket.use_ofs_ranger.enabled";
     public static final boolean DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = false;
 
+    // create() recursive check dst dir which increase the getFileStatus call which increase head and list qps.
+    // please notice when set to false may lose data, so only change to false when you know what are you doing.
+    public static final String COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED = "fs.cosn.create.recursive.check_dst_dir.enabled";
+    public static final boolean DEFAULT_COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED = true;
 }

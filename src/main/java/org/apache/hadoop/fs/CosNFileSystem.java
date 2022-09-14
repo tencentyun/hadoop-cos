@@ -43,6 +43,7 @@ public class CosNFileSystem extends FileSystem {
     private boolean isPosixBucket;
     private NativeFileSystemStore nativeStore;
     private boolean isDefaultNativeStore;
+    private boolean isCreateRecursiveCheckDstDir;
     private Path workingDir;
     private String owner = "Unknown";
     private String group = "Unknown";
@@ -119,6 +120,11 @@ public class CosNFileSystem extends FileSystem {
         int readAheadPoolSize = this.getConf().getInt(
                 CosNConfigKeys.READ_AHEAD_QUEUE_SIZE,
                 CosNConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE
+        );
+
+        this.isCreateRecursiveCheckDstDir = this.getConf().getBoolean(
+                CosNConfigKeys.COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED
         );
         Preconditions.checkArgument(uploadThreadPoolSize > 0,
                 String.format("The uploadThreadPoolSize[%d] should be positive.", uploadThreadPoolSize));
@@ -296,7 +302,9 @@ public class CosNFileSystem extends FileSystem {
                 throw new FileAlreadyExistsException("Directory already exists: " + f);
             }
         } catch (FileNotFoundException e) {
-            validatePath(f);
+            if (this.isCreateRecursiveCheckDstDir) {
+                validatePath(f);
+            }
         }
 
         Path absolutePath = makeAbsolute(f);

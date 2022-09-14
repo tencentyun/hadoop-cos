@@ -484,7 +484,6 @@ public class CosFileSystem extends FileSystem {
      */
     private void checkCustomAuth(Configuration conf) throws IOException {
         // todo: need get token first
-        checkInitialized();
         this.rangerCredentialsClient.doCheckCustomAuth(conf);
     }
 
