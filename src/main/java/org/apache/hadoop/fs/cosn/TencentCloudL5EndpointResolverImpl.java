@@ -76,8 +76,8 @@ public class TencentCloudL5EndpointResolverImpl implements TencentCloudL5Endpoin
         packet.modid = this.modId;
         packet.cmdid = this.cmdId;
 
-
-        for (int i = 0; i < 5; ++i) {
+        int maxRetry = 5;
+        for (int retryIndex = 1; retryIndex <= maxRetry; ++retryIndex) {
             try {
                 packet = L5API.getRoute(packet, timeout);
                 if (!packet.ip.isEmpty() && packet.port > 0) {
@@ -88,10 +88,13 @@ public class TencentCloudL5EndpointResolverImpl implements TencentCloudL5Endpoin
                     break;
                 }
             } catch (L5APIException e) {
-                LOG.error("Get l5 modid: {} cmdid: {} failed.", this.modId, this.cmdId);
-                try {
-                    Thread.sleep(ThreadLocalRandom.current().nextLong(10L, 1000L));
-                } catch (InterruptedException var) {
+                if (retryIndex != maxRetry) {
+                    try {
+                        Thread.sleep(ThreadLocalRandom.current().nextLong(1000L, 3000L));
+                    } catch (InterruptedException var) {
+                    }
+                } else {
+                    LOG.error("Get l5 modid: {} cmdid: {} failed: ", this.modId, this.cmdId, e);
                 }
             }
         }
