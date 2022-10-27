@@ -388,6 +388,39 @@ public class CosFileSystem extends FileSystem {
         return super.getDelegationToken(renewer);
     }
 
+    // some other implements of ofs, for now only support
+    // for posix bucket. contain the getContentSummary, setOwner,setPermission,setTimes
+    @Override
+    public ContentSummary getContentSummary(Path f) throws IOException {
+        LOG.debug("get content summary: {}.", f);
+        checkInitialized();
+        return this.actualImplFS.getContentSummary(f);
+    }
+
+    @Override
+    public void setOwner(Path p, String userName, String groupName) throws IOException {
+        LOG.debug("set owner, path: {}, userName: {}, groupName: {}",p, userName, groupName);
+        checkInitialized();
+        checkPermission(p, RangerAccessType.WRITE);
+        this.actualImplFS.setOwner(p, userName, groupName);
+    }
+
+    @Override
+    public void setPermission(Path p, FsPermission permission) throws IOException {
+        LOG.debug("set permission, path :{}", p);
+        checkInitialized();
+        checkPermission(p, RangerAccessType.WRITE);
+        this.actualImplFS.setPermission(p, permission);
+    }
+
+    @Override
+    public void setTimes(Path p, long mtime, long atime) throws IOException {
+        LOG.debug("set times, path :{}, mtime: {}, atime: {}", p, mtime, atime);
+        checkInitialized();
+        checkPermission(p, RangerAccessType.WRITE);
+        this.actualImplFS.setTimes(p, mtime, atime);
+    }
+
     public NativeFileSystemStore getStore() {
         return this.nativeStore;
     }
@@ -425,12 +458,31 @@ public class CosFileSystem extends FileSystem {
 
     // exclude the ofs original config, filter the ofs config with COSN_CONFIG_TRANSFER_PREFIX
     private void transferOfsConfig() {
+        // 0. re-use the same configuration
+        String appidStr = this.getConf().get(CosNConfigKeys.COSN_APPID_KEY);
+        if (null != appidStr && !appidStr.isEmpty()) {
+            String trsfKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                    concat(Constants.COSN_POSIX_BUCKET_APPID_CONFIG);
+            this.getConf().set(trsfKey, appidStr);
+        }
+
+        String regionStr = this.getConf().get(CosNConfigKeys.COSN_REGION_KEY);
+        if (null == regionStr) {
+            regionStr = this.getConf().get(CosNConfigKeys.COSN_REGION_PREV_KEY);
+        }
+        if (null != regionStr && !regionStr.isEmpty()) {
+            String trsfKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                    concat(Constants.COSN_POSIX_BUCKET_REGION_CONFIG);
+            this.getConf().set(trsfKey, regionStr);
+        }
+
         // 1. list to get transfer prefix ofs config
         Map<String, String> tmpConf = new HashMap<>();
         for (Map.Entry<String, String> entry : this.getConf()) {
             if (entry.getKey().startsWith(Constants.COSN_OFS_CONFIG_PREFIX)) {
                 this.getConf().unset(entry.getKey());
             }
+
             if (entry.getKey().startsWith(Constants.COSN_CONFIG_TRANSFER_PREFIX)) {
                 int pos = Constants.COSN_CONFIG_TRANSFER_PREFIX.length();
                 String subConfigKey = entry.getKey().substring(pos);
