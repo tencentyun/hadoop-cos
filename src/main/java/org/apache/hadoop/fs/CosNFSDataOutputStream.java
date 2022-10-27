@@ -510,7 +510,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                             currentThread.setContextClassLoader(this.getClass().getClassLoader());
 
                             try {
-                                LOG.info("Start to upload the part: {}", uploadPart);
+                                LOG.debug("Start to upload the part: {}", uploadPart);
                                 PartETag partETag = (nativeStore).uploadPart(
                                         new BufferInputStream(uploadPart.getCosNByteBuffer()),
                                         this.localKey,

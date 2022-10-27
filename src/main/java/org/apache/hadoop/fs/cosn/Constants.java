@@ -42,4 +42,7 @@ public final class Constants {
     public static final String COSN_POSIX_BUCKET_RANGER_POLICY_URL = "fs.ofs.cosn.ranger.policy.url";
     public static final String COSN_POSIX_BUCKET_RANGER_AUTH_JAR_MD5 = "fs.ofs.cosn.ranger.auth.jar.md5";
     public static final String COSN_POSIX_BUCKCET_OFS_RANGER_FLAG = "fs.ofs.ranger.enable.flag";
+
+    public static final String COSN_POSIX_BUCKET_APPID_CONFIG = "fs.ofs.user.appid";
+    public static final String COSN_POSIX_BUCKET_REGION_CONFIG = "fs.ofs.bucket.region";
 }
