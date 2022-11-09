@@ -5,6 +5,7 @@ import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.utils.CRC64;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Unit;
+import org.apache.hadoop.fs.cosn.multipart.upload.UploadPartCopy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,17 +16,17 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Extended supports: append and visible flush.
+ * Extended supports: append/truncate and visible flush.
  */
-public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
-    private static final Logger LOG = LoggerFactory.getLogger(CosNPosixExtensionDataOutputStream.class);
+public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
+    private static final Logger LOG = LoggerFactory.getLogger(CosNExtendedFSDataOutputStream.class);
 
-    public CosNPosixExtensionDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
+    public CosNExtendedFSDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
         String cosKey, ExecutorService executorService) throws IOException {
         this(conf, nativeStore, cosKey, executorService, false);
     }
 
-    public CosNPosixExtensionDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
+    public CosNExtendedFSDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
         String cosKey, ExecutorService executorService, boolean appendFlag) throws IOException {
         super(conf, nativeStore, cosKey, executorService);
 
@@ -58,9 +59,6 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
     }
 
     private void resumeForWrite() throws IOException {
-        super.resetContext();
-        super.initNewCurrentPartResource();
-
         FileMetadata fileMetadata = super.nativeStore.retrieveMetadata(super.cosKey);
         if (null == fileMetadata) {
             throw new IOException(String.format("The cos key [%s] is not found.", super.cosKey));
@@ -68,6 +66,9 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
         if (!fileMetadata.isFile()) {
             throw new IOException("The cos key is a directory object. Can not resume the write operation for it.");
         }
+
+        super.resetContext();
+        super.initNewCurrentPartResource();
 
         // resume for write operation.
         try {
@@ -82,7 +83,7 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
                     }
                 }
             } else {
-                // Multipart copy resume
+                // MultipartManager copy resume
                 super.multipartUpload = new MultipartUploadEx(super.cosKey);
                 long copyRemaining = fileMetadata.getLength();
                 long firstByte = 0;
@@ -108,14 +109,13 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
                         }
                     }
                 }
-
-                // initialize the consistency checker.
-                BigInteger bigInteger = new BigInteger(fileMetadata.getCrc64ecm());
-                this.consistencyChecker = new ConsistencyChecker(super.nativeStore, super.cosKey,
-                        new CRC64(bigInteger.longValue()), fileMetadata.getLength());
             }
+            // initialize the consistency checker.
+            BigInteger bigInteger = new BigInteger(fileMetadata.getCrc64ecm());
+            this.consistencyChecker = new ConsistencyChecker(super.nativeStore, super.cosKey,
+                new CRC64(bigInteger.longValue()), fileMetadata.getLength());
         } catch (Exception e) {
-            LOG.error("Fail to resume for writing. Abort it.", e);
+            LOG.error("Failed to resume for writing. Abort it.", e);
             super.abort();
             throw new IOException(e);
         }
@@ -137,7 +137,7 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
             }
 
             partsSubmitted.incrementAndGet();
-            bytesSubmitted.addAndGet(uploadPartCopy.lastByte - uploadPartCopy.firstByte + 1);
+            bytesSubmitted.addAndGet(uploadPartCopy.getLastByte() - uploadPartCopy.getFirstByte() + 1);
             ListenableFuture<PartETag> partETagListenableFuture = executorService.submit(new Callable<PartETag>() {
                 @Override
                 public PartETag call() throws Exception {
@@ -151,53 +151,6 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
                 }
             });
             super.partETagFutures.put(uploadPartCopy.getPartNumber(), partETagListenableFuture);
-        }
-    }
-
-    private static final class UploadPartCopy {
-        private final String srcKey;
-
-        private final String destKey;
-        private final int partNumber;
-        private final long firstByte;
-        private final long lastByte;
-
-        private UploadPartCopy(String srcKey, String destKey, int partNumber, long firstByte, long lastByte) {
-            this.srcKey = srcKey;
-            this.destKey = destKey;
-            this.partNumber = partNumber;
-            this.firstByte = firstByte;
-            this.lastByte = lastByte;
-        }
-
-        public String getSrcKey() {
-            return srcKey;
-        }
-
-        public String getDestKey() {
-            return destKey;
-        }
-
-        public int getPartNumber() {
-            return partNumber;
-        }
-
-        public long getFirstByte() {
-            return firstByte;
-        }
-
-        public long getLastByte() {
-            return lastByte;
-        }
-
-        @Override
-        public String toString() {
-            return "UploadPartCopy{" +
-                    "srcKey='" + srcKey + '\'' +
-                    ", partNumber=" + partNumber +
-                    ", firstByte=" + firstByte +
-                    ", lastByte=" + lastByte +
-                    '}';
         }
     }
 }

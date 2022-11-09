@@ -15,7 +15,7 @@ public abstract class CosNByteBuffer implements Closeable {
             LoggerFactory.getLogger(CosNByteBuffer.class);
 
     protected ByteBuffer byteBuffer;
-    private int nextWritePosition;
+    protected int nextWritePosition;
 
     public CosNByteBuffer(ByteBuffer byteBuffer) {
         this.byteBuffer = byteBuffer;
@@ -121,9 +121,9 @@ public abstract class CosNByteBuffer implements Closeable {
         return this.byteBuffer.hasRemaining();
     }
 
-    abstract boolean isDirect();
+    protected abstract boolean isDirect();
 
-    abstract boolean isMapped();
+    protected abstract boolean isMapped();
 
     @Override
     public void close() throws IOException {

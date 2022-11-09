@@ -34,6 +34,22 @@
         </developer>
     </developers>
 
+    <repositories>
+        <!-- 指定内部仓库 -->
+        <repository>
+            <id>qcloud_cos</id>
+            <name>QCLOUD_COS</name>
+            <url>https://mirrors.tencent.com/repository/maven/QCLOUD_COS</url>
+            <layout>default</layout>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
     <scm>
         <connection>scm:git:https://github.com/tencentyun/hadoop-cos.git</connection>
         <developerConnection>scm:git:https://github.com/tencentyun/hadoop-cos.git</developerConnection>
@@ -79,6 +95,12 @@
             <artifactId>chdfs_hadoop_plugin_network</artifactId>
             <version>2.7</version>
             <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.qcloud</groupId>
+            <artifactId>ofs-sdk-definition</artifactId>
+            <version>1.0.4</version>
         </dependency>
     </dependencies>
 

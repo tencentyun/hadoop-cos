@@ -19,7 +19,11 @@ import com.qcloud.chdfs.permission.RangerAccessType;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
-import java.util.*;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -417,13 +421,6 @@ public class CosFileSystem extends FileSystem {
         LOG.debug("Get the target path the link [{}] refer.", f);
         checkPermission(f, RangerAccessType.READ);
         return this.actualImplFS.getLinkTarget(f);
-    }
-
-    @Override
-    protected Path resolveLink(Path f) throws IOException {
-        LOG.debug("Resolve the link [{}].", f);
-        checkPermission(f, RangerAccessType.READ);
-        return this.actualImplFS.resolveLink(f);
     }
 
     // some other implements of ofs, for now only support

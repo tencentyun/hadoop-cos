@@ -556,7 +556,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      *
      * @param key cos key
      * @return uploadId
-     * @throws IOException when fail to get the Multipart Upload ID.
+     * @throws IOException when fail to get the MultipartManager Upload ID.
      */
     public String getUploadId(String key) throws IOException {
         if (null == key || key.length() == 0) {

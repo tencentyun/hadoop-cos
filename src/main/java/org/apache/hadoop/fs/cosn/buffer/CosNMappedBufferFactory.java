@@ -15,17 +15,17 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             LoggerFactory.getLogger(CosNMappedBufferFactory.class);
 
     private final File tmpDir;
-    private final boolean deleteOnExist;
+    private final boolean deleteOnExit;
 
-    public CosNMappedBufferFactory(String tmpDir, boolean deleteOnExist) throws IOException {
+    public CosNMappedBufferFactory(String tmpDir, boolean deleteOnExit) throws IOException {
         this.tmpDir = CosNMappedBufferFactory.createDir(tmpDir);
-        this.deleteOnExist = deleteOnExist;
+        this.deleteOnExit = deleteOnExit;
     }
 
     private static File createDir(String tmpDir) throws IOException {
         File file = new File(tmpDir);
         if (!file.exists()) {
-            LOG.debug("Buffer dir: [{}] does not exists. create it first.",
+            LOG.debug("Buffer dir: [{}] does not exist. Create it first.",
                     file);
             if (file.mkdirs()) {
                 if (!file.setWritable(true, false) || !file.setReadable(true, false)
@@ -53,7 +53,12 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
     }
 
     @Override
-    public CosNByteBuffer create(int size) {
+    public CosNMappedBuffer create(int size) {
+        return this.create(Constants.BLOCK_TMP_FILE_PREFIX,
+            Constants.BLOCK_TMP_FILE_SUFFIX, size);
+    }
+
+    public CosNMappedBuffer create(String prefix, String suffix, int size) {
         if (null == this.tmpDir) {
             LOG.error("The tmp dir is null. no mapped buffer will be created.");
             return null;
@@ -77,8 +82,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
                     this.tmpDir
             );
 
-            // delete on exit hold the path in link list which release when jvm quit only
-            if (this.deleteOnExist) {
+            if (this.deleteOnExit) {
                 tmpFile.deleteOnExit();
             }
             RandomAccessFile randomAccessFile = new RandomAccessFile(tmpFile,

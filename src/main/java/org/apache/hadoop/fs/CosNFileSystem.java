@@ -9,6 +9,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
+import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.AccessControlException;
@@ -126,7 +127,12 @@ public class CosNFileSystem extends FileSystem {
         LOG.debug("uri: {}, bucket: {}, working dir: {}, owner: {}, group: {}.\n" +
                 "configuration: {}.", uri, bucket, workingDir, owner, group, conf);
 
-        BufferPool.getInstance().initialize(getConf());
+        BufferPool.getInstance().initialize(this.getConf());
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
+            CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+            // 只有在开启 POSIX 扩展语义支持的时候才会初始化
+            LocalRandomAccessMappedBufferPool.getInstance().initialize(this.getConf());
+        }
 
         // initialize the thread pool
         int uploadThreadPoolSize = this.getConf().getInt(
@@ -236,18 +242,10 @@ public class CosNFileSystem extends FileSystem {
         return super.getHomeDirectory();
     }
 
-    /**
-     * This optional operation is not yet supported.
-     */
     @Override
     public FSDataOutputStream append(Path f, int bufferSize,
-                                     Progressable progress) throws IOException {
-        // 这里还需要判断是否是文件存储桶，如果是则可以支持
-        if (!this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
-            throw new UnsupportedOperationException("Not supported currently");
-        }
-
+        Progressable progress) throws IOException {
+        // 默认可以支持 append
         FileStatus fileStatus = this.getFileStatus(f);
         if (fileStatus.isSymlink()) {
             f = this.getLinkTarget(f);
@@ -260,18 +258,21 @@ public class CosNFileSystem extends FileSystem {
         LOG.debug("Append the file path: {}.", f);
         Path absolutePath = makeAbsolute(f);
         String cosKey = pathToKey(absolutePath);
-        return new FSDataOutputStream(new CosNPosixExtensionDataOutputStream(
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
+            CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+            return new CosNSeekableFSDataOutputStream(
+                new CosNSeekableFSDataOutputStream.SeekableOutputStream(
+                    this.getConf(), this.nativeStore, cosKey), statistics);
+        } else {
+            return new FSDataOutputStream(new CosNExtendedFSDataOutputStream(
                 this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, true),
                 statistics, fileStatus.getLen());
+        }
     }
 
     @Override
     public boolean truncate(Path f, long newLength) throws IOException {
-        if (!this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
-            throw new UnsupportedOperationException("Not supported currently.");
-        }
-
+        // 默认可以支持 truncate
         FileStatus fileStatus = this.getFileStatus(f);
         if (fileStatus.isSymlink()) {
             f = this.getLinkTarget(f);
@@ -294,7 +295,7 @@ public class CosNFileSystem extends FileSystem {
 
         // Use the single thread to truncate.
         try (OutputStream outputStream = new FSDataOutputStream(
-                new CosNPosixExtensionDataOutputStream(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool),
+                new CosNExtendedFSDataOutputStream(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool),
                 statistics)) {
             // If the newLength is equal to 0, just wait for 'try finally' to close.
             if (newLength > 0) {
@@ -344,8 +345,9 @@ public class CosNFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
                 CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+            // Need to support the synchronous flush.
             return new FSDataOutputStream(
-                    new CosNPosixExtensionDataOutputStream(this.getConf(), nativeStore, key,
+                    new CosNExtendedFSDataOutputStream(this.getConf(), nativeStore, key,
                             this.boundedIOThreadPool), statistics);
         } else {
             return new FSDataOutputStream(
@@ -1278,7 +1280,7 @@ public class CosNFileSystem extends FileSystem {
         return new FileSystemLinkResolver<Path>() {
             @Override
             public Path doCall(Path path) throws IOException, UnresolvedLinkException {
-                Path targetPath = resolveLink(path);
+                Path targetPath = CosNFileSystem.this.resolveLink(path);
                 try {
                     FileStatus targetFileStatus = getFileStatus(targetPath);
                     if (targetFileStatus.isSymlink()) {
@@ -1426,11 +1428,12 @@ public class CosNFileSystem extends FileSystem {
         return ret;
     }
 
-    private static Path keyToPath(String key) {
+    public static Path keyToPath(String key) {
         if (!key.startsWith(PATH_DELIMITER)) {
             return new Path("/" + key);
         } else {
             return new Path(key);
         }
     }
+
 }

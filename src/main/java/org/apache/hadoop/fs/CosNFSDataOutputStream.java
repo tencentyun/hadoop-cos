@@ -6,7 +6,6 @@ import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
-import com.qcloud.cos.thirdparty.org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.output.NullOutputStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Abortable;
@@ -16,6 +15,7 @@ import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;
+import org.apache.hadoop.fs.cosn.multipart.upload.UploadPart;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -521,13 +521,13 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                                 bytesUploaded.addAndGet(uploadPart.getPartSize());
                                 return partETag;
                             } finally {
-                                if (!uploadPart.isLast) {
+                                if (!uploadPart.isLast()) {
                                     BufferPool.getInstance().returnBuffer(uploadPart.getCosNByteBuffer());
                                 }
                             }
                         }
                     });
-            this.partETagFutures.put(uploadPart.partNumber, partETagListenableFuture);
+            this.partETagFutures.put(uploadPart.getPartNumber(), partETagListenableFuture);
         }
 
         protected List<PartETag> waitForFinishPartUploads() throws IOException {
@@ -576,45 +576,6 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             nativeStore.abortMultipartUpload(cosKey, this.uploadId);
             this.aborted = true;
             LOG.info("The MPU [{}] has been aborted.", this.getUploadId());
-        }
-    }
-
-    private static final class UploadPart {
-        private final int partNumber;
-        private final CosNByteBuffer cosNByteBuffer;
-        private final byte[] md5Hash;
-        private final boolean isLast;
-
-        private UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer, byte[] md5Hash, boolean isLast) {
-            this.partNumber = partNumber;
-            this.cosNByteBuffer = cosNByteBuffer;
-            this.md5Hash = md5Hash;
-            this.isLast = isLast;
-        }
-
-        public int getPartNumber() {
-            return this.partNumber;
-        }
-
-        public CosNByteBuffer getCosNByteBuffer() {
-            return this.cosNByteBuffer;
-        }
-
-        public long getPartSize() {
-            return this.cosNByteBuffer.remaining();
-        }
-
-        public byte[] getMd5Hash() {
-            return this.md5Hash;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("UploadPart{partNumber:%d, partSize: %d, md5Hash: %s, isLast: %s}",
-                    this.partNumber,
-                    this.cosNByteBuffer.flipRead().remaining(),
-                    (this.md5Hash != null ? Hex.encodeHexString(this.md5Hash): "NULL"),
-                    this.isLast);
         }
     }
 }
