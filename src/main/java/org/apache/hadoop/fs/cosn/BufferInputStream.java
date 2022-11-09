@@ -12,7 +12,7 @@ public class BufferInputStream extends InputStream {
 
     public BufferInputStream(CosNByteBuffer buffer) throws IOException {
         if (null == buffer) {
-            throw new IOException("byte buffer is null");
+            throw new IOException("The buffer is null");
         }
         this.buffer = buffer;
         this.buffer.flipRead();

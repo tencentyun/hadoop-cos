@@ -1,6 +1,7 @@
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.COSClient;
+import com.qcloud.cos.COSEncryptionClient;
 import com.qcloud.cos.ClientConfig;
 import com.qcloud.cos.endpoint.SuffixEndpointBuilder;
 import com.qcloud.cos.exception.CosClientException;
@@ -8,6 +9,11 @@ import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.exception.ResponseNotCompleteException;
 import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.internal.SkipMd5CheckStrategy;
+import com.qcloud.cos.internal.crypto.CryptoConfiguration;
+import com.qcloud.cos.internal.crypto.CryptoMode;
+import com.qcloud.cos.internal.crypto.CryptoStorageMode;
+import com.qcloud.cos.internal.crypto.EncryptionMaterials;
+import com.qcloud.cos.internal.crypto.StaticEncryptionMaterialsProvider;
 import com.qcloud.cos.model.AbortMultipartUploadRequest;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.COSObjectSummary;
@@ -41,9 +47,6 @@ import com.qcloud.cos.utils.Base64;
 import com.qcloud.cos.utils.IOUtils;
 import com.qcloud.cos.utils.Jackson;
 import com.qcloud.cos.utils.StringUtils;
-import com.qcloud.cos.COSEncryptionClient;
-import com.qcloud.cos.auth.COSStaticCredentialsProvider;
-import com.qcloud.cos.internal.crypto.*;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -62,6 +65,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -70,7 +74,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ThreadLocalRandom;
-import java.security.KeyPair;
 
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
@@ -375,7 +378,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         "supported.", this.storageClass);
             }
         } catch (Exception e) {
-            // TODO
+            LOG.error("Failed to initialize the COS native filesystem store.", e);
             handleException(e, "");
         }
     }
@@ -624,7 +627,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      *
      * @param key cos key
      * @return uploadId
-     * @throws IOException when fail to get the Multipart Upload ID.
+     * @throws IOException when fail to get the MultipartManager Upload ID.
      */
     public String getUploadId(String key) throws IOException {
         if (null == key || key.length() == 0) {

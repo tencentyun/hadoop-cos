@@ -40,7 +40,7 @@ public final class BufferPool {
     private BlockingQueue<CosNByteBuffer> bufferPool;
 
     private AtomicInteger referCount = new AtomicInteger(0);
-    private AtomicBoolean isInitialize = new AtomicBoolean(false);
+    private AtomicBoolean isInitialized = new AtomicBoolean(false);
 
     private BufferPool() {
     }
@@ -56,9 +56,9 @@ public final class BufferPool {
      */
     public synchronized void initialize(Configuration conf)
             throws IOException {
-        LOG.debug("Initialize the buffer pool.");
-        if (this.isInitialize.get()) {
-            LOG.debug("Buffer pool: [{}] is initialized and referenced once. "
+        LOG.info("Initialize the buffer pool.");
+        if (this.isInitialized.get()) {
+            LOG.info("Buffer pool: [{}] has been initialized and referenced once. "
                     + "current reference count: [{}].", this, this.referCount);
             this.referCount.incrementAndGet();
             return;
@@ -172,7 +172,7 @@ public final class BufferPool {
         }
 
         this.referCount.incrementAndGet();
-        this.isInitialize.set(true);
+        this.isInitialized.set(true);
     }
 
     /**
@@ -181,7 +181,7 @@ public final class BufferPool {
      * @throws IOException if the buffer pool is not initialized
      */
     private void checkInitialize() throws IOException {
-        if (!this.isInitialize.get()) {
+        if (!this.isInitialized.get()) {
             throw new IOException(
                     "The buffer pool has not been initialized yet");
         }
@@ -267,7 +267,7 @@ public final class BufferPool {
     public synchronized void close() {
         LOG.info("Close a buffer pool instance.");
 
-        if (!this.isInitialize.get()) {
+        if (!this.isInitialized.get()) {
             // Closed or not initialized, return directly.
             LOG.warn("The buffer pool has been closed. no changes would be " +
                     "execute.");
@@ -288,7 +288,7 @@ public final class BufferPool {
         }
 
         if (this.referCount.get() == 0) {
-            this.isInitialize.set(false);
+            this.isInitialized.set(false);
         }
     }
 }

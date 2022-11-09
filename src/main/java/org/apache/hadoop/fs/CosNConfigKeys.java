@@ -71,6 +71,22 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_POSIX_EXTENSION_ENABLED = "fs.cosn.posix_extension.enabled";
     public static final boolean DEFAULT_COSN_POSIX_EXTENSION_ENABLED = false;
+    // Auxiliary space to support the POSIX seekable writing semantics.
+    public static final String COSN_POSIX_EXTENSION_TMP_DIR = "fs.cosn.posix_extension.tmp.dir";
+    public static final String DEFAULT_POSIX_EXTENSION_TMP_DIR = String.format(
+        "%s/posix_extension", DEFAULT_TMP_DIR.endsWith("/")
+            ? DEFAULT_TMP_DIR.substring(0, DEFAULT_TMP_DIR.length() - 1)
+            : DEFAULT_TMP_DIR);
+
+    public static final String COSN_POSIX_EXTENSION_TMP_DIR_WATERMARK_HIGH =
+        "fs.cosn.posix_extension.tmp.dir.watermark.high";
+    public static final float DEFAULT_COSN_POSIX_EXTENSION_TMP_DIR_WATERMARK_HIGH = (float) 0.85;
+    public static final String COSN_POSIX_EXTENSION_TMP_DIR_WATERMARK_LOW =
+        "fs.cosn.posix_extension.tmp.dir.watermark.low";
+    public static final float DEFAULT_COSN_POSIX_EXTENSION_TMP_DIR_WATERMARK_LOW = (float) 0.5;
+
+    public static final String COSN_POSIX_EXTENSION_TMP_DIR_QUOTA = "fs.cosn.posix_extension.tmp.dir.quota";
+    public static final long DEFAULT_COSN_POSIX_EXTENSION_TMP_DIR_QUOTA = 2 * Unit.GB;
 
     public static final String COSN_BLOCK_SIZE_KEY = "fs.cosn.block.size";
     public static final long DEFAULT_BLOCK_SIZE = 128 * Unit.MB;
@@ -102,6 +118,14 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // used to control getFileStatus list to judge dir whether exist.
     public static final String FILESTATUS_LIST_MAX_KEYS = "fs.cosn.filestatus.list_max_keys";
     public static final int DEFAULT_FILESTATUS_LIST_MAX_KEYS = 2;
+
+    // used by normal bucket to control max keys of list status
+    public static final String COSN_LIST_MAX_KEYS = "fs.cosn.liststatus.list_max_keys";
+    public static final int DEFAULT_COSN_LIST_MAX_KEYS = 999;
+
+    // used by posix bucket to control max keys of list status
+    public static final String COSN_POSIX_BUCKET_LIST_MAX_KEYS = "fs.cosn.liststatus.posix_bucket.list_max_keys";
+    public static final int DEFAULT_COSN_POSIX_BUCKET_LIST_MAX_KEYS = 5000;
 
     // used by normal bucket to control max keys of list status
     public static final String LISTSTATUS_LIST_MAX_KEYS = "fs.cosn.liststatus.list_max_keys";
@@ -164,7 +188,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String DEFAULT_COSN_POSIX_BUCKET_FS_IMPL = Constants.COSN_POSIX_BUCKET_FS_CHDFS_IMPL;
 
     public static final String COSN_FLUSH_ENABLED = "fs.cosn.flush.enabled";
-    public static final boolean DEFAULT_COSN_FLUSH_ENABLED = true;
+    public static final boolean DEFAULT_COSN_FLUSH_ENABLED = false;
     public static final String COSN_MAPDISK_DELETEONEXIT_ENABLED = "fs.cosn.map_disk.delete_on_exit.enabled";
     public static final boolean DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED = true;
 

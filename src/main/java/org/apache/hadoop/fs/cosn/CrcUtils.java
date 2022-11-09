@@ -2,8 +2,8 @@ package org.apache.hadoop.fs.cosn;
 
 import java.io.IOException;
 
-public class CrcUtil {
-    private CrcUtil() {
+public final class CrcUtils {
+    private CrcUtils() {
     }
 
     /**
