@@ -32,6 +32,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_ENDPOINT_SUFFIX_KEY = "fs.cosn.bucket.endpoint_suffix";
     public static final String COSN_ENDPOINT_SUFFIX_PREV_KEY = "fs.cosn.userinfo.endpoint_suffix";
 
+    public static final String COSN_DISTINGUISH_HOST_FLAG = "fs.cosn.distinguish.host.flag";
+
+    public static final boolean DEFAULT_COSN_DISTINGUISH_HOST_FLAG = false;
+
     public static final String COSN_USE_HTTPS_KEY = "fs.cosn.useHttps";
     public static final boolean DEFAULT_USE_HTTPS = true;   // 现在 COS 强制使用 https 作为访问协议
 
