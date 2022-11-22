@@ -32,6 +32,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_ENDPOINT_SUFFIX_KEY = "fs.cosn.bucket.endpoint_suffix";
     public static final String COSN_ENDPOINT_SUFFIX_PREV_KEY = "fs.cosn.userinfo.endpoint_suffix";
 
+    public static final String COSN_CUSTOM_ENDPOINT_SUFFIX = "fs.cosn.custom.endpoint_suffix";
+
     public static final String COSN_DISTINGUISH_HOST_FLAG = "fs.cosn.distinguish.host.flag";
 
     public static final boolean DEFAULT_COSN_DISTINGUISH_HOST_FLAG = false;

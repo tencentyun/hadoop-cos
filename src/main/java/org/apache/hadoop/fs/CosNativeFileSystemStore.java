@@ -92,8 +92,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean useL5Id = false;
     private int l5UpdateMaxRetryTimes;
 
-    private boolean distinguishHost;
-
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         COSCredentialProviderList cosCredentialProviderList =
                 CosNUtils.createCosCredentialsProviderSet(uri, conf, this.rangerCredentialsClient);
@@ -121,14 +119,31 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
                 throw new IOException(exceptionMsg);
             }
-            config = new ClientConfig(new Region(region));
-            if (null != endpointSuffix) {
-                SuffixEndpointBuilder suffixEndPointBuilder = new SuffixEndpointBuilder(endpointSuffix);
+
+            if (null == region) {
+                config = new ClientConfig(new Region(""));
+                config.setEndPointSuffix(endpointSuffix);
+            } else {
+                config = new ClientConfig(new Region(region));
+            }
+
+            // 以上 region 和 endpoint 配置设置和使用是有问题的, 新版本用以下配置纠正, 后期慢慢退化上面的 endpoint suffix 配置
+            String customEndpointSuffix = conf.get(CosNConfigKeys.COSN_CUSTOM_ENDPOINT_SUFFIX);
+            if (customEndpointSuffix != null && !customEndpointSuffix.isEmpty()) {
+                if (null == region) {
+                    String exceptionMsg = String.format("missing config '%s' or '%s'.",
+                            CosNConfigKeys.COSN_REGION_KEY,
+                            CosNConfigKeys.COSN_REGION_PREV_KEY);
+                    throw new IOException(exceptionMsg);
+                }
+                config = new ClientConfig(new Region(region));
+                SuffixEndpointBuilder suffixEndPointBuilder = new SuffixEndpointBuilder(customEndpointSuffix);
                 config.setEndpointBuilder(suffixEndPointBuilder);
-                this.distinguishHost = conf.getBoolean(CosNConfigKeys.COSN_DISTINGUISH_HOST_FLAG,
+                boolean distinguishHost = conf.getBoolean(CosNConfigKeys.COSN_DISTINGUISH_HOST_FLAG,
                         CosNConfigKeys.DEFAULT_COSN_DISTINGUISH_HOST_FLAG);
-                LOG.info("{}: {}", CosNConfigKeys.COSN_DISTINGUISH_HOST_FLAG, this.distinguishHost);
+                LOG.info("{}: {}", CosNConfigKeys.COSN_DISTINGUISH_HOST_FLAG, distinguishHost);
                 if (distinguishHost) {
+                    // 域名未备案时不设置 header host
                     config.setIsDistinguishHost(true);
                 }
             }
