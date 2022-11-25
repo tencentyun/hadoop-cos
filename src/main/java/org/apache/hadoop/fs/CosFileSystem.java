@@ -483,18 +483,19 @@ public class CosFileSystem extends FileSystem {
                 get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
         if (null != sseAlgortithm && !sseAlgortithm.isEmpty()) {
             String sseKey = this.getConf().get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY);
-            // judge the algorithm to choose which key config to transfer
-            if (sseAlgortithm.equals(Constants.COSN_SSE_MODE_KMS)) {
-                String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
-                        concat(Constants.COSN_POSIX_BUCKET_SSE_KMS_KEYID);
-                this.getConf().set(transferKey, sseKey);
-            } else if (sseAlgortithm.equals(Constants.COSN_SSE_MODE_C)) {
-                String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
-                        concat(Constants.COSN_POSIX_BUCKET_SSE_C_KEY);
-                this.getConf().set(transferKey, sseKey);
+            if (null != sseKey && !sseKey.isEmpty()) {
+                // judge the algorithm to choose which key config to transfer
+                if (sseAlgortithm.equals(Constants.COSN_SSE_MODE_KMS)) {
+                    String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                            concat(Constants.COSN_POSIX_BUCKET_SSE_KMS_KEYID);
+                    this.getConf().set(transferKey, sseKey);
+                } else if (sseAlgortithm.equals(Constants.COSN_SSE_MODE_C)) {
+                    String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                            concat(Constants.COSN_POSIX_BUCKET_SSE_C_KEY);
+                    this.getConf().set(transferKey, sseKey);
+                }
             }
         }
-
 
         // 1. list to get transfer prefix ofs config
         Map<String, String> tmpConf = new HashMap<>();
