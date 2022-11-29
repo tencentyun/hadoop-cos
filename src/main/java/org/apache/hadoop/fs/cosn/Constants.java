@@ -45,4 +45,16 @@ public final class Constants {
 
     public static final String COSN_POSIX_BUCKET_APPID_CONFIG = "fs.ofs.user.appid";
     public static final String COSN_POSIX_BUCKET_REGION_CONFIG = "fs.ofs.bucket.region";
+
+    // ofs relate config
+    public static final String COSN_POSIX_BUCKET_SSE_MODE = "fs.ofs.sse.mode";
+    public static final String COSN_POSIX_BUCKET_SSE_C_KEY = "fs.ofs.sse.c.key";
+    public static final String COSN_POSIX_BUCKET_SSE_KMS_KEYID = "fs.ofs.sse.kms.keyid";
+    public static final String COSN_POSIX_BUCKET_SSE_KMS_CONTEXT = "fs.ofs.sse.kms.context";
+
+    // sse relate
+    public static final String COSN_SSE_MODE_COS = "SSE-COS";
+    public static final String COSN_SSE_MODE_C = "SSE-C";
+    public static final String COSN_SSE_MODE_KMS = "SSE-KMS";
+
 }

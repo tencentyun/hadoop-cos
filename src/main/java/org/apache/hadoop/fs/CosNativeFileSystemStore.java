@@ -2,6 +2,7 @@ package org.apache.hadoop.fs;
 
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.ClientConfig;
+import com.qcloud.cos.endpoint.SuffixEndpointBuilder;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.exception.ResponseNotCompleteException;
@@ -108,23 +109,47 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (null == region) {
                 region = conf.get(CosNConfigKeys.COSN_REGION_PREV_KEY);
             }
+
             String endpointSuffix =
                     conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
             if (null == endpointSuffix) {
                 endpointSuffix =
                         conf.get(CosNConfigKeys.COSN_ENDPOINT_SUFFIX_PREV_KEY);
             }
+
             if (null == region && null == endpointSuffix) {
                 String exceptionMsg = String.format("config '%s' and '%s' specify at least one.",
                         CosNConfigKeys.COSN_REGION_KEY,
                         CosNConfigKeys.COSN_ENDPOINT_SUFFIX_KEY);
                 throw new IOException(exceptionMsg);
             }
+
             if (null == region) {
                 config = new ClientConfig(new Region(""));
                 config.setEndPointSuffix(endpointSuffix);
             } else {
                 config = new ClientConfig(new Region(region));
+            }
+
+            // 以上 region 和 endpoint 配置设置和使用是有问题的, 新版本用以下配置纠正, 后期慢慢退化上面的 endpoint suffix 配置
+            String customEndpointSuffix = conf.get(CosNConfigKeys.COSN_CUSTOM_ENDPOINT_SUFFIX);
+            if (customEndpointSuffix != null && !customEndpointSuffix.isEmpty()) {
+                if (null == region) {
+                    String exceptionMsg = String.format("missing config '%s' or '%s'.",
+                            CosNConfigKeys.COSN_REGION_KEY,
+                            CosNConfigKeys.COSN_REGION_PREV_KEY);
+                    throw new IOException(exceptionMsg);
+                }
+                config = new ClientConfig(new Region(region));
+                SuffixEndpointBuilder suffixEndPointBuilder = new SuffixEndpointBuilder(customEndpointSuffix);
+                config.setEndpointBuilder(suffixEndPointBuilder);
+                boolean distinguishHost = conf.getBoolean(CosNConfigKeys.COSN_DISTINGUISH_HOST_FLAG,
+                        CosNConfigKeys.DEFAULT_COSN_DISTINGUISH_HOST_FLAG);
+                LOG.info("{}: {}", CosNConfigKeys.COSN_DISTINGUISH_HOST_FLAG, distinguishHost);
+                if (distinguishHost) {
+                    // 域名未备案时不设置 header host
+                    config.setIsDistinguishHost(true);
+                }
             }
 
             this.useL5Id = conf.getBoolean(
@@ -158,7 +183,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             customerDomainEndpointResolver.setEndpoint(customerDomain);
             config.setEndpointBuilder(customerDomainEndpointResolver);
         }
-
         boolean useHttps = conf.getBoolean(
                 CosNConfigKeys.COSN_USE_HTTPS_KEY,
                 CosNConfigKeys.DEFAULT_USE_HTTPS);
@@ -209,7 +233,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         String versionNum = getPluginVersionInfo();
         String versionInfo = versionNum.equals("unknown") ? CosNConfigKeys.DEFAULT_USER_AGENT : "cos-hadoop-plugin-v" + versionNum;
-        String userAgent = conf.get(CosNConfigKeys.USER_AGENT,versionInfo);
+        String userAgent = conf.get(CosNConfigKeys.USER_AGENT, versionInfo);
         String emrVersion = conf.get(CosNConfigKeys.TENCENT_EMR_VERSION_KEY);
         if (null != emrVersion && !emrVersion.isEmpty()) {
             userAgent = String.format("%s on %s", userAgent, emrVersion);
@@ -315,7 +339,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
             objectMetadata.setContentLength(length);
             if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
 
             PutObjectRequest putObjectRequest =
@@ -398,7 +422,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         ObjectMetadata objectMetadata = new ObjectMetadata();
         objectMetadata.setContentLength(0);
         if (crc32cEnabled) {
-            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
         }
 
         InputStream input = new ByteArrayInputStream(new byte[0]);
@@ -448,7 +472,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 key, uploadId, partNum, partSize);
         ObjectMetadata objectMetadata = new ObjectMetadata();
         if (crc32cEnabled) {
-            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
         }
 
         UploadPartRequest uploadPartRequest = new UploadPartRequest();
@@ -486,8 +510,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     public PartETag uploadPartCopy(String uploadId, String srcKey, String destKey,
                                    int partNum, long firstByte, long lastByte) throws IOException {
         LOG.debug("Execute a part copy from the source key [{}] to the dest key [{}]. " +
-                "upload id: {}, part number: {}, firstByte: {}, lastByte: {}.",
-                srcKey,destKey, uploadId, partNum, firstByte, lastByte);
+                        "upload id: {}, part number: {}, firstByte: {}, lastByte: {}.",
+                srcKey, destKey, uploadId, partNum, firstByte, lastByte);
         try {
             CopyPartRequest copyPartRequest = new CopyPartRequest();
             copyPartRequest.setSourceBucketName(this.bucketName);
@@ -528,7 +552,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     /**
-     *  get cos upload Id
+     * get cos upload Id
+     *
      * @param key cos key
      * @return uploadId
      * @throws IOException when fail to get the Multipart Upload ID.
@@ -540,7 +565,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         ObjectMetadata objectMetadata = new ObjectMetadata();
         if (crc32cEnabled) {
-            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
         }
 
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
@@ -565,8 +590,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     /**
      * complete cos mpu, sometimes return null complete mpu result
-     * @param key cos key
-     * @param uploadId upload id
+     *
+     * @param key          cos key
+     * @param uploadId     upload id
      * @param partETagList each part etag list
      * @return result
      * @throws IOException when fail to complete the multipart upload.
@@ -582,7 +608,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
             if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
             CompleteMultipartUploadRequest completeMultipartUploadRequest =
                     new CompleteMultipartUploadRequest(bucketName, key, uploadId,
@@ -639,7 +665,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
             String ETag = objectMetadata.getETag();
             String crc64ecm = objectMetadata.getCrc64Ecma();
-            String crc32cm = (String)objectMetadata.getRawMetadataValue(Constants.CRC32C_RESP_HEADER);
+            String crc32cm = (String) objectMetadata.getRawMetadataValue(Constants.CRC32C_RESP_HEADER);
             String versionId = objectMetadata.getVersionId();
             Map<String, byte[]> userMetadata = null;
             if (objectMetadata.getUserMetadata() != null) {
@@ -664,7 +690,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     }
                 }
             }
-			boolean isFile = true;
+            boolean isFile = true;
             if (isPosixBucket) {
                 if (objectMetadata.isFileModeDir() || key.equals(CosNFileSystem.PATH_DELIMITER)) {
                     isFile = false;
@@ -677,7 +703,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             ETag, crc64ecm, crc32cm, versionId,
                             objectMetadata.getStorageClass(), userMetadata);
             // record the last request result info
-            if (info != null)  {
+            if (info != null) {
                 info.setRequestID(objectMetadata.getRequestId());
             }
             LOG.debug("Retrieve the file metadata. cos key: {}, ETag:{}, length:{}, crc64ecm: {}.", key,
@@ -856,7 +882,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
             // 构造原地copy请求来设置用户自定义属性
             if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
 
             CopyObjectRequest copyObjectRequest = new CopyObjectRequest(bucketName, key, bucketName, key);
@@ -873,7 +899,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 callCOSClientWithRetry(copyObjectRequest);
             } catch (Exception e) {
                 String errMsg = String.format("Failed to modify the user-defined attributes. " +
-                                "cos key: %s, attribute: %s, exception: %s.", key, attribute, e);
+                        "cos key: %s, attribute: %s, exception: %s.", key, attribute, e);
                 handleException(new Exception(errMsg), key);
             }
         }
@@ -970,7 +996,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         } catch (CosClientException e) {
             String errMsg =
                     String.format("Retrieving key %s with the byteRangeStart [%d] and the byteRangeEnd [%d] " +
-                                    "occurs an exception: %s.", key, byteRangeStart, byteRangeEnd, e);
+                            "occurs an exception: %s.", key, byteRangeStart, byteRangeEnd, e);
             handleException(new Exception(errMsg), key);
         }
 
@@ -1064,14 +1090,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     (ObjectListing) callCOSClientWithRetry(listObjectsRequest);
         } catch (Exception e) {
             String errMsg = String.format("prefix: %s, delimiter: %s, maxListingLength: %d, "
-                    + "priorLastKey: %s. list occur a exception: %s",
+                            + "priorLastKey: %s. list occur a exception: %s",
                     prefix, (delimiter == null) ? "" : delimiter, maxListingLength, priorLastKey, e);
             LOG.error(errMsg);
             handleException(new Exception(errMsg), prefix);
         }
         if (null == objectListing) {
             String errMessage = String.format("List objects failed for the prefix: %s, delimiter: %s, "
-                    + "maxListingLength:%d, priorLastKey: %s.", prefix, (delimiter == null) ? "" : delimiter,
+                            + "maxListingLength:%d, priorLastKey: %s.", prefix, (delimiter == null) ? "" : delimiter,
                     maxListingLength, priorLastKey);
             handleException(new Exception(errMessage), prefix);
         }
@@ -1134,7 +1160,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
             return ret;
         } else {
-            CosNPartialListing ret =  new CosNPartialListing(objectListing.getNextMarker(),
+            CosNPartialListing ret = new CosNPartialListing(objectListing.getNextMarker(),
                     fileMetadata, commonPrefixMetaData);
             if (info != null) {
                 info.setRequestID(objectListing.getRequestId());
@@ -1160,6 +1186,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     /**
      * delete recursive only used on posix bucket to delete dir recursive
+     *
      * @param key cos key
      * @throws IOException e
      */
@@ -1183,7 +1210,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
             if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
 
             CopyObjectRequest copyObjectRequest =
@@ -1207,6 +1234,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     /**
      * rename operation
+     *
      * @param srcKey src cos key
      * @param dstKey dst cos key
      * @throws IOException when fail to rename the resource key to the dest key.
@@ -1263,7 +1291,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
             if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER,  Constants.CRC32C_REQ_HEADER_VAL);
+                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName, dstKey);
@@ -1378,6 +1406,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.error(errMsg);
         }
     }
+
     private <X> void callCOSClientWithSSECOS(X request, ObjectMetadata objectMetadata) {
         try {
             objectMetadata.setServerSideEncryption(SSEAlgorithm.AES256.getAlgorithm());
@@ -1513,7 +1542,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 } else if (request instanceof CopyPartRequest) {
                     sdkMethod = "copyPartRequest";
                     return this.cosClient.copyPart((CopyPartRequest) request);
-                } else if (request instanceof  HeadBucketRequest) { // use for checking bucket type
+                } else if (request instanceof HeadBucketRequest) { // use for checking bucket type
                     sdkMethod = "headBucket";
                     return this.cosClient.headBucket((HeadBucketRequest) request);
                 } else if (request instanceof RenameRequest) {
@@ -1556,7 +1585,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     throw new IOException("no such method");
                 }
             } catch (ResponseNotCompleteException nce) {
-                if  (this.completeMPUCheckEnabled && request instanceof  CompleteMultipartUploadRequest) {
+                if (this.completeMPUCheckEnabled && request instanceof CompleteMultipartUploadRequest) {
                     String key = ((CompleteMultipartUploadRequest) request).getKey();
                     FileMetadata fileMetadata = this.queryObjectMetadata(key);
                     if (null == fileMetadata) {
@@ -1584,7 +1613,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         LOG.error(errMsg, cse);
                         throw new IOException(errMsg);
                     }
-                } else if (request instanceof  CompleteMultipartUploadRequest && hasErrorCode(statusCode, errorCode)) {
+                } else if (request instanceof CompleteMultipartUploadRequest && hasErrorCode(statusCode, errorCode)) {
                     // complete mpu error code might be in body when status code is 200
                     // double check to head object only works in big data job case which key is not same.
                     String key = ((CompleteMultipartUploadRequest) request).getKey();
@@ -1596,7 +1625,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         return new CompleteMultipartUploadResult();
                     }
                     // here same like the copy request not setting the interval sleep for now
-                    if (retryIndex <= this.maxRetryTimes)  {
+                    if (retryIndex <= this.maxRetryTimes) {
                         LOG.info(errMsg, cse);
                         ++retryIndex;
                     } else {
@@ -1606,9 +1635,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 } else if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
 
-                        if(statusCode == 503) {
+                        if (statusCode == 503) {
                             if (useL5Id) {
-                                if( l5ErrorCodeRetryIndex>= this.l5UpdateMaxRetryTimes) {
+                                if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
                                     // L5上报，进行重试
                                     l5EndpointResolver.updateRouteResult(-1);
                                     l5ErrorCodeRetryIndex = 1;
@@ -1686,7 +1715,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         return statusCode / 100 == 2 && errCode != null && !errCode.isEmpty();
     }
 
-    public COSClient getCOSClient(){
+    public COSClient getCOSClient() {
         return this.cosClient;
     }
 
@@ -1696,7 +1725,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private String getPluginVersionInfo() {
         Properties versionProperties = new Properties();
-        InputStream inputStream= null;
+        InputStream inputStream = null;
         String versionStr = "unknown";
         final String versionFile = "hadoopCosPluginVersionInfo.properties";
         try {
@@ -1704,13 +1733,13 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (inputStream != null) {
                 versionProperties.load(inputStream);
                 versionStr = versionProperties.getProperty("plugin_version");
-            }else {
+            } else {
                 LOG.error("load versionInfo properties failed, propName: {} ", versionFile);
             }
         } catch (IOException e) {
             LOG.error("load versionInfo properties exception, propName: {} ", versionFile);
         } finally {
-            IOUtils.closeQuietly(inputStream,LOG);
+            IOUtils.closeQuietly(inputStream, LOG);
         }
         return versionStr;
     }

@@ -494,24 +494,45 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
+    private  HashMap<String, String> getPOSIXBucketConfigMap() {
+        HashMap<String, String> configMap = new HashMap<>();
+        configMap.put(CosNConfigKeys.COSN_APPID_KEY, Constants.COSN_POSIX_BUCKET_APPID_CONFIG);
+        configMap.put(CosNConfigKeys.COSN_REGION_KEY, Constants.COSN_POSIX_BUCKET_REGION_CONFIG);
+        configMap.put(CosNConfigKeys.COSN_REGION_PREV_KEY, Constants.COSN_POSIX_BUCKET_REGION_CONFIG);
+        configMap.put(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, Constants.COSN_POSIX_BUCKET_SSE_MODE);
+        configMap.put(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_CONTEXT, Constants.COSN_POSIX_BUCKET_SSE_KMS_CONTEXT);
+        return configMap;
+    }
+
     // exclude the ofs original config, filter the ofs config with COSN_CONFIG_TRANSFER_PREFIX
     private void transferOfsConfig() {
-        // 0. re-use the same configuration
-        String appidStr = this.getConf().get(CosNConfigKeys.COSN_APPID_KEY);
-        if (null != appidStr && !appidStr.isEmpty()) {
-            String trsfKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
-                    concat(Constants.COSN_POSIX_BUCKET_APPID_CONFIG);
-            this.getConf().set(trsfKey, appidStr);
+        HashMap<String, String>  configMap = getPOSIXBucketConfigMap();
+        for (String org : configMap.keySet()) {
+            String content = this.getConf().get(org);
+            if (null != content && !content.isEmpty()) {
+                String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                        concat(configMap.get(org));
+                this.getConf().set(transferKey, content);
+            }
         }
 
-        String regionStr = this.getConf().get(CosNConfigKeys.COSN_REGION_KEY);
-        if (null == regionStr) {
-            regionStr = this.getConf().get(CosNConfigKeys.COSN_REGION_PREV_KEY);
-        }
-        if (null != regionStr && !regionStr.isEmpty()) {
-            String trsfKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
-                    concat(Constants.COSN_POSIX_BUCKET_REGION_CONFIG);
-            this.getConf().set(trsfKey, regionStr);
+        // according to different sse mode to set relate key
+        String sseAlgortithm = this.getConf().
+                get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
+        if (null != sseAlgortithm && !sseAlgortithm.isEmpty()) {
+            String sseKey = this.getConf().get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_KEY);
+            if (null != sseKey && !sseKey.isEmpty()) {
+                // judge the algorithm to choose which key config to transfer
+                if (sseAlgortithm.equals(Constants.COSN_SSE_MODE_KMS)) {
+                    String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                            concat(Constants.COSN_POSIX_BUCKET_SSE_KMS_KEYID);
+                    this.getConf().set(transferKey, sseKey);
+                } else if (sseAlgortithm.equals(Constants.COSN_SSE_MODE_C)) {
+                    String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
+                            concat(Constants.COSN_POSIX_BUCKET_SSE_C_KEY);
+                    this.getConf().set(transferKey, sseKey);
+                }
+            }
         }
 
         // 1. list to get transfer prefix ofs config

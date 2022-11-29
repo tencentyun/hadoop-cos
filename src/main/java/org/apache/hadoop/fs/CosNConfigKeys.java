@@ -32,6 +32,12 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_ENDPOINT_SUFFIX_KEY = "fs.cosn.bucket.endpoint_suffix";
     public static final String COSN_ENDPOINT_SUFFIX_PREV_KEY = "fs.cosn.userinfo.endpoint_suffix";
 
+    public static final String COSN_CUSTOM_ENDPOINT_SUFFIX = "fs.cosn.custom.endpoint_suffix";
+
+    public static final String COSN_DISTINGUISH_HOST_FLAG = "fs.cosn.distinguish.host.flag";
+
+    public static final boolean DEFAULT_COSN_DISTINGUISH_HOST_FLAG = false;
+
     public static final String COSN_USE_HTTPS_KEY = "fs.cosn.useHttps";
     public static final boolean DEFAULT_USE_HTTPS = true;   // 现在 COS 强制使用 https 作为访问协议
 
@@ -107,6 +113,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_CONTEXT = "fs.cosn.server-side-encryption.context";
+
     public static final String BASE64_PATTERN = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9" +
             "+/]{2}==)$";
 
