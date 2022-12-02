@@ -70,7 +70,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_UPLOAD_BUFFER_SIZE = -1;
 
     public static final String COSN_POSIX_EXTENSION_ENABLED = "fs.cosn.posix_extension.enabled";
-    public static final boolean DEFAULT_COSN_POSIX_EXTENSION_ENABLED = true;
+    public static final boolean DEFAULT_COSN_POSIX_EXTENSION_ENABLED = false;
     // Auxiliary space to support the POSIX seekable writing semantics.
     public static final String COSN_POSIX_EXTENSION_TMP_DIR = "fs.cosn.posix_extension.tmp.dir";
     public static final String DEFAULT_POSIX_EXTENSION_TMP_DIR = String.format(
