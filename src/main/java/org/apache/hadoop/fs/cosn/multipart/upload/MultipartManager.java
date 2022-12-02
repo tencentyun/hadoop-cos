@@ -173,7 +173,9 @@ public class MultipartManager {
       }
       CosNRandomAccessMappedBuffer lastPart = this.localParts.get(this.localParts.size() - 1);
       lastPart.flipWrite();
-      long startPos = this.localParts.size() * this.partSize - lastPart.remaining();
+      // 这里最后一块的可写的范围是 limit - nextWritePosition，但是补0的范围应该是 limit - maxReadablePosition。
+      long startPos = this.localParts.size() * this.partSize -
+          (lastPart.limit() - lastPart.getMaxReadablePosition());
       long endPos = (partNumber - 1) * this.partSize - 1;
       // 填充
       if (startPos <= endPos) {

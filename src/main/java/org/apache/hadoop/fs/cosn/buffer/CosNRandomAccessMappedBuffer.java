@@ -54,6 +54,10 @@ public class CosNRandomAccessMappedBuffer extends CosNByteBuffer {
     return this;
   }
 
+  public int getMaxReadablePosition() {
+    return this.maxReadablePosition;
+  }
+
   @Override
   public CosNByteBuffer clear() {
     super.clear();
