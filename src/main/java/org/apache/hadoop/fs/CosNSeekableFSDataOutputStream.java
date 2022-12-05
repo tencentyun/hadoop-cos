@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.concurrent.ExecutorService;
 
 /**
  * The POSIX seekable writing semantics.
@@ -68,7 +69,7 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
     private boolean closed;
 
     SeekableOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
-                         String cosKey) throws IOException {
+                         String cosKey, ExecutorService executorService) throws IOException {
       Preconditions.checkNotNull(conf, "hadoop configuration");
       this.nativeStore = Preconditions.checkNotNull(nativeStore, "nativeStore");
       this.cosKey = Preconditions.checkNotNull(cosKey, "cosKey");
@@ -85,7 +86,7 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
         partSize = Constants.MAX_PART_SIZE;
       }
       this.multipartManager = new MultipartManager(
-          this.nativeStore, this.cosKey, partSize);
+          this.nativeStore, this.cosKey, partSize, executorService);
       this.multipartManager.resumeForWrite();
       // 把 pos 置于末尾
       this.pos = this.multipartManager.getCurrentSize();
@@ -116,11 +117,12 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
         int partIndex = (int) (this.pos / this.multipartManager.getPartSize());
         int partOffset = (int) (this.pos % this.multipartManager.getPartSize());
 
-        CosNRandomAccessMappedBuffer part = this.multipartManager.getPart(partIndex + 1);
-        part.flipWrite();
-        part.position(partOffset);
-        int writeBytes = Math.min(part.remaining(), len);
-        part.put(b, off, writeBytes);
+        MultipartManager.LocalPart part = this.multipartManager.getPart(partIndex + 1);
+        part.getBuffer().flipWrite();
+        part.getBuffer().position(partOffset);
+        int writeBytes = Math.min(part.getBuffer().remaining(), len);
+        part.getBuffer().put(b, off, writeBytes);
+        part.setDirty(true);
         len -= writeBytes;
         off += writeBytes;
         this.pos += writeBytes;

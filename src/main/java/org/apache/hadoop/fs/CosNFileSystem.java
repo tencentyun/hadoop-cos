@@ -262,7 +262,7 @@ public class CosNFileSystem extends FileSystem {
             CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
             return new CosNSeekableFSDataOutputStream(
                 new CosNSeekableFSDataOutputStream.SeekableOutputStream(
-                    this.getConf(), this.nativeStore, cosKey), statistics);
+                    this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool), statistics);
         } else {
             return new FSDataOutputStream(new CosNExtendedFSDataOutputStream(
                 this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, true),

@@ -1,6 +1,10 @@
 package org.apache.hadoop.fs.cosn.multipart.upload;
 
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.qcloud.cos.model.PartETag;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.hadoop.fs.FileMetadata;
@@ -19,8 +23,15 @@ import java.io.InputStream;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 
 /**
  * 目前暂时只给随机写流使用
@@ -33,15 +44,18 @@ public class MultipartManager {
   private final long partSize;
   private final NativeFileSystemStore nativeStore;
   private final String cosKey;
-  private String uploadId;
-  private final List<PartETag> partETags = new ArrayList<>();
-  private final List<CosNRandomAccessMappedBuffer> localParts = new ArrayList<>();
+  private volatile String uploadId;
+  private final SortedMap<Integer, PartETag> partETags =
+      Collections.synchronizedSortedMap(new TreeMap<Integer, PartETag>());
+  private final List<LocalPart> localParts = Collections.synchronizedList(
+      new ArrayList<LocalPart>());
+  private final ListeningExecutorService listeningExecutorService;
   private volatile boolean committed;
   private volatile boolean aborted;
   private volatile boolean closed;
 
   public MultipartManager(NativeFileSystemStore nativeStore,
-    String cosKey, long partSize) {
+    String cosKey, long partSize, ExecutorService executorService) {
     this.partSize = partSize;
     this.MAX_FILE_SIZE = this.partSize * 10000L;
     this.nativeStore = nativeStore;
@@ -50,6 +64,8 @@ public class MultipartManager {
     this.committed = true;
     this.aborted = false;
     this.closed = false;
+
+    this.listeningExecutorService = MoreExecutors.listeningDecorator(executorService);
   }
 
   /**
@@ -122,10 +138,10 @@ public class MultipartManager {
       if (copyRemaining > 0) {
         // 最后一块是拉到本地的
         this.initializeNewLocalCurrentPart();
-        CosNRandomAccessMappedBuffer latestBuffer = this.localParts.get(this.localParts.size() - 1);
+        LocalPart lastPart = this.localParts.get(this.localParts.size() - 1);
         lastByte = firstByte + copyRemaining - 1;
-        this.fetchBlockFromRemote(latestBuffer, firstByte, lastByte);
-        latestBuffer.flipRead();
+        this.fetchBlockFromRemote(lastPart.getBuffer(), firstByte, lastByte);
+        lastPart.getBuffer().flipRead();
       }
     }
 
@@ -140,7 +156,7 @@ public class MultipartManager {
     this.aborted = false;
   }
 
-  public CosNRandomAccessMappedBuffer getPart(int partNumber) throws IOException {
+  public LocalPart getPart(int partNumber) throws IOException {
     this.checkOpened();
 
     if (this.aborted) {
@@ -157,7 +173,7 @@ public class MultipartManager {
         String.format("The partNumber [%d] should be a positive integer.", partNumber));
     // 先找一下本地是否有
     if (partNumber <= this.localParts.size()) {
-      CosNRandomAccessMappedBuffer part = this.localParts.get(partNumber - 1);
+      LocalPart part = this.localParts.get(partNumber - 1);
       if (null == part) {
         // 本地没有，需要从远端下载
         this.downloadPart(partNumber);
@@ -171,11 +187,11 @@ public class MultipartManager {
         // 初始化一个空块
         this.initializeNewLocalCurrentPart();
       }
-      CosNRandomAccessMappedBuffer lastPart = this.localParts.get(this.localParts.size() - 1);
-      lastPart.flipWrite();
+      LocalPart lastPart = this.localParts.get(this.localParts.size() - 1);
+      lastPart.getBuffer().flipWrite();
       // 这里最后一块的可写的范围是 limit - nextWritePosition，但是补0的范围应该是 limit - maxReadablePosition。
       long startPos = this.localParts.size() * this.partSize -
-          (lastPart.limit() - lastPart.getMaxReadablePosition());
+          (lastPart.getBuffer().limit() - lastPart.getBuffer().getMaxReadablePosition());
       long endPos = (partNumber - 1) * this.partSize - 1;
       // 填充
       if (startPos <= endPos) {
@@ -237,48 +253,73 @@ public class MultipartManager {
 
     if (this.uploadId == null && this.localParts.size() == 1 && this.localParts.get(0) != null) {
       // 采用单文件上传即可
-      CosNRandomAccessMappedBuffer lastPart = this.localParts.get(0);
+      LocalPart lastPart = this.localParts.get(0);
       byte[] md5Hash = null;
       try {
-        md5Hash = MD5Utils.calculate(lastPart);
+        md5Hash = MD5Utils.calculate(lastPart.getBuffer());
       } catch (NoSuchAlgorithmException | IOException exception) {
         LOG.warn("Failed to calculate the MD5 hash for the single part.", exception);
       }
       this.nativeStore.storeFile(
-          this.cosKey, new BufferInputStream(lastPart), md5Hash, lastPart.flipRead().remaining());
+          this.cosKey, new BufferInputStream(lastPart.getBuffer()), md5Hash,
+          lastPart.getBuffer().flipRead().remaining());
+      lastPart.setDirty(false);
     } else {
       // 块数大于 1，使用 MPU 上传
       // 根据需要初始化一下 MPU
       this.initializeMultipartUploadIfNeed();
       // 首先将 localParts 中的块刷上去
+      List<ListenableFuture<PartETag>> uploadPartFutures = new ArrayList<>();
       for (int index = 0; index < this.localParts.size(); index++) {
-        CosNRandomAccessMappedBuffer part = this.localParts.get(index);
-        if (null != part) {
-          LOG.debug("Starting to upload the part number [{}] for the MPU [{}].",
-              index + 1, this.uploadId);
-          byte[] md5Hash = null;
-          try {
-            md5Hash = MD5Utils.calculate(part);
-          } catch (NoSuchAlgorithmException | IOException exception) {
-            LOG.warn("Failed to calculate the MD5 hash for the part [{}].",
-                index + 1, exception);
-          }
-          part.flipRead();
-          PartETag partETag = this.nativeStore.uploadPart(
-              new BufferInputStream(part),
-              this.cosKey, this.uploadId,
-              index + 1, part.remaining(), md5Hash);
-
-          if (partETag.getPartNumber() > this.partETags.size()) {
-            this.partETags.add(partETag);
-          } else {
-            this.partETags.set(partETag.getPartNumber() - 1, partETag);
-          }
-          LOG.debug("Upload the part number [{}] successfully.", partETag.getPartNumber());
+        final LocalPart part = this.localParts.get(index);
+        if (null != part && part.isDirty()) {
+          final int partNumber = index + 1;
+          ListenableFuture<PartETag> uploadPartFuture = this.listeningExecutorService
+              .submit(new Callable<PartETag>() {
+            @Override
+            public PartETag call() throws Exception {
+              LOG.debug("Starting to upload the part number [{}] for the MPU [{}].",
+                  partNumber, uploadId);
+              byte[] md5Hash = null;
+              try {
+                md5Hash = MD5Utils.calculate(part.getBuffer());
+              } catch (NoSuchAlgorithmException | IOException exception) {
+                LOG.warn("Failed to calculate the MD5 hash for the part [{}].",
+                    partNumber, exception);
+              }
+              part.getBuffer().flipRead();
+              PartETag partETag = nativeStore.uploadPart(
+                  new BufferInputStream(part.getBuffer()),
+                  cosKey, uploadId,
+                  partNumber, part.getBuffer().remaining(), md5Hash);
+              partETags.put(partNumber, partETag);
+              part.setDirty(false);
+              LOG.debug("Upload the part number [{}] successfully.", partETag.getPartNumber());
+              return partETag;
+            }
+          });
+          uploadPartFutures.add(uploadPartFuture);
         }
       }
+      try {
+        LOG.info("Waiting to finish part uploads...");
+        Futures.allAsList(uploadPartFutures).get();
+      } catch (InterruptedException e) {
+        LOG.error("Interrupt the part upload...", e);
+        return;
+      } catch (ExecutionException e) {
+        LOG.error("Cancelling futures...", e);
+        for (ListenableFuture<PartETag> future : uploadPartFutures) {
+          future.cancel(true);
+        }
+        this.abort();
+        String exceptionMsg = String.format("multipart upload with id: %s" +
+            " to %s.", this.uploadId, this.cosKey);
+        throw new IOException(exceptionMsg);
+      }
       // 最后执行 complete 操作
-      this.nativeStore.completeMultipartUpload(this.cosKey, this.uploadId, this.partETags);
+      this.nativeStore.completeMultipartUpload(this.cosKey, this.uploadId,
+          new ArrayList<PartETag>(this.partETags.values()));
       LOG.info("Complete the MPU [{}] successfully.", this.uploadId);
     }
 
@@ -302,11 +343,11 @@ public class MultipartManager {
 
     // 获取当前文件大小
     long currentFileSize = 0;
-    for (CosNRandomAccessMappedBuffer entry : this.localParts) {
+    for (LocalPart entry : this.localParts) {
       if (null == entry) {
         currentFileSize += this.partSize;
       } else {
-        currentFileSize += entry.flipRead().remaining();
+        currentFileSize += entry.getBuffer().flipRead().remaining();
       }
     }
 
@@ -330,11 +371,7 @@ public class MultipartManager {
     PartETag partETag = nativeStore.uploadPartCopy(this.uploadId,
         uploadPartCopy.getSrcKey(), uploadPartCopy.getDestKey(), uploadPartCopy.getPartNumber(),
         uploadPartCopy.getFirstByte(), uploadPartCopy.getLastByte());
-    if (partETags.size() >= uploadPartCopy.getPartNumber()) {
-      partETags.set(uploadPartCopy.getPartNumber() - 1, partETag);
-    } else {
-      partETags.add(partETag);
-    }
+    this.partETags.put(uploadPartCopy.getPartNumber(), partETag);
   }
 
   private void downloadPart(int partNumber) throws IOException {
@@ -361,7 +398,7 @@ public class MultipartManager {
     // 然后从远端下载拉取
     this.fetchBlockFromRemote(randomAccessMappedBuffer, startPos, endPos);
     // 然后放置到 partNumber - 1 的位置即可
-    this.localParts.set(partNumber - 1, randomAccessMappedBuffer);
+    this.localParts.set(partNumber - 1, new LocalPart(randomAccessMappedBuffer));
   }
 
   private void fetchBlockFromRemote(
@@ -414,14 +451,14 @@ public class MultipartManager {
             startPos, endPos));
 
     // 预计算填充后的大小是否会超过最大文件限制
-    CosNRandomAccessMappedBuffer lastPart;
+    LocalPart lastPart;
     if (this.localParts.size() == 0
         || this.localParts.get(this.localParts.size() - 1) == null) {
       this.initializeNewLocalCurrentPart();
     }
     lastPart = this.localParts.get(this.localParts.size() - 1);
-    lastPart.flipWrite();
-    long prePaddingSize = (this.localParts.size() - 1) * partSize + lastPart.remaining()
+    lastPart.getBuffer().flipWrite();
+    long prePaddingSize = (this.localParts.size() - 1) * partSize + lastPart.getBuffer().remaining()
         + (endPos - startPos + 1);
     Preconditions.checkArgument(prePaddingSize <= this.MAX_FILE_SIZE,
         String.format("The bytes [%d] padded exceeds the maximum file limit [%d]",
@@ -438,15 +475,16 @@ public class MultipartManager {
       // 生辰一个新的块
       this.initializeNewLocalCurrentPart();
       lastPart = this.localParts.get(this.localParts.size() - 1);
-      lastPart.flipWrite();
+      lastPart.getBuffer().flipWrite();
       // 然后填充这个块
-      while (lastPart.hasRemaining()) {
+      while (lastPart.getBuffer().hasRemaining()) {
         byte[] chunk = new byte[(int) Math.min(4 * Unit.KB,
-            lastPart.remaining())];
+            lastPart.getBuffer().remaining())];
         Arrays.fill(chunk, (byte) 0);
-        lastPart.put(chunk, 0, chunk.length);
+        lastPart.getBuffer().put(chunk, 0, chunk.length);
+        lastPart.setDirty(true);
       }
-      lastPart.flipRead();
+      lastPart.getBuffer().flipRead();
     }
 
     for (int index = partStartIndex; index <= partEndIndex; index++) {
@@ -455,40 +493,42 @@ public class MultipartManager {
         // 初始化一个新块出来
         this.initializeNewLocalCurrentPart();
       }
-      CosNRandomAccessMappedBuffer part = this.localParts.get(index);
-      part.flipWrite();
+      LocalPart part = this.localParts.get(index);
+      part.getBuffer().flipWrite();
       if (index == partStartIndex) {
         // 起始块，需要定位到块内偏移
-        part.position(partStartOffset);
+        part.getBuffer().position(partStartOffset);
       }
       if (index == partEndIndex) {
         // 填充到 partEndOffset 位置
-        while (part.position() <= partEndOffset) {
-          byte[] chunk = new byte[(int)Math.min(4 * Unit.KB, partEndOffset - part.position() + 1)];
+        while (part.getBuffer().position() <= partEndOffset) {
+          byte[] chunk = new byte[(int)Math.min(4 * Unit.KB, partEndOffset - part.getBuffer().position() + 1)];
           Arrays.fill(chunk, (byte)0);
-          part.put(chunk, 0, chunk.length);
+          part.getBuffer().put(chunk, 0, chunk.length);
+          part.setDirty(true);
         }
       } else {
         // 直接填充到这个 part 的末尾
-        while (part.hasRemaining()) {
+        while (part.getBuffer().hasRemaining()) {
           byte[] chunk = new byte[(int) Math.min(4 * Unit.KB,
-              part.remaining())];
+              part.getBuffer().remaining())];
           Arrays.fill(chunk, (byte) 0);
-          part.put(chunk, 0, chunk.length);
+          part.getBuffer().put(chunk, 0, chunk.length);
+          part.setDirty(true);
         }
       }
-      part.flipRead();
+      part.getBuffer().flipRead();
     }
   }
   private void releaseLocalParts() {
     this.checkOpened();
 
-    Iterator<CosNRandomAccessMappedBuffer> iterator =
+    Iterator<LocalPart> iterator =
         this.localParts.iterator();
     while (iterator.hasNext()) {
-      CosNRandomAccessMappedBuffer part = iterator.next();
+      LocalPart part = iterator.next();
       if (null != part) {
-        LocalRandomAccessMappedBufferPool.getInstance().releaseFile(part);
+        LocalRandomAccessMappedBufferPool.getInstance().releaseFile(part.getBuffer());
       }
       iterator.remove();
     }
@@ -549,11 +589,13 @@ public class MultipartManager {
   private void initializeNewLocalCurrentPart() throws IOException {
     this.checkOpened();
 
-    CosNRandomAccessMappedBuffer lastPart =
+    CosNRandomAccessMappedBuffer buffer =
         this.getLocalPartResource(generateLocalPartName(cosKey,
             this.uploadId, this.localParts.size() + 1), (int) this.partSize);
-    lastPart.clear();
-    this.localParts.add(lastPart);
+    buffer.clear();
+    LocalPart localPart = new LocalPart(buffer);
+    localPart.setDirty(true);
+    this.localParts.add(localPart);
   }
 
   private void reset() {
@@ -605,6 +647,28 @@ public class MultipartManager {
       return String.format("%s_null_%d", cacheFileName, partNumber);
     } else {
       return String.format("%s_%s_%s", cosKey, uploadId, partNumber);
+    }
+  }
+
+  public static final class LocalPart {
+    private final CosNRandomAccessMappedBuffer buffer;
+    private volatile boolean dirty;
+
+    private LocalPart(CosNRandomAccessMappedBuffer buffer) {
+      this.buffer = buffer;
+      this.dirty = false;
+    }
+
+    public CosNRandomAccessMappedBuffer getBuffer() {
+      return this.buffer;
+    }
+
+    public void setDirty(boolean dirty) {
+      this.dirty = dirty;
+    }
+
+    public boolean isDirty() {
+      return this.dirty;
     }
   }
 }
