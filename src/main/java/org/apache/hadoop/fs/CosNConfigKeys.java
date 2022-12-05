@@ -117,6 +117,11 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String BASE64_PATTERN = "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9" +
             "+/]{2}==)$";
 
+    public static final String COSN_CLIENT_SIDE_ENCRYPTION_ENABLED = "fs.cosn.client-side-encryption.enabled";
+    public static final boolean DEFAULT_COSN_CLIENT_SIDE_ENCRYPTION_ENABLED = false;
+    public static final String COSN_CLIENT_SIDE_ENCRYPTION_PUBLIC_KEY_PATH = "fs.cosn.client-side-encryption.public.key.path";
+    public static final String COSN_CLIENT_SIDE_ENCRYPTION_PRIVATE_KEY_PATH = "fs.cosn.client-side-encryption.private.key.path";
+
     // traffic limit
     public static final String TRAFFIC_LIMIT = "fs.cosn.traffic.limit";
     // The default（-1）is unlimited. Considering the late expansion, the initial value is set -1.

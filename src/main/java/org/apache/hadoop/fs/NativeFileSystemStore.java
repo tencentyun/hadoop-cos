@@ -39,16 +39,17 @@ public interface NativeFileSystemStore {
     // which means sometimes CompleteMultipartUploadResult might be null.
     CompleteMultipartUploadResult completeMultipartUpload(String key,
                                                           String uploadId,
+                                                          long fileSize,
                                                           List<PartETag> partETagList) throws IOException;
 
     void abortMultipartUpload(String key, String uploadId) throws IOException;
 
     String getUploadId(String key) throws IOException;
 
-    PartETag uploadPart(File file, String key, String uploadId, int partNum, byte[] md5hash) throws IOException;
+    PartETag uploadPart(File file, String key, String uploadId, int partNum, byte[] md5hash, boolean isLastPart) throws IOException;
 
     PartETag uploadPart(InputStream inputStream, String key, String uploadId,
-                        int partNum, long partSize, byte[] md5hash) throws IOException;
+                        int partNum, long partSize, byte[] md5hash, boolean isLastPart) throws IOException;
 
     PartETag uploadPartCopy(String uploadId, String srcKey, String destKey, int partNum,
                             long firstByte, long lastByte) throws IOException;
@@ -82,6 +83,8 @@ public interface NativeFileSystemStore {
                           String localBlockPath) throws IOException;
 
     long getFileLength(String key) throws IOException;
+
+    void ModifyDataSize(String key, long fileSize) throws IOException;
 
     CosNPartialListing list(String prefix, int maxListingLength) throws IOException;
 
