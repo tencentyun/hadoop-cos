@@ -3,6 +3,7 @@ package org.apache.hadoop.fs;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.qcloud.chdfs.permission.RangerAccessType;
+import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
@@ -65,6 +66,8 @@ public class CosNFileSystem extends FileSystem {
     private ExecutorService boundedCopyThreadPool;
 
     private RangerCredentialsClient rangerCredentialsClient;
+
+    static final String CSE_ALOGORITHM_USER_METADATA = "client-side-encryption-cek-alg";
 
     private int symbolicLinkSizeThreshold;
 
@@ -242,6 +245,21 @@ public class CosNFileSystem extends FileSystem {
     @Override
     public FSDataOutputStream append(Path f, int bufferSize,
                                      Progressable progress) throws IOException {
+        // 如果配置中开启客户端加密，则不支持
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_CLIENT_SIDE_ENCRYPTION_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_CLIENT_SIDE_ENCRYPTION_ENABLED)) {
+            throw new UnsupportedOperationException("Not supported currently with client side encryption enabled");
+        }
+
+        // 如果原文件使用了客户端加密，则不支持
+        try {
+            if(this.getXAttr(f, CSE_ALOGORITHM_USER_METADATA) != null) {
+                throw new UnsupportedOperationException("Not supported currently because the file is encrypted by client side");
+            }
+        } catch (IOException e) {
+            throw new IOException("Failed to check whether the file is encrypted.", e);
+        }
+
         // 这里还需要判断是否是文件存储桶，如果是则可以支持
         if (!this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
                 CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
@@ -267,6 +285,21 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean truncate(Path f, long newLength) throws IOException {
+        // 如果配置中开启客户端加密，则不支持
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_CLIENT_SIDE_ENCRYPTION_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_CLIENT_SIDE_ENCRYPTION_ENABLED)) {
+            throw new UnsupportedOperationException("Not supported currently with client side encryption enabled");
+        }
+
+        // 如果原文件使用了客户端加密，则不支持
+        try {
+            if(this.getXAttr(f, CSE_ALOGORITHM_USER_METADATA) != null) {
+                throw new UnsupportedOperationException("Not supported currently because the file is encrypted by client side");
+            }
+        } catch (IOException e) {
+            throw new IOException("Failed to check whether the file is encrypted.", e);
+        }
+
         if (!this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
                 CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
             throw new UnsupportedOperationException("Not supported currently.");
