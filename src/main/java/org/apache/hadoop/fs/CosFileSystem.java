@@ -506,6 +506,7 @@ public class CosFileSystem extends FileSystem {
 
     // exclude the ofs original config, filter the ofs config with COSN_CONFIG_TRANSFER_PREFIX
     private void transferOfsConfig() {
+        // cosn config -> ofs config -> trsf ofs config
         HashMap<String, String>  configMap = getPOSIXBucketConfigMap();
         for (String org : configMap.keySet()) {
             String content = this.getConf().get(org);
@@ -539,7 +540,12 @@ public class CosFileSystem extends FileSystem {
         Map<String, String> tmpConf = new HashMap<>();
         for (Map.Entry<String, String> entry : this.getConf()) {
             if (entry.getKey().startsWith(Constants.COSN_OFS_CONFIG_PREFIX)) {
-                this.getConf().unset(entry.getKey());
+                // here not unset origin ofs config, because if concurrent init file system
+                // may remove other file system's config when use same configuration
+                // which may cause the init ofs file system failed.
+                // change the other way to init, if transfer config exist use it,
+                // if not use original ofs config.
+                // this.getConf().unset(entry.getKey());
             }
 
             if (entry.getKey().startsWith(Constants.COSN_CONFIG_TRANSFER_PREFIX)) {
