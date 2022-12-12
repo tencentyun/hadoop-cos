@@ -343,8 +343,8 @@ public class CosNFileSystem extends FileSystem {
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
-        if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_FLUSH_ENABLED,
+            CosNConfigKeys.DEFAULT_COSN_FLUSH_ENABLED)) {
             // Need to support the synchronous flush.
             return new FSDataOutputStream(
                     new CosNExtendedFSDataOutputStream(this.getConf(), nativeStore, key,
