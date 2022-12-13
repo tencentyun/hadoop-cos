@@ -4,9 +4,12 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.qcloud.cos.model.CompleteMultipartUploadRequest;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.thirdparty.org.apache.commons.codec.binary.Hex;
+import com.qcloud.cos.exception.CosClientException;
+import com.qcloud.cos.exception.CosServiceException;
 import org.apache.commons.io.output.NullOutputStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Abortable;
@@ -22,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -44,6 +48,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     protected final ListeningExecutorService executorService;
     protected final String cosKey;
     protected final long partSize;
+    protected long fileSize;
     protected MultipartUpload multipartUpload;
     protected int currentPartNumber;
     protected CosNByteBuffer currentPartBuffer;
@@ -55,6 +60,10 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     protected boolean flushCOSEnabled;
     protected MessageDigest currentPartMessageDigest;
     protected ConsistencyChecker consistencyChecker;
+    protected boolean needUploadCurrentPart;
+    protected boolean clientEncryptionEnabled;
+    public static  final String CSE_MPU_FILE_SIZE = "client-side-encryption-data-size";
+    public static  final String CSE_MPU_KEY_SUFFIX = "._CSE_";
 
     /**
      * Output stream
@@ -73,7 +82,12 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         this.nativeStore = nativeStore;
         this.executorService = MoreExecutors.listeningDecorator(executorService);
 
-        this.cosKey = key;
+        //if client encryption is enabled, upload temporary files
+        if(clientEncryptionEnabled){
+            this.cosKey = key + CSE_MPU_KEY_SUFFIX;
+        } else {
+            this.cosKey = key;
+        }
         long partSize = conf.getLong(
                 CosNConfigKeys.COSN_UPLOAD_PART_SIZE_KEY, CosNConfigKeys.DEFAULT_UPLOAD_PART_SIZE);
         if (partSize < Constants.MIN_PART_SIZE) {
@@ -101,6 +115,13 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         this.committed = false;
         this.closed = false;
 
+        this.fileSize = 0;
+
+        this.needUploadCurrentPart = false;
+
+        this.clientEncryptionEnabled = conf.getBoolean(CosNConfigKeys.COSN_CLIENT_SIDE_ENCRYPTION_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_CLIENT_SIDE_ENCRYPTION_ENABLED);
+
         if (conf.getBoolean(CosNConfigKeys.COSN_UPLOAD_PART_CHECKSUM_ENABLED_KEY,
                 CosNConfigKeys.DEFAULT_UPLOAD_PART_CHECKSUM_ENABLED)) {
             LOG.info("The MPU-UploadPart checksum is enabled, and the message digest algorithm is {}.", "MD5");
@@ -120,7 +141,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE);
         if (uploadChecksEnabled) {
             LOG.info("The consistency checker is enabled.");
-            this.consistencyChecker = new ConsistencyChecker(this.nativeStore, this.cosKey);
+            this.consistencyChecker = new ConsistencyChecker(this.nativeStore, this.cosKey, this.clientEncryptionEnabled);
         } else {
             LOG.warn("The consistency checker is disabled.");
             this.consistencyChecker = null;
@@ -130,12 +151,19 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     @Override
     public synchronized void write(byte[] b, int off, int len) throws IOException {
         this.checkOpened();
-
+        this.fileSize += len;
         if (this.currentPartBuffer == null) {
             initNewCurrentPartResource();
         }
 
         while (len > 0) {
+            if(needUploadCurrentPart){
+                this.currentPartOutputStream.flush();
+                this.currentPartOutputStream.close();
+                this.uploadCurrentPart(false);
+                this.initNewCurrentPartResource();
+                needUploadCurrentPart = false;
+            }
             long writeBytes;
             if (this.currentPartWriteBytes + len > this.partSize) {
                 writeBytes = this.partSize - this.currentPartWriteBytes;
@@ -151,15 +179,11 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 this.consistencyChecker.writeBytes(b, off, (int) writeBytes);
             }
             if (this.currentPartWriteBytes >= this.partSize) {
-                this.currentPartOutputStream.flush();
-                this.currentPartOutputStream.close();
-                this.uploadCurrentPart(false);
-                this.initNewCurrentPartResource();
+                needUploadCurrentPart = true;
             }
             len -= writeBytes;
             off += writeBytes;
         }
-
     }
 
     @Override
@@ -244,7 +268,13 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             // Single file upload
             byte[] digestHash = this.currentPartMessageDigest == null ? null : this.currentPartMessageDigest.digest();
             BufferInputStream currentPartBufferInputStream = new BufferInputStream(this.currentPartBuffer);
-            nativeStore.storeFile(this.cosKey, currentPartBufferInputStream,
+            String key = this.cosKey;
+
+            //if client encryption is enabled, remove the suffix of key
+            if(clientEncryptionEnabled) {
+                key = key.substring(0, key.length() - CSE_MPU_KEY_SUFFIX.length());
+            }
+            nativeStore.storeFile(key, currentPartBufferInputStream,
                     digestHash, this.currentPartBuffer.remaining());
         } else {
             if (null != this.multipartUpload) {
@@ -318,12 +348,19 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             return;
         }
 
+        //if client encryption is enabled, and call the Flush(closeStream = false) at the same time, need return
+        if(clientEncryptionEnabled && !closeStream) {
+            return;
+        }
+
         try {
             if (this.currentPartNumber > 1 && null != this.multipartUpload) {
                 if (this.currentPartWriteBytes > 0) {
                     this.uploadCurrentPart(true);
                 }
-                this.multipartUpload.waitForFinishPartUploads();
+                if(!this.clientEncryptionEnabled) {
+                    this.multipartUpload.waitForFinishPartUploads();
+                }
             }
         } finally {
             // resume for append write in last part.
@@ -385,7 +422,12 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         byte[] digestHash = this.currentPartMessageDigest == null ? null : this.currentPartMessageDigest.digest();
         UploadPart uploadPart = new UploadPart(this.currentPartNumber, this.currentPartBuffer,
                 digestHash, isLastPart);
-        this.multipartUpload.uploadPartAsync(uploadPart);
+        if(!clientEncryptionEnabled) {
+            this.multipartUpload.uploadPartAsync(uploadPart);
+        }
+        else {
+            this.multipartUpload.uploadPartSync(uploadPart);
+        }
     }
 
     private void resumeCurrentPartMessageDigest() throws IOException {
@@ -408,6 +450,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     protected class MultipartUpload {
         protected final String uploadId;
         protected final Map<Integer, ListenableFuture<PartETag>> partETagFutures;
+        protected final List<PartETag> partETags;
         protected final AtomicInteger partsSubmitted;
         protected final AtomicInteger partsUploaded;
         protected final AtomicLong bytesSubmitted;
@@ -421,11 +464,11 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         }
 
         protected MultipartUpload(String cosKey, String uploadId) throws IOException {
-            this(cosKey, uploadId, null, 0, 0, 0, 0);
+            this(cosKey, uploadId, null,null, 0, 0, 0, 0);
         }
 
         protected MultipartUpload(String cosKey, String uploadId, Map<Integer, ListenableFuture<PartETag>> partETagFutures,
-                                  int partsSubmitted, int partsUploaded, long bytesSubmitted, long bytesUploaded) throws IOException {
+                                  List<PartETag> partETags, int partsSubmitted, int partsUploaded, long bytesSubmitted, long bytesUploaded) throws IOException {
             if (null == uploadId) {
                 uploadId = nativeStore.getUploadId(cosKey);
             }
@@ -437,6 +480,12 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 this.partETagFutures = new HashMap<>();
             } else {
                 this.partETagFutures = partETagFutures;
+            }
+
+            if (null == partETags) {
+                this.partETags =  new LinkedList<>();
+            } else {
+                this.partETags = partETags;
             }
 
             this.partsSubmitted = new AtomicInteger(partsSubmitted);
@@ -480,6 +529,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             return "MultipartUpload{" +
                     "uploadId='" + uploadId + '\'' +
                     ", partETagFutures=" + partETagFutures +
+                    ", partETags=" + partETags +
                     ", partsSubmitted=" + partsSubmitted +
                     ", partsUploaded=" + partsUploaded +
                     ", bytesSubmitted=" + bytesSubmitted +
@@ -510,13 +560,13 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                             currentThread.setContextClassLoader(this.getClass().getClassLoader());
 
                             try {
-                                LOG.debug("Start to upload the part: {}", uploadPart);
+                                LOG.debug("Start to upload the part Async: {}", uploadPart);
                                 PartETag partETag = (nativeStore).uploadPart(
                                         new BufferInputStream(uploadPart.getCosNByteBuffer()),
                                         this.localKey,
                                         this.localUploadId,
                                         uploadPart.getPartNumber(),
-                                        uploadPart.getPartSize(), uploadPart.getMd5Hash());
+                                        uploadPart.getPartSize(), uploadPart.getMd5Hash(), uploadPart.isLast);
                                 partsUploaded.incrementAndGet();
                                 bytesUploaded.addAndGet(uploadPart.getPartSize());
                                 return partETag;
@@ -528,6 +578,37 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                         }
                     });
             this.partETagFutures.put(uploadPart.partNumber, partETagListenableFuture);
+        }
+
+        protected void uploadPartSync(final UploadPart uploadPart) throws IOException {
+            if (this.isCompleted() || this.isAborted()) {
+                throw new IOException(String.format("The MPU [%s] has been closed or aborted. " +
+                        "Can not execute the upload operation.", this));
+            }
+            partsSubmitted.incrementAndGet();
+            bytesSubmitted.addAndGet(uploadPart.getPartSize());
+            try {
+                LOG.debug("Start to upload the part Sync: {}", uploadPart);
+                PartETag partETag = (nativeStore).uploadPart(
+                        new BufferInputStream(uploadPart.getCosNByteBuffer()),
+                        cosKey,
+                        uploadId,
+                        uploadPart.getPartNumber(),
+                        uploadPart.getPartSize(), uploadPart.getMd5Hash(), uploadPart.isLast);
+                partsUploaded.incrementAndGet();
+                bytesUploaded.addAndGet(uploadPart.getPartSize());
+                partETags.add(partETag);
+            }catch (CosServiceException e) {
+                LOG.error("Upload part sync upload falied: ", e);
+                throw e;
+            } catch (CosClientException e) {
+                LOG.error("Upload part sync upload falied: ", e);
+                throw e;
+            } finally {
+                if (!uploadPart.isLast) {
+                    BufferPool.getInstance().returnBuffer(uploadPart.getCosNByteBuffer());
+                }
+            }
         }
 
         protected List<PartETag> waitForFinishPartUploads() throws IOException {
@@ -555,14 +636,28 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 throw new IOException(String.format("fail to complete the MPU [%s]. "
                         + "It has been completed or aborted.", this));
             }
-            final List<PartETag> futurePartETagList = this.waitForFinishPartUploads();
-            if (null == futurePartETagList) {
+            final List<PartETag> PartETagList;
+            if(!clientEncryptionEnabled) {
+                PartETagList = this.waitForFinishPartUploads();
+            }
+            else {
+                PartETagList = this.partETags;
+            }
+            if (null == PartETagList) {
                 throw new IOException("failed to multipart upload to cos, abort it.");
             }
 
             // notice sometimes complete result may be null
             CompleteMultipartUploadResult completeResult =
-                    nativeStore.completeMultipartUpload(cosKey, this.uploadId, new LinkedList<>(futurePartETagList));
+                    nativeStore.completeMultipartUpload(cosKey, this.uploadId, fileSize, new LinkedList<>(PartETagList));
+            //开启客户端加密后 修改dataSize元数据
+            if(clientEncryptionEnabled) {
+                try {
+                    nativeStore.ModifyDataSize(cosKey, fileSize);
+                } catch (IOException e){
+                    LOG.info("Completing the MPU [{}].", this.getUploadId());
+                }
+            }
             this.completed = true;
             LOG.info("The MPU [{}] has been completed.", this.getUploadId());
         }
