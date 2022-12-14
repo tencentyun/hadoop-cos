@@ -18,16 +18,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.security.*;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec;
 
 public final class CosNUtils {
     private static final Logger LOG = LoggerFactory.getLogger(CosNUtils.class);
@@ -225,52 +215,5 @@ public final class CosNUtils {
             return originBucketName;
         }
         return originBucketName + "-" + appidStr;
-    }
-
-
-    public static KeyPair loadAsymKeyPair(String pubKeyPath, String priKeyPath)
-            throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
-        // load public
-        File filePublicKey = new File(pubKeyPath);
-        FileInputStream fis = new FileInputStream(filePublicKey);
-        byte[] encodedPublicKey = new byte[(int) filePublicKey.length()];
-        fis.read(encodedPublicKey);
-        fis.close();
-
-        // load private
-        File filePrivateKey = new File(priKeyPath);
-        fis = new FileInputStream(filePrivateKey);
-        byte[] encodedPrivateKey = new byte[(int) filePrivateKey.length()];
-        fis.read(encodedPrivateKey);
-        fis.close();
-
-        // build RSA KeyPair
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(encodedPublicKey);
-        PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
-
-        PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(encodedPrivateKey);
-        PrivateKey privateKey = keyFactory.generatePrivate(privateKeySpec);
-
-        return new KeyPair(publicKey, privateKey);
-    }
-
-    public static void buildAndSaveAsymKeyPair(String pubKeyPath, String priKeyPath) throws IOException, NoSuchAlgorithmException {
-        KeyPairGenerator keyGenerator = KeyPairGenerator.getInstance("RSA");
-        SecureRandom srand = new SecureRandom();
-        keyGenerator.initialize(1024, srand);
-        KeyPair keyPair = keyGenerator.generateKeyPair();
-        PrivateKey privateKey = keyPair.getPrivate();
-        PublicKey publicKey = keyPair.getPublic();
-
-        X509EncodedKeySpec x509EncodedKeySpec = new X509EncodedKeySpec(publicKey.getEncoded());
-        FileOutputStream fos = new FileOutputStream(pubKeyPath);
-        fos.write(x509EncodedKeySpec.getEncoded());
-        fos.close();
-
-        PKCS8EncodedKeySpec pkcs8EncodedKeySpec = new PKCS8EncodedKeySpec(privateKey.getEncoded());
-        fos = new FileOutputStream(priKeyPath);
-        fos.write(pkcs8EncodedKeySpec.getEncoded());
-        fos.close();
     }
 }
