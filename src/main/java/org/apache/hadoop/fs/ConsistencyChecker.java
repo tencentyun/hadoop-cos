@@ -19,8 +19,6 @@ public class ConsistencyChecker {
     private volatile boolean finished;
     private CheckResult checkResult;
 
-    private boolean useClientSideEncryption;
-
     public static final class CheckResult {
         private String fsScheme;     // FileSystem scheme
         private String key;
@@ -34,15 +32,13 @@ public class ConsistencyChecker {
 
         private String description;
 
-        private boolean useClientSideEncryption;
-
         public CheckResult() {
-            this("", "", -1, -1, -1, -1, false, null);
+            this("", "", -1, -1, -1, -1, null);
         }
 
         public CheckResult(String scheme, String cosKey,
                            long expectedLength, long realLength,
-                           long expectedCrc64Value, long realCrc64Value, boolean useClientSideEncryption, Exception e) {
+                           long expectedCrc64Value, long realCrc64Value, Exception e) {
             this.fsScheme = scheme;
             this.key = cosKey;
             this.expectedLength = expectedLength;
@@ -51,7 +47,6 @@ public class ConsistencyChecker {
             this.realCrc64Value = realCrc64Value;
             this.exception = e;
             this.description = "";
-            this.useClientSideEncryption = useClientSideEncryption;
         }
 
         public String getFsScheme() {
@@ -83,15 +78,14 @@ public class ConsistencyChecker {
                     succeeded = false;
                     break;
                 }
+
                 if (this.expectedLength != this.realLength) {
                     this.description = String.format("The expected length is not equal to the the real length. " +
                             "expected length: %d, real length: %d.", this.expectedLength, this.realLength);
                     succeeded = false;
                     break;
                 }
-                if(this.useClientSideEncryption){
-                    break;
-                }
+
                 if (this.expectedCrc64Value != this.realCrc64Value) {
                     this.description = String.format("The CRC64 checksum verify failed. " +
                             "expected CRC64 value: %d, real CRC64 value: %d",
@@ -103,11 +97,8 @@ public class ConsistencyChecker {
 
             if (succeeded) {
                 this.description = String.format("File verification succeeded. " +
-                        "expected length: %d, real length: %d", this.expectedLength, this.realLength);
-                if(!useClientSideEncryption){
-                    this.description = this.description + String.format(", expected CRC64 value: %d, real CRC64 value: %d",
-                            this.expectedCrc64Value, this.realCrc64Value);
-                }
+                        "expected length: %d, real length: %d, expected CRC64 value: %d, real CRC64 value: %d",
+                        this.expectedLength, this.realLength, this.expectedCrc64Value, this.realCrc64Value);
             } else {
                 this.description = String.format("File verification failure. %s", this.description);
             }
@@ -160,12 +151,12 @@ public class ConsistencyChecker {
         }
     }
 
-    public ConsistencyChecker(final NativeFileSystemStore nativeStore, final String cosKey, boolean useClientSideEncryption) throws IOException {
-        this(nativeStore, cosKey, null, 0, useClientSideEncryption);
+    public ConsistencyChecker(final NativeFileSystemStore nativeStore, final String cosKey) throws IOException {
+        this(nativeStore, cosKey, null, 0);
     }
 
     public ConsistencyChecker(final NativeFileSystemStore nativeStore, final String cosKey,
-                              CRC64 crc64, long writtenBytesLength, boolean useClientSideEncryption) throws IOException {
+                              CRC64 crc64, long writtenBytesLength) throws IOException {
         if (null == nativeStore || null == cosKey || cosKey.isEmpty()) {
             throw new IOException(String.format(
                     "Native FileSystem store [%s] or key [%s] is illegal.", nativeStore, cosKey));
@@ -182,8 +173,7 @@ public class ConsistencyChecker {
         }
 
         this.finished = false;
-        this.useClientSideEncryption = useClientSideEncryption;
-        this.checkResult = new CheckResult("cosn", this.key, -1, -1, -1, -1, useClientSideEncryption, null);
+        this.checkResult = new CheckResult("cosn", this.key, -1, -1, -1, -1, null);
     }
 
     public synchronized void writeBytes(byte[] writeBytes, int offset, int length) {
@@ -241,6 +231,6 @@ public class ConsistencyChecker {
         this.writtenBytesLength = 0;
         this.crc64.reset();
         this.finished = false;
-        this.checkResult = new CheckResult("cosn", this.key, -1, -1, -1, -1, this.useClientSideEncryption, null);
+        this.checkResult = new CheckResult("cosn", this.key, -1, -1, -1, -1, null);
     }
 }
