@@ -39,14 +39,14 @@ public interface NativeFileSystemStore {
     // which means sometimes CompleteMultipartUploadResult might be null.
     CompleteMultipartUploadResult completeMultipartUpload(String key,
                                                           String uploadId,
-                                                          long fileSize,
                                                           List<PartETag> partETagList) throws IOException;
 
     void abortMultipartUpload(String key, String uploadId) throws IOException;
 
     String getUploadId(String key) throws IOException;
 
-    PartETag uploadPart(File file, String key, String uploadId, int partNum, byte[] md5hash, boolean isLastPart) throws IOException;
+    PartETag uploadPart(File file, String key, String uploadId,
+                        int partNum, byte[] md5hash, boolean isLastPart) throws IOException;
 
     PartETag uploadPart(InputStream inputStream, String key, String uploadId,
                         int partNum, long partSize, byte[] md5hash, boolean isLastPart) throws IOException;

@@ -654,12 +654,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      * @param key          cos key
      * @param uploadId     upload id
      * @param partETagList each part etag list
-     * @param fileSize     file size
      * @return result
      * @throws IOException when fail to complete the multipart upload.
      */
     public CompleteMultipartUploadResult completeMultipartUpload(
-            String key, String uploadId, long fileSize, List<PartETag> partETagList) throws IOException {
+            String key, String uploadId, List<PartETag> partETagList) throws IOException {
         Collections.sort(partETagList, new Comparator<PartETag>() {
             @Override
             public int compare(PartETag o1, PartETag o2) {

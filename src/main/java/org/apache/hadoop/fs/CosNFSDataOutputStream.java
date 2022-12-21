@@ -657,7 +657,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
 
             // notice sometimes complete result may be null
             CompleteMultipartUploadResult completeResult =
-                    nativeStore.completeMultipartUpload(cosKey, this.uploadId, fileSize, new LinkedList<>(PartETagList));
+                    nativeStore.completeMultipartUpload(cosKey, this.uploadId, new LinkedList<>(PartETagList));
             //开启客户端加密后 修改dataSize元数据
             if(clientEncryptionEnabled) {
                 try {
