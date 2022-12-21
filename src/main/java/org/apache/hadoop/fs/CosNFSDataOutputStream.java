@@ -4,12 +4,11 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.qcloud.cos.model.CompleteMultipartUploadRequest;
+import com.qcloud.cos.exception.CosClientException;
+import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.thirdparty.org.apache.commons.codec.binary.Hex;
-import com.qcloud.cos.exception.CosClientException;
-import com.qcloud.cos.exception.CosServiceException;
 import org.apache.commons.io.output.NullOutputStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Abortable;
@@ -25,7 +24,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -62,7 +60,6 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     protected ConsistencyChecker consistencyChecker;
     protected boolean needUploadCurrentPart;
     protected boolean clientEncryptionEnabled;
-    public static  final String CSE_MPU_FILE_SIZE = "client-side-encryption-data-size";
     public static  final String CSE_MPU_KEY_SUFFIX = "._CSE_";
 
     /**
