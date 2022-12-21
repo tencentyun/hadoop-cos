@@ -112,7 +112,7 @@ public class CosNPosixExtensionDataOutputStream extends CosNFSDataOutputStream {
                 // initialize the consistency checker.
                 BigInteger bigInteger = new BigInteger(fileMetadata.getCrc64ecm());
                 this.consistencyChecker = new ConsistencyChecker(super.nativeStore, super.cosKey,
-                        new CRC64(bigInteger.longValue()), fileMetadata.getLength());
+                        new CRC64(bigInteger.longValue()), fileMetadata.getLength(), this.clientEncryptionEnabled);
             }
         } catch (Exception e) {
             LOG.error("Fail to resume for writing. Abort it.", e);
