@@ -513,16 +513,15 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     public PartETag uploadPart(File file, String key, String uploadId,
-                               int partNum, byte[] md5Hash, boolean isLastPart) throws IOException {
+                               int partNum, byte[] md5Hash, Boolean isLastPart) throws IOException {
         InputStream inputStream = new ResettableFileInputStream(file);
         return uploadPart(inputStream, key, uploadId, partNum, file.length(), md5Hash, isLastPart);
     }
 
-
     @Override
     public PartETag uploadPart(
             InputStream inputStream,
-            String key, String uploadId, int partNum, long partSize, byte[] md5Hash, boolean isLastPart) throws IOException {
+            String key, String uploadId, int partNum, long partSize, byte[] md5Hash, Boolean isLastPart) throws IOException {
         LOG.debug("Upload the part to the cos key [{}]. upload id: {}, part number: {}, part size: {}",
                 key, uploadId, partNum, partSize);
         ObjectMetadata objectMetadata = new ObjectMetadata();
@@ -537,7 +536,12 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         uploadPartRequest.setPartNumber(partNum);
         uploadPartRequest.setPartSize(partSize);
         uploadPartRequest.setObjectMetadata(objectMetadata);
-        uploadPartRequest.setLastPart(isLastPart);
+        if(isLastPart == null && clientEncryptionEnabled) {
+            throw new IOException("when client encryption is enabled, isLastPart can't be null");
+        }
+        if(isLastPart != null) {
+            uploadPartRequest.setLastPart(isLastPart);
+        }
         if (null != md5Hash && !this.clientEncryptionEnabled) {
             uploadPartRequest.setMd5Digest(Base64.encodeAsString(md5Hash));
         }
@@ -560,6 +564,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
 
         return null;
+    }
+
+    public PartETag uploadPart(File file, String key, String uploadId,
+                               int partNum, byte[] md5Hash) throws IOException {
+        InputStream inputStream = new ResettableFileInputStream(file);
+        return uploadPart(inputStream, key, uploadId, partNum, file.length(), md5Hash);
+    }
+
+    public PartETag uploadPart(
+            InputStream inputStream,
+            String key, String uploadId, int partNum, long partSize, byte[] md5Hash) throws IOException {
+        return uploadPart(inputStream, key, uploadId, partNum, partSize, md5Hash, null);
     }
 
     @Override

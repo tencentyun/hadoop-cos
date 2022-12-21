@@ -46,10 +46,16 @@ public interface NativeFileSystemStore {
     String getUploadId(String key) throws IOException;
 
     PartETag uploadPart(File file, String key, String uploadId,
-                        int partNum, byte[] md5hash, boolean isLastPart) throws IOException;
+                        int partNum, byte[] md5hash, Boolean isLastPart) throws IOException;
 
     PartETag uploadPart(InputStream inputStream, String key, String uploadId,
-                        int partNum, long partSize, byte[] md5hash, boolean isLastPart) throws IOException;
+                        int partNum, long partSize, byte[] md5hash, Boolean isLastPart) throws IOException;
+
+    PartETag uploadPart(File file, String key, String uploadId,
+                        int partNum, byte[] md5hash) throws IOException;
+
+    PartETag uploadPart(InputStream inputStream, String key, String uploadId,
+                        int partNum, long partSize, byte[] md5hash) throws IOException;
 
     PartETag uploadPartCopy(String uploadId, String srcKey, String destKey, int partNum,
                             long firstByte, long lastByte) throws IOException;
