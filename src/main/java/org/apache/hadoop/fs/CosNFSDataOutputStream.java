@@ -120,7 +120,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         }
 
         if (conf.getBoolean(CosNConfigKeys.COSN_UPLOAD_PART_CHECKSUM_ENABLED_KEY,
-                CosNConfigKeys.DEFAULT_UPLOAD_PART_CHECKSUM_ENABLED)) {
+                CosNConfigKeys.DEFAULT_COSN_UPLOAD_CHECKS_ENABLE)) {
             LOG.info("The MPU-UploadPart checksum is enabled, and the message digest algorithm is {}.", "MD5");
             try {
                 this.currentPartMessageDigest = MessageDigest.getInstance("MD5");
