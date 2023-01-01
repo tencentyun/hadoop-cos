@@ -187,6 +187,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_POSIX_BUCKET_FS_IMPL = "fs.cosn.posix_bucket.fs.impl";
     public static final String DEFAULT_COSN_POSIX_BUCKET_FS_IMPL = Constants.COSN_POSIX_BUCKET_FS_CHDFS_IMPL;
 
+    public static final String COSN_SYMBOLIC_SIZE_THRESHOLD = "fs.cosn.symbolic_link.sizeThreshold";
+    public static final int DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD = 4096;
+
     public static final String COSN_FLUSH_ENABLED = "fs.cosn.flush.enabled";
     public static final boolean DEFAULT_COSN_FLUSH_ENABLED = false;
     public static final String COSN_MAPDISK_DELETEONEXIT_ENABLED = "fs.cosn.map_disk.delete_on_exit.enabled";
@@ -195,6 +198,11 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // range control, whether meta engine need query own ranger. can be used when transfer from ofs to cos ranger
     public static final String COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = "fs.cosn.posix.bucket.use_ofs_ranger.enabled";
     public static final boolean DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = false;
+
+    // POSIX bucket does not support the SYMLINK interface by default.
+    @Deprecated
+    public static final String COSN_POSIX_BUCKET_SUPPORT_SYMLINK_ENABLED = "fs.cosn.posix_bucket.support_symlink.enabled";
+    public static final boolean DEFAULT_COSN_POSIX_BUCKET_SUPPORT_SYMLINK_ENABLED = false;
 
     // create() recursive check dst dir which increase the getFileStatus call which increase head and list qps.
     // please notice when set to false may lose data, so only change to false when you know what are you doing.
