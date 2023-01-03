@@ -17,7 +17,7 @@ import java.nio.MappedByteBuffer;
  */
 class CosNMappedBuffer extends CosNByteBuffer {
     private static final Logger LOG =
-            LoggerFactory.getLogger(MappedByteBuffer.class);
+            LoggerFactory.getLogger(CosNMappedBuffer.class);
 
     private File file;
     private RandomAccessFile randomAccessFile;
@@ -30,12 +30,12 @@ class CosNMappedBuffer extends CosNByteBuffer {
     }
 
     @Override
-    boolean isDirect() {
+    protected boolean isDirect() {
         return true;
     }
 
     @Override
-    boolean isMapped() {
+    protected boolean isMapped() {
         return true;
     }
 

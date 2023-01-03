@@ -43,7 +43,7 @@ public class CRC32CCheckSum extends FileChecksum {
 
     @Override
     public byte[] getBytes() {
-        return CrcUtil.intToBytes(crc32c);
+        return CrcUtils.intToBytes(crc32c);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.COSClient;
+import com.qcloud.cos.COSEncryptionClient;
 import com.qcloud.cos.ClientConfig;
 import com.qcloud.cos.endpoint.SuffixEndpointBuilder;
 import com.qcloud.cos.exception.CosClientException;
@@ -8,6 +9,11 @@ import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.exception.ResponseNotCompleteException;
 import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.internal.SkipMd5CheckStrategy;
+import com.qcloud.cos.internal.crypto.CryptoConfiguration;
+import com.qcloud.cos.internal.crypto.CryptoMode;
+import com.qcloud.cos.internal.crypto.CryptoStorageMode;
+import com.qcloud.cos.internal.crypto.EncryptionMaterials;
+import com.qcloud.cos.internal.crypto.StaticEncryptionMaterialsProvider;
 import com.qcloud.cos.model.AbortMultipartUploadRequest;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.COSObjectSummary;
@@ -19,6 +25,8 @@ import com.qcloud.cos.model.CopyPartResult;
 import com.qcloud.cos.model.DeleteObjectRequest;
 import com.qcloud.cos.model.GetObjectMetadataRequest;
 import com.qcloud.cos.model.GetObjectRequest;
+import com.qcloud.cos.model.GetSymlinkRequest;
+import com.qcloud.cos.model.GetSymlinkResult;
 import com.qcloud.cos.model.HeadBucketRequest;
 import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.cos.model.InitiateMultipartUploadRequest;
@@ -29,6 +37,8 @@ import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.model.PutObjectRequest;
 import com.qcloud.cos.model.PutObjectResult;
+import com.qcloud.cos.model.PutSymlinkRequest;
+import com.qcloud.cos.model.PutSymlinkResult;
 import com.qcloud.cos.model.RenameRequest;
 import com.qcloud.cos.model.SSEAlgorithm;
 import com.qcloud.cos.model.SSECOSKeyManagementParams;
@@ -41,9 +51,6 @@ import com.qcloud.cos.utils.Base64;
 import com.qcloud.cos.utils.IOUtils;
 import com.qcloud.cos.utils.Jackson;
 import com.qcloud.cos.utils.StringUtils;
-import com.qcloud.cos.COSEncryptionClient;
-import com.qcloud.cos.auth.COSStaticCredentialsProvider;
-import com.qcloud.cos.internal.crypto.*;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -62,6 +69,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -70,7 +78,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ThreadLocalRandom;
-import java.security.KeyPair;
 
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
@@ -375,7 +382,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         "supported.", this.storageClass);
             }
         } catch (Exception e) {
-            // TODO
+            LOG.error("Failed to initialize the COS native filesystem store.", e);
             handleException(e, "");
         }
     }
@@ -624,7 +631,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      *
      * @param key cos key
      * @return uploadId
-     * @throws IOException when fail to get the Multipart Upload ID.
+     * @throws IOException when fail to get the MultipartManager Upload ID.
      */
     public String getUploadId(String key) throws IOException {
         if (null == key || key.length() == 0) {
@@ -830,6 +837,43 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         // judge if the key is directory
         key = key + CosNFileSystem.PATH_DELIMITER;
         return queryObjectMetadata(key, info);
+    }
+
+    @Override
+    public CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink) throws IOException {
+        return this.retrieveSymlinkMetadata(symlink, null);
+    }
+
+    @Override
+    public CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink, CosNResultInfo info) throws IOException {
+        LOG.debug("Get the symlink [{}]'s metadata.", symlink);
+        try {
+            GetSymlinkRequest getSymlinkRequest = new GetSymlinkRequest(
+                this.bucketName, symlink, null);
+            GetSymlinkResult getSymlinkResult = (GetSymlinkResult) callCOSClientWithRetry(getSymlinkRequest);
+            if (null != info) {
+                info.setRequestID(getSymlinkResult.getRequestId());
+            }
+            return new CosNSymlinkMetadata(symlink, getSymlinkResult.getContentLength(),
+                getSymlinkResult.getLastModified(), false,
+                getSymlinkResult.getETag(), null, null,
+                getSymlinkResult.getVersionId(), StorageClass.Standard.toString(), getSymlinkResult.getTarget());
+        } catch (CosServiceException cosServiceException) {
+            if (null != info) {
+                info.setRequestID(cosServiceException.getRequestId());
+            }
+            if (cosServiceException.getStatusCode() == 400 && cosServiceException.getErrorCode()
+                .compareToIgnoreCase("NotSymlink") == 0) {
+                LOG.debug("The key [{}] is not a symlink.", symlink);
+                return null;
+            }
+            if (cosServiceException.getStatusCode() != 404) {
+                String errMsg = String.format("Retrieve the symlink metadata failed. symlink: %s, exception: %s.",
+                    symlink, cosServiceException);
+                handleException(new Exception(errMsg), symlink);
+            }
+        }
+        return null;
     }
 
     @Override
@@ -1279,6 +1323,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName, dstKey);
+            // 如果 sourceFileMetadata 为 null，则有可能这个文件是个软链接，但是也兼容copy
             if (null != sourceFileMetadata && null != sourceFileMetadata.getStorageClass()) {
                 copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
             }
@@ -1308,6 +1353,44 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         } else {
             posixBucketRename(srcKey, dstKey);
         }
+    }
+
+    @Override
+    public void createSymlink(String symLink, String targetKey) throws IOException {
+        LOG.debug("Create a symlink [{}] for the target object key [{}].", symLink, targetKey);
+        try {
+            PutSymlinkRequest putSymlinkRequest = new PutSymlinkRequest(this.bucketName, symLink, targetKey);
+            PutSymlinkResult putSymlinkResult = (PutSymlinkResult) callCOSClientWithRetry(putSymlinkRequest);
+        } catch (Exception e) {
+            String errMsg = String.format(
+                "Create the symlink failed. symlink: %s, target cos key: %s, exception: %s.",
+                symLink, targetKey, e);
+            handleException(new Exception(errMsg), symLink);
+        }
+    }
+
+    @Override
+    public String getSymlink(String symlink) throws IOException {
+        LOG.debug("Get the symlink [{}].", symlink);
+        try {
+            GetSymlinkRequest getSymlinkRequest = new GetSymlinkRequest(
+                this.bucketName, symlink, null);
+            GetSymlinkResult getSymlinkResult = (GetSymlinkResult) callCOSClientWithRetry(getSymlinkRequest);
+            return getSymlinkResult.getTarget();
+        } catch (CosServiceException cosServiceException) {
+            if (cosServiceException.getStatusCode() == 400 &&
+                cosServiceException.getErrorCode().compareToIgnoreCase("NotSymlink") == 0) {
+                LOG.debug("The key [{}] is not a symlink.", symlink);
+                return null;
+            }
+
+            if (cosServiceException.getStatusCode() != 404) {
+                String errMsg = String.format(
+                    "Get the symlink failed. symlink: %s, exception: %s.", symlink, cosServiceException);
+                handleException(new Exception(errMsg), symlink);
+            }
+        }
+        return null;
     }
 
     public void normalBucketRename(String srcKey, String dstKey) throws IOException {
@@ -1599,6 +1682,12 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     sdkMethod = "abortMultipartUpload";
                     this.cosClient.abortMultipartUpload((AbortMultipartUploadRequest) request);
                     return new Object();
+                } else if (request instanceof PutSymlinkRequest) {
+                    sdkMethod = "putSymlink";
+                    return this.cosClient.putSymlink((PutSymlinkRequest) request);
+                } else if (request instanceof GetSymlinkRequest) {
+                    sdkMethod = "getSymlink";
+                    return this.cosClient.getSymlink((GetSymlinkRequest) request);
                 } else {
                     throw new IOException("no such method");
                 }

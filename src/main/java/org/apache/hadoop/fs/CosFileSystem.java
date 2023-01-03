@@ -7,6 +7,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
@@ -18,7 +19,11 @@ import com.qcloud.chdfs.permission.RangerAccessType;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
-import java.util.*;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -386,6 +391,36 @@ public class CosFileSystem extends FileSystem {
         if (token != null)
             return token;
         return super.getDelegationToken(renewer);
+    }
+
+    @Override
+    public void createSymlink(Path target, Path link, boolean createParent)
+            throws AccessControlException, FileAlreadyExistsException, FileNotFoundException,
+            ParentNotDirectoryException, UnsupportedFileSystemException, IOException {
+        LOG.debug("Create a symlink [{}] for the path [{}]. createParent: {}.", link, target, createParent);
+        checkPermission(link, RangerAccessType.WRITE);
+        this.actualImplFS.createSymlink(target, link, createParent);
+    }
+
+    @Override
+    public FileStatus getFileLinkStatus(Path f)
+            throws AccessControlException, FileNotFoundException,
+            UnsupportedFileSystemException, IOException {
+        LOG.debug("Get the link [{}]'s status.", f);
+        checkPermission(f, RangerAccessType.READ);
+        return this.actualImplFS.getFileLinkStatus(f);
+    }
+
+    @Override
+    public boolean supportsSymlinks() {
+        return this.actualImplFS.supportsSymlinks();
+    }
+
+    @Override
+    public Path getLinkTarget(Path f) throws IOException {
+        LOG.debug("Get the target path the link [{}] refer.", f);
+        checkPermission(f, RangerAccessType.READ);
+        return this.actualImplFS.getLinkTarget(f);
     }
 
     // some other implements of ofs, for now only support

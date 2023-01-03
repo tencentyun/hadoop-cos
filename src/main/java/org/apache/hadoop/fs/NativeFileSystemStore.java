@@ -65,6 +65,10 @@ public interface NativeFileSystemStore {
 
     FileMetadata retrieveMetadata(String key, CosNResultInfo info) throws IOException;
 
+    CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink) throws IOException;
+
+    CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink, CosNResultInfo info) throws IOException;
+
     byte[] retrieveAttribute(String key, String attribute) throws IOException;
 
     void storeDirAttribute(String key, String attribute, byte[] value) throws IOException;
@@ -108,6 +112,10 @@ public interface NativeFileSystemStore {
     void copy(String srcKey, String dstKey) throws IOException;
 
     void rename(String srcKey, String dstKey) throws IOException;
+
+    void createSymlink(String symLink, String targetKey) throws IOException;
+
+    String getSymlink(String symlink) throws IOException;
 
     /**
      * Delete all keys with the given prefix. Used for testing.
