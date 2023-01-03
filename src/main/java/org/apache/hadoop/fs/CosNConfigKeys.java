@@ -12,7 +12,7 @@ import org.apache.hadoop.fs.cosn.Unit;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.1.8";
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.2.0";
 
     public static final String TENCENT_EMR_VERSION_KEY = "fs.emr.version";
 
@@ -201,8 +201,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     // POSIX bucket does not support the SYMLINK interface by default.
     @Deprecated
-    public static final String COSN_POSIX_BUCKET_SUPPORT_SYMLINK_ENABLED = "fs.cosn.posix_bucket.support_symlink.enabled";
-    public static final boolean DEFAULT_COSN_POSIX_BUCKET_SUPPORT_SYMLINK_ENABLED = false;
+    public static final String COSN_SUPPORT_SYMLINK_ENABLED = "fs.cosn.support_symlink.enabled";
+    public static final boolean DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED = false;
 
     // create() recursive check dst dir which increase the getFileStatus call which increase head and list qps.
     // please notice when set to false may lose data, so only change to false when you know what are you doing.

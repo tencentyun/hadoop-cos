@@ -3,7 +3,6 @@ package org.apache.hadoop.fs;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.qcloud.chdfs.permission.RangerAccessType;
-import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
@@ -1303,12 +1302,9 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean supportsSymlinks() {
-        if (this.isPosixBucket) {
-            return this.getConf().getBoolean(
-                CosNConfigKeys.COSN_POSIX_BUCKET_SUPPORT_SYMLINK_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_POSIX_BUCKET_SUPPORT_SYMLINK_ENABLED);
-        }
-        return true;
+      return this.getConf().getBoolean(
+          CosNConfigKeys.COSN_SUPPORT_SYMLINK_ENABLED,
+          CosNConfigKeys.DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED);
     }
 
     @Override
