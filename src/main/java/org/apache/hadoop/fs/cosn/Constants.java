@@ -57,4 +57,9 @@ public final class Constants {
     public static final String COSN_SSE_MODE_C = "SSE-C";
     public static final String COSN_SSE_MODE_KMS = "SSE-KMS";
 
+    // Prefix for all cosn properties: {@value}.
+    public static final String FS_COSN_PREFIX = "fs.cosn.";
+    // Prefix for cosn bucket-specific properties: {@value}.
+    public static final String FS_COSN_BUCKET_PREFIX = "fs.cosn.bucket.";
+
 }
