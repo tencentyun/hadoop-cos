@@ -5,6 +5,10 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.Unit;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
 /**
  * This class contains constants for configuration keys used in the cos file system.
  */
@@ -12,7 +16,21 @@ import org.apache.hadoop.fs.cosn.Unit;
 @InterfaceStability.Unstable
 public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String USER_AGENT = "fs.cosn.user.agent";
-    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v8.2.0";
+
+    private static String version;
+
+    static {
+        String path = "META-INF/maven/com.qcloud.cos/hadoop-cos/pom.properties";
+        Properties properties = new Properties();
+        try (InputStream in = CosNConfigKeys.class.getClassLoader().getResourceAsStream(path)) {
+            properties.load(in);
+            version = properties.getProperty("version");
+        } catch (IOException e) {
+            version = "unknown";
+        }
+    }
+
+    public static final String DEFAULT_USER_AGENT = "cos-hadoop-plugin-v" + version;
 
     public static final String TENCENT_EMR_VERSION_KEY = "fs.emr.version";
 
