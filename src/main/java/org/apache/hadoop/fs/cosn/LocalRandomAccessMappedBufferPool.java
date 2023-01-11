@@ -50,10 +50,14 @@ public final class LocalRandomAccessMappedBufferPool {
     // 获取用户配置的 POSIX extension 特性目录
     String cacheDirPath = configuration.get(
         CosNConfigKeys.COSN_POSIX_EXTENSION_TMP_DIR, CosNConfigKeys.DEFAULT_POSIX_EXTENSION_TMP_DIR);
-    this.cacheDir = new File(cacheDirPath);
+    // 正式构建 MappedFactory 用于后续创建本地缓存文件
+    boolean deleteOnExit = configuration.getBoolean(
+        CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED, CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
+    this.mappedBufferFactory = new CosNRandomAccessMappedBufferFactory(cacheDirPath, deleteOnExit);
 
+    this.cacheDir = new File(cacheDirPath);
     // 检查当前目录空间是否足够
-    long usableSpace = this.cacheDir.getUsableSpace();
+    long usableSpace = this.cacheDir.getParentFile().getUsableSpace();
     long quotaSize = configuration.getLong(CosNConfigKeys.COSN_POSIX_EXTENSION_TMP_DIR_QUOTA,
         CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_TMP_DIR_QUOTA);
     Preconditions.checkArgument(quotaSize <= usableSpace,
@@ -74,11 +78,6 @@ public final class LocalRandomAccessMappedBufferPool {
     // 粗略地计算高低水位的容量
     this.highWaterMarkRemainingSpace = (long) (quotaSize * (1 - highWaterMark));
     this.lowWaterMarkRemainingSpace = (long) (quotaSize * (1 - lowWaterMark));
-
-    // 正式构建 MappedFactory 用于后续创建本地缓存文件
-    boolean deleteOnExit = configuration.getBoolean(
-        CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED, CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
-    this.mappedBufferFactory = new CosNRandomAccessMappedBufferFactory(cacheDirPath, deleteOnExit);
 
     this.referCount.incrementAndGet();
     this.isInitialized.set(true);
