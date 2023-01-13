@@ -543,30 +543,33 @@ public class CosNFileSystem extends FileSystem {
             throw new FileNotFoundException("No such file or directory in posix bucket'" + absolutePath + "'");
         }
 
-        if (!key.endsWith(PATH_DELIMITER)) {
-            key += PATH_DELIMITER;
-        }
+        if (this.getConf().getBoolean(CosNConfigKeys.FILESTATUS_LIST_MAX_KEYS,
+            CosNConfigKeys.DEFAULT_FILESTATUS_LIST_OP_ENABLED)) {
+            if (!key.endsWith(PATH_DELIMITER)) {
+                key += PATH_DELIMITER;
+            }
 
-        int maxKeys = this.getConf().getInt(
+            int maxKeys = this.getConf().getInt(
                 CosNConfigKeys.FILESTATUS_LIST_MAX_KEYS,
                 CosNConfigKeys.DEFAULT_FILESTATUS_LIST_MAX_KEYS);
 
-        LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
-        CosNResultInfo listObjectsResultInfo = new CosNResultInfo();
-        CosNPartialListing listing = this.nativeStore.list(key, maxKeys, listObjectsResultInfo);
-        if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
-            LOG.debug("List the cos key [{}] to find that it is a directory.", key);
-            return newDirectory(absolutePath);
-        }
+            LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
+            CosNResultInfo listObjectsResultInfo = new CosNResultInfo();
+            CosNPartialListing listing = this.nativeStore.list(key, maxKeys, listObjectsResultInfo);
+            if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
+                LOG.debug("List the cos key [{}] to find that it is a directory.", key);
+                return newDirectory(absolutePath);
+            }
 
-        if (listObjectsResultInfo.isKeySameToPrefix()) {
-            LOG.info("List the cos key [{}] same to prefix, getSymlink-id:[{}] head-id:[{}], " +
-                            "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key,
+            if (listObjectsResultInfo.isKeySameToPrefix()) {
+                LOG.info("List the cos key [{}] same to prefix, getSymlink-id:[{}] head-id:[{}], " +
+                        "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key,
                     getSymlinkResultInfo.getRequestID(), getObjectMetadataResultInfo.getRequestID(),
                     listObjectsResultInfo.getRequestID(), listObjectsResultInfo.isKeySameToPrefix(),
                     Thread.currentThread().getId(), Thread.currentThread().getName());
+            }
+            LOG.debug("Can not find the cos key [{}] on COS.", key);
         }
-        LOG.debug("Can not find the cos key [{}] on COS.", key);
 
         throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
     }

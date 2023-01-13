@@ -226,4 +226,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // please notice when set to false may lose data, so only change to false when you know what are you doing.
     public static final String COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED = "fs.cosn.create.recursive.check_dst_dir.enabled";
     public static final boolean DEFAULT_COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED = true;
+
+    public static final String COSN_FILESTATUS_LIST_OP_ENABLED = "fs.cosn.filestatus.list.op.enabled";
+    public static final boolean DEFAULT_FILESTATUS_LIST_OP_ENABLED = true;
 }
