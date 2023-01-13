@@ -49,8 +49,8 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
   }
 
   @Override
-  public void abort() {
-    this.seekableOutputStream.abort();
+  public void doAbort() {
+    this.seekableOutputStream.doAbort();
   }
 
   @Override
@@ -170,9 +170,9 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
     }
 
     @Override
-    public synchronized void abort() {
+    public synchronized void doAbort() {
       if (this.closed) {
-        // 已经关闭了，无需额外 abort
+        // 已经关闭了，无需额外 doAbort
         return;
       }
 

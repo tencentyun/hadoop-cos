@@ -117,7 +117,7 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
             }
         } catch (Exception e) {
             LOG.error("Failed to resume for writing. Abort it.", e);
-            super.abort();
+            super.doAbort();
             throw new IOException(e);
         }
     }

@@ -612,7 +612,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     public void abortMultipartUpload(String key, String uploadId) throws IOException {
-        LOG.info("Ready to abort the multipart upload. cos key: {}, upload id: {}.", key, uploadId);
+        LOG.info("Ready to doAbort the multipart upload. cos key: {}, upload id: {}.", key, uploadId);
 
         try {
             AbortMultipartUploadRequest abortMultipartUploadRequest =

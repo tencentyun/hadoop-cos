@@ -550,10 +550,10 @@ public class MultipartManager {
         LOG.info("Begin to release remote parts for the cos key [{}]. upload id: {}.",
             cosKey, this.uploadId);
         try {
-          // abort 掉远程块，就相当于清理掉云端的 parts 了。
+          // doAbort 掉远程块，就相当于清理掉云端的 parts 了。
           nativeStore.abortMultipartUpload(cosKey, this.uploadId);
         } catch (IOException e) {
-          // 如果 abort 发生异常，则原先的 partCopy 块就残留在云端了。不影响当前使用，只需要用户手动去存储桶清理一下即可。
+          // 如果 doAbort 发生异常，则原先的 partCopy 块就残留在云端了。不影响当前使用，只需要用户手动去存储桶清理一下即可。
           LOG.warn("Abort the MPU [{}] for the cos key [{}].", this.uploadId, cosKey, e);
         }
       }

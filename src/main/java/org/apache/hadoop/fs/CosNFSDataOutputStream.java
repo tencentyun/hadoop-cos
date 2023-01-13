@@ -238,7 +238,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     }
 
     @Override
-    public synchronized void abort() throws IOException {
+    public synchronized void doAbort() throws IOException {
         if (this.closed) {
             return;
         }
@@ -652,7 +652,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 PartETagList = this.partETags;
             }
             if (null == PartETagList) {
-                throw new IOException("failed to multipart upload to cos, abort it.");
+                throw new IOException("failed to multipart upload to cos, doAbort it.");
             }
 
             // notice sometimes complete result may be null
@@ -673,7 +673,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         protected void abort() throws IOException {
             LOG.info("Aborting the MPU [{}].", this.getUploadId());
             if (this.isCompleted() || this.isAborted()) {
-                throw new IOException(String.format("fail to abort the MPU [%s]. "
+                throw new IOException(String.format("fail to doAbort the MPU [%s]. "
                         + "It has been completed or aborted.", this.getUploadId()));
             }
             nativeStore.abortMultipartUpload(cosKey, this.uploadId);
