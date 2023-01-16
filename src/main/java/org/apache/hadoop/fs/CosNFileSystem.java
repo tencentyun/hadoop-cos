@@ -543,7 +543,7 @@ public class CosNFileSystem extends FileSystem {
             throw new FileNotFoundException("No such file or directory in posix bucket'" + absolutePath + "'");
         }
 
-        if (this.getConf().getBoolean(CosNConfigKeys.FILESTATUS_LIST_MAX_KEYS,
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_OP_ENABLED,
             CosNConfigKeys.DEFAULT_FILESTATUS_LIST_OP_ENABLED)) {
             if (!key.endsWith(PATH_DELIMITER)) {
                 key += PATH_DELIMITER;
