@@ -570,6 +570,28 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
+    // CHDFS Support Only
+    public void enableSSECos() throws IOException {
+        LOG.debug("enable SSE-COS");
+        checkInitialized();
+        if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
+            ((CHDFSHadoopFileSystemAdapter) this.actualImplFS).enableSSECos();
+        } else {
+            throw new UnsupportedOperationException("Not supported currently");
+        }
+    }
+
+    // CHDFS Support Only
+    public void disableSSE() throws IOException {
+        LOG.debug("disable SSE");
+        checkInitialized();
+        if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
+            ((CHDFSHadoopFileSystemAdapter) this.actualImplFS).disableSSE();
+        } else {
+            throw new UnsupportedOperationException("Not supported currently");
+        }
+    }
+
     @Override
     public String getCanonicalServiceName() {
         if (useOFSRanger()) {
