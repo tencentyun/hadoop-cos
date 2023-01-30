@@ -1,6 +1,8 @@
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.auth.COSCredentialsProvider;
+import org.apache.commons.lang3.StringUtils;
+import com.google.common.base.Preconditions;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.*;
 import org.apache.hadoop.io.retry.RetryPolicies;
@@ -28,6 +30,8 @@ import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+
+import static org.apache.hadoop.fs.cosn.Constants.*;
 
 public final class CosNUtils {
     private static final Logger LOG = LoggerFactory.getLogger(CosNUtils.class);
@@ -273,4 +277,38 @@ public final class CosNUtils {
         fos.write(pkcs8EncodedKeySpec.getEncoded());
         fos.close();
     }
+
+    public static Configuration propagateBucketOptions(Configuration source, String bucket) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(bucket),
+                "bucket is null or empty");
+        final String bucketPrefix = FS_COSN_BUCKET_PREFIX + bucket +'.';
+        LOG.debug("propagating entries under {}", bucketPrefix);
+        final Configuration dest = new Configuration(source);
+        for (Map.Entry<String, String> entry : source) {
+            final String key = entry.getKey();
+            final String value = entry.getValue();
+            if (!key.startsWith(bucketPrefix) || bucketPrefix.equals(key)) {
+                continue;
+            }
+            //  bucket prefix to strip it
+            final String stripped = key.substring(bucketPrefix.length());
+            if ("impl".equals(stripped)) {
+                // tell user off, here for now not skip "bucket." configurations
+                // because of cosn original region or endpoint has sub string "bucket"
+                // it is better to change all original without sub string "bucket"
+                LOG.debug("Ignoring bucket option {}", key);
+            }  else {
+                // propagate the value, building a new origin field.
+                // to track overwrites, the generic key is overwritten even if
+                // already matches the new one.
+                String origin = "[" + StringUtils.join(
+                        source.getPropertySources(key), ", ") +"]";
+                final String generic = FS_COSN_PREFIX + stripped;
+                LOG.debug("Updating {} from {}", generic, origin);
+                dest.set(generic, value, key + " via " + origin);
+            }
+        }
+        return dest;
+    }
+
 }
