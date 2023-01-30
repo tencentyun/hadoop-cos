@@ -67,7 +67,7 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
     private boolean committed;
     private boolean closed;
 
-    SeekableOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
+    public SeekableOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
                          String cosKey, ExecutorService executorService) throws IOException {
       Preconditions.checkNotNull(conf, "hadoop configuration");
       this.nativeStore = Preconditions.checkNotNull(nativeStore, "nativeStore");

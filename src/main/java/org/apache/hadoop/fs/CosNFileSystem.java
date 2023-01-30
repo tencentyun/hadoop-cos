@@ -22,6 +22,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -280,9 +282,51 @@ public class CosNFileSystem extends FileSystem {
         String cosKey = pathToKey(absolutePath);
         if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
             CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
-            return new CosNSeekableFSDataOutputStream(
-                new CosNSeekableFSDataOutputStream.SeekableOutputStream(
-                    this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool), statistics);
+            // 这里使用类的动态加载和创建机制是为了在默认场景下（即不支持随机写的场景），可以不依赖 ofs-sdk-definition 这个 jar 包。
+            Class<?> seekableOutputStreamClass;
+            Object seekableOutputStream;
+            try {
+                seekableOutputStreamClass = Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream");
+                Constructor<?> constructor = seekableOutputStreamClass.getConstructor(Configuration.class, NativeFileSystemStore.class,
+                    String.class, ExecutorService.class);
+                seekableOutputStream = constructor.newInstance(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool);
+            } catch (ClassNotFoundException e) {
+                throw new IOException("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream can not be found. " +
+                    "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);
+            } catch (InvocationTargetException e) {
+                throw new IOException(e);
+            } catch (NoSuchMethodException e) {
+                throw new IOException("Failed to find the constructor of the " +
+                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
+            } catch (InstantiationException e) {
+                throw new IOException("Failed to create the object of the " +
+                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
+            } catch (IllegalAccessException e) {
+                throw new IOException("Failed to access the constructor of the " +
+                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
+            }
+
+            try {
+                Class<?> seekableFSDataOutputStreamClass = Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream");
+                Constructor<?> constructor = seekableFSDataOutputStreamClass.getConstructor(
+                    Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream"),
+                    FileSystem.Statistics.class);
+                return (FSDataOutputStream) constructor.newInstance(seekableOutputStream, statistics);
+            } catch (ClassNotFoundException e) {
+                throw new IOException("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream can not be found. " +
+                    "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);
+            } catch (NoSuchMethodException e) {
+                throw new IOException("Failed to find the constructor of the " +
+                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
+            } catch (InvocationTargetException e) {
+                throw new IOException(e);
+            } catch (InstantiationException e) {
+                throw new IOException("Failed to create the object of the " +
+                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
+            } catch (IllegalAccessException e) {
+                throw new IOException("Failed to access the constructor of the " +
+                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
+            }
         } else {
             return new FSDataOutputStream(new CosNExtendedFSDataOutputStream(
                 this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, true),
