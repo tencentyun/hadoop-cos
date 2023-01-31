@@ -229,7 +229,4 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_FILESTATUS_LIST_OP_ENABLED = "fs.cosn.filestatus.list.op.enabled";
     public static final boolean DEFAULT_FILESTATUS_LIST_OP_ENABLED = true;
-
-    public static final String COSN_PART_CONFLICT_CHECK_ENABLED = "fs.cosn.part.conflict.check.enabled";
-    public static final boolean DEFAULT_COSN_PART_CONFLICT_CHECK_ENABLED = true;
 }

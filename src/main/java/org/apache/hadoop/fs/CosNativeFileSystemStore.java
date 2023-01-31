@@ -221,8 +221,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
         this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,
                 CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
-        this.partConflictCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_PART_CONFLICT_CHECK_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_PART_CONFLICT_CHECK_ENABLED);
         this.clientEncryptionEnabled = conf.getBoolean(CosNConfigKeys.COSN_CLIENT_SIDE_ENCRYPTION_ENABLED,
                 CosNConfigKeys.DEFAULT_COSN_CLIENT_SIDE_ENCRYPTION_ENABLED);
 
@@ -570,26 +568,22 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             String errMsg = String.format("The current thread:%d, "
                             + "cos key: %s, upload id: %s, part num: %d, exception: %s",
                     Thread.currentThread().getId(), key, uploadId, partNum, cse);
-            if (!this.partConflictCheckEnabled) {
-                handleException(new Exception(errMsg), key);
-            } else {
-                int statusCode = cse.getStatusCode();
-                if (409 == statusCode) {
-                    // conflict upload same upload part, because of nginx syn retry,
-                    // sometimes 31s reconnect to cgi, but client side default 30s timeout,
-                    // which may cause the retry request and previous request arrive at cgi at same time.
-                    // so we for now use list parts to double-check this part whether exist.
-                    CosNPartListing partListing = listParts(key, uploadId);
-                    PartETag partETag = isPartExist(partListing, partNum, partSize);
-                    if (null == partETag) {
-                        handleException(new Exception(errMsg), key);
-                    }
-                    LOG.warn("Upload the file [{}] uploadId [{}], part [{}] concurrently." +
-                            key, uploadId, partNum);
-                    return partETag;
-                } else {
+            int statusCode = cse.getStatusCode();
+            if (409 == statusCode) {
+                // conflict upload same upload part, because of nginx syn retry,
+                // sometimes 31s reconnect to cgi, but client side default 30s timeout,
+                // which may cause the retry request and previous request arrive at cgi at same time.
+                // so we for now use list parts to double-check this part whether exist.
+                CosNPartListing partListing = listParts(key, uploadId);
+                PartETag partETag = isPartExist(partListing, partNum, partSize);
+                if (null == partETag) {
                     handleException(new Exception(errMsg), key);
                 }
+                LOG.warn("Upload the file [{}] uploadId [{}], part [{}] concurrently." +
+                        key, uploadId, partNum);
+                return partETag;
+            } else {
+                handleException(new Exception(errMsg), key);
             }
         } catch (Exception e) {
             String errMsg = String.format("The current thread:%d, "
