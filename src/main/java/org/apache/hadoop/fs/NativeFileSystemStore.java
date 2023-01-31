@@ -3,10 +3,12 @@ package org.apache.hadoop.fs;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.cos.model.PartETag;
+import com.qcloud.cos.model.PartListing;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import com.qcloud.cos.COSClient;
+import org.apache.hadoop.fs.cosn.CosNPartListing;
 
 import java.io.File;
 import java.io.IOException;
@@ -116,6 +118,8 @@ public interface NativeFileSystemStore {
     void createSymlink(String symLink, String targetKey) throws IOException;
 
     String getSymlink(String symlink) throws IOException;
+
+    CosNPartListing listParts(String key, String uploadId) throws IOException;
 
     /**
      * Delete all keys with the given prefix. Used for testing.
