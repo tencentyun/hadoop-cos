@@ -1,7 +1,6 @@
 package org.apache.hadoop.fs;
 
 import com.qcloud.cos.auth.COSCredentialsProvider;
-import org.apache.commons.lang3.StringUtils;
 import com.google.common.base.Preconditions;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.*;
@@ -279,8 +278,9 @@ public final class CosNUtils {
     }
 
     public static Configuration propagateBucketOptions(Configuration source, String bucket) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(bucket),
-                "bucket is null or empty");
+        if (null == bucket || 0 == bucket.length()) {
+            Preconditions.checkArgument(false, "bucket is null or empty");
+        }
         final String bucketPrefix = FS_COSN_BUCKET_PREFIX + bucket +'.';
         LOG.debug("propagating entries under {}", bucketPrefix);
         final Configuration dest = new Configuration(source);
@@ -301,11 +301,9 @@ public final class CosNUtils {
                 // propagate the value, building a new origin field.
                 // to track overwrites, the generic key is overwritten even if
                 // already matches the new one.
-                String origin = "[" + StringUtils.join(
-                        source.getPropertySources(key), ", ") +"]";
                 final String generic = FS_COSN_PREFIX + stripped;
-                LOG.debug("Updating {} from {}", generic, origin);
-                dest.set(generic, value, key + " via " + origin);
+                LOG.debug("Updating {} from origin", generic);
+                dest.set(generic, value, key);
             }
         }
         return dest;
