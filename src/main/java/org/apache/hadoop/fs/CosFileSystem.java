@@ -127,7 +127,7 @@ public class CosFileSystem extends FileSystem {
 
             // judge normal impl first, skip the class nodef error when only use normal bucket
             if (this.actualImplFS instanceof CosNFileSystem) {
-                this.nativeStore.isPosixBucket(true);
+                this.nativeStore.setPosixBucket(true);
                 ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                         .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
             } else if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
@@ -145,7 +145,7 @@ public class CosFileSystem extends FileSystem {
             }
         } else { // normal cos hadoop file system implements
             this.actualImplFS = getActualFileSystemByClassName("org.apache.hadoop.fs.CosNFileSystem");
-            this.nativeStore.isPosixBucket(false);
+            this.nativeStore.setPosixBucket(false);
             ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                     .withPosixBucket(this.isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
         }

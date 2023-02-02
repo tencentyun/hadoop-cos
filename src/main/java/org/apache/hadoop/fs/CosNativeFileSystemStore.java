@@ -1493,7 +1493,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     @Override
-    public void isPosixBucket(boolean isPosixBucket) {
+    public void setPosixBucket(boolean isPosixBucket) {
         this.isPosixBucket = isPosixBucket;
     }
 
@@ -1543,6 +1543,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
            listPartsRequest.setPartNumberMarker(partListing.getNextPartNumberMarker());
         } while (partListing.isTruncated());
         return new CosNPartListing(partSummaries);
+    }
+
+    @Override
+    public boolean isPosixBucket() {
+        return this.isPosixBucket;
     }
 
     private PartETag isPartExist(CosNPartListing partListing, int partNum, long partSize) {

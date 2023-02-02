@@ -140,7 +140,9 @@ public interface NativeFileSystemStore {
      * if you use the CosNFileSystem gateway mode,
      * must set native store to posix process
      */
-    void isPosixBucket(boolean isPosixBucket);
+    void setPosixBucket(boolean isPosixBucket);
+
+    boolean isPosixBucket();
 
     RangerCredentialsClient getRangerCredentialsClient();
 
