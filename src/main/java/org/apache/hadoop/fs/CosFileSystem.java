@@ -24,6 +24,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.hadoop.fs.CosNUtils.propagateBucketOptions;
 
@@ -54,6 +55,7 @@ public class CosFileSystem extends FileSystem {
     private boolean isPosixUseOFSRanger;
     private boolean isPosixImpl = false;
     private FileSystem actualImplFS = null;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private URI uri;
     private Path workingDir;
@@ -126,8 +128,9 @@ public class CosFileSystem extends FileSystem {
             this.actualImplFS = getActualFileSystemByClassName(posixBucketFSImpl);
 
             // judge normal impl first, skip the class nodef error when only use normal bucket
+            // outside can use native store to tell whether is posix bucket, not need head bucket twice. can be used by flink cos.
+            this.nativeStore.setPosixBucket(true);
             if (this.actualImplFS instanceof CosNFileSystem) {
-                this.nativeStore.setPosixBucket(true);
                 ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                         .withPosixBucket(isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);
             } else if (this.actualImplFS instanceof CHDFSHadoopFileSystemAdapter) {
@@ -656,11 +659,19 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         LOG.info("begin to close cos file system");
-        this.actualImplFS.close();
-        if (null != this.nativeStore && this.isDefaultNativeStore) {
-            // close range client later, inner native store
-            this.nativeStore.close();
+        if (this.closed.getAndSet(true)) {
+            // already closed
+            return;
         }
         this.initialized = false;
+        try {
+            super.close();
+        } finally {
+            this.actualImplFS.close();
+            if (null != this.nativeStore && this.isDefaultNativeStore) {
+                // close range client later, inner native store
+                this.nativeStore.close();
+            }
+        }
     }
 }

@@ -662,7 +662,7 @@ public class CosNFileSystem extends FileSystem {
                     LOG.debug("This is just the directory we have been asked to list. cos key: {}.",
                             fileMetadata.getKey());
                 } else {
-                    if (fileMetadata.getLength() < this.symbolicLinkSizeThreshold) {
+                    if (this.supportsSymlinks() && fileMetadata.getLength() < this.symbolicLinkSizeThreshold) {
                         CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(
                                 fileMetadata.getKey());
                         if (null != cosNSymlinkMetadata) {
