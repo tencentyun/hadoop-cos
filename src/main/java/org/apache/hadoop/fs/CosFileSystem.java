@@ -104,7 +104,7 @@ public class CosFileSystem extends FileSystem {
         this.rangerCredentialsClient = this.nativeStore.getRangerCredentialsClient();
         this.isPosixUseOFSRanger = this.getConf().
                 getBoolean(CosNConfigKeys.COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED);
+                        CosNConfigKeys.DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED);
 
         // required checkCustomAuth if ranger is enabled and custom authentication is enabled
         checkCustomAuth(conf);
@@ -121,7 +121,7 @@ public class CosFileSystem extends FileSystem {
             }
 
             LOG.info("The posix bucket [{}] use the class [{}] as the filesystem implementation, " +
-                            "use each ranger [{}]", bucket, posixBucketFSImpl, this.isPosixUseOFSRanger);
+                    "use each ranger [{}]", bucket, posixBucketFSImpl, this.isPosixUseOFSRanger);
             // if ofs impl.
             // network version start from the 2.7.
             // sdk version start from the 1.0.4.
@@ -272,9 +272,20 @@ public class CosFileSystem extends FileSystem {
     public boolean rename(Path src, Path dst) throws IOException {
         LOG.debug("Rename the source path [{}] to the dest path [{}].", src, dst);
         checkInitialized();
-        checkPermission(src, RangerAccessType.DELETE);
+        renameCheckPermission(src);
         checkPermission(dst, RangerAccessType.WRITE);
         return this.actualImplFS.rename(src, dst);
+    }
+
+    private void renameCheckPermission(Path src) throws IOException {
+        if (useOFSRanger()) {
+            return;
+        }
+        if (this.isPosixImpl) {
+            checkPermission(src, RangerAccessType.WRITE);
+        } else {
+            checkPermission(src, RangerAccessType.DELETE);
+        }
     }
 
     @Override
@@ -440,7 +451,7 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public void setOwner(Path p, String userName, String groupName) throws IOException {
-        LOG.debug("set owner, path: {}, userName: {}, groupName: {}",p, userName, groupName);
+        LOG.debug("set owner, path: {}, userName: {}, groupName: {}", p, userName, groupName);
         checkInitialized();
         checkPermission(p, RangerAccessType.WRITE);
         this.actualImplFS.setOwner(p, userName, groupName);
@@ -497,7 +508,7 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
-    private  HashMap<String, String> getPOSIXBucketConfigMap() {
+    private HashMap<String, String> getPOSIXBucketConfigMap() {
         HashMap<String, String> configMap = new HashMap<>();
         configMap.put(CosNConfigKeys.COSN_APPID_KEY, Constants.COSN_POSIX_BUCKET_APPID_CONFIG);
         configMap.put(CosNConfigKeys.COSN_REGION_KEY, Constants.COSN_POSIX_BUCKET_REGION_CONFIG);
@@ -510,7 +521,7 @@ public class CosFileSystem extends FileSystem {
     // exclude the ofs original config, filter the ofs config with COSN_CONFIG_TRANSFER_PREFIX
     private void transferOfsConfig() {
         // cosn config -> ofs config -> trsf ofs config
-        HashMap<String, String>  configMap = getPOSIXBucketConfigMap();
+        HashMap<String, String> configMap = getPOSIXBucketConfigMap();
         for (String org : configMap.keySet()) {
             String content = this.getConf().get(org);
             if (null != content && !content.isEmpty()) {
