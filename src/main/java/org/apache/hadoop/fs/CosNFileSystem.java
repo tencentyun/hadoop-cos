@@ -147,10 +147,6 @@ public class CosNFileSystem extends FileSystem {
                 CosNConfigKeys.DEFAULT_READ_AHEAD_QUEUE_SIZE
         );
 
-        this.isCreateRecursiveCheckDstDir = this.getConf().getBoolean(
-                CosNConfigKeys.COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_CREATE_RECURSIVE_CHECK_DST_DIR_ENABLED
-        );
         Preconditions.checkArgument(uploadThreadPoolSize > 0,
                 String.format("The uploadThreadPoolSize[%d] should be positive.", uploadThreadPoolSize));
         Preconditions.checkArgument(readAheadPoolSize > 0,
@@ -419,10 +415,13 @@ public class CosNFileSystem extends FileSystem {
             if (targetFileStatus.isDirectory()) {
                 throw new FileAlreadyExistsException("Directory already exists: " + f);
             }
-        } catch (FileNotFoundException e) {
-            if (this.isCreateRecursiveCheckDstDir) {
-                validatePath(f);
-            }
+        } catch (FileNotFoundException ignore) {
+            // NOTE: 这里之前认为可能会出现从 COS 的 SDK 或者 API 上传了一个 / 结尾的有内容对象
+            // 那么再在这个文件前缀下面成功创建新的对象而不报错的话，其实是不符合文件系统语义规范的。
+            // 同时，也是为了保证一个完整的目录结构，但是确实会带来元数据查询请求的明显放大。
+            // 不过这里，因为一般不会出现 / 结尾的内容对象，即使出现也不会覆盖丢失（因为这里相当于它的一个commonPrefix，原始对象还在COS里面）
+            // 所以决定去掉这个检查，来改善优化性能。
+            // validatePath(f)
         }
 
         Path absolutePath = makeAbsolute(f);
