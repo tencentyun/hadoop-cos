@@ -50,6 +50,7 @@ public class MultipartManager {
   private final List<LocalPart> localParts = Collections.synchronizedList(
       new ArrayList<LocalPart>());
   private final ListeningExecutorService listeningExecutorService;
+  private volatile boolean splitPartProcess;  // 是否在拆分过程中
   private volatile boolean committed;
   private volatile boolean aborted;
   private volatile boolean closed;
@@ -107,7 +108,7 @@ public class MultipartManager {
 
     // 拆块需要进行重置
     this.reset();
-
+    this.splitPartProcess = true;
     long copyRemaining = Math.min(newLen, fileMetadata.getLength());
     if (copyRemaining > 0) {
       long firstByte = 0;
@@ -151,7 +152,7 @@ public class MultipartManager {
       long endPos = newLen - 1;
       this.padBytes(startPos, endPos);
     }
-
+    this.splitPartProcess = false;
     this.committed = false;
     this.aborted = false;
   }
@@ -617,8 +618,9 @@ public class MultipartManager {
   private CosNRandomAccessMappedBuffer getLocalPartResource(String fileName, int size)
       throws IOException {
     this.checkOpened();
-
-    if (LocalRandomAccessMappedBufferPool.getInstance().shouldRelease()) {
+    
+    if (LocalRandomAccessMappedBufferPool.getInstance().shouldRelease() && !this.splitPartProcess) {
+      LOG.info("Begin to release the local cache for the seekable write.");
       // 本地的 POSIX extension 语义支持空间已经不够了，需要先尝试释放本地占用
       // 将当前所有修改提交到远端
       this.commitLocalToRemote();

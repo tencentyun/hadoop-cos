@@ -39,22 +39,22 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
   }
 
   @Override
-  public void seek(long pos) throws IOException {
+  public synchronized void seek(long pos) throws IOException {
     this.seekableOutputStream.seek(pos);
   }
 
   @Override
-  public boolean seekToNewSource(long pos) throws IOException {
+  public synchronized boolean seekToNewSource(long pos) throws IOException {
     return this.seekableOutputStream.seekToNewSource(pos);
   }
 
   @Override
-  public void doAbort() {
+  public synchronized void doAbort() {
     this.seekableOutputStream.doAbort();
   }
 
   @Override
-  public long getPos() {
+  public synchronized long getPos() {
     return this.seekableOutputStream.getPos();
   }
 
