@@ -161,7 +161,6 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 this.currentPartOutputStream.close();
                 this.uploadCurrentPart(false);
                 this.initNewCurrentPartResource();
-                needUploadCurrentPart = false;
             }
             long writeBytes;
             if (this.currentPartWriteBytes + len > this.partSize) {
@@ -386,6 +385,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             this.currentPartBuffer = BufferPool.getInstance().getBuffer((int) this.partSize);
             this.currentPartWriteBytes = 0;
             this.currentPartNumber++;
+            needUploadCurrentPart = false;
         } catch (InterruptedException e) {
             String exceptionMsg = String.format("Getting a buffer size:[%d] " +
                             "from the buffer pool occurs an exception.",
