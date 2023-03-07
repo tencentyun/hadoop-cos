@@ -142,7 +142,7 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
             ListenableFuture<PartETag> partETagListenableFuture = executorService.submit(new Callable<PartETag>() {
                 @Override
                 public PartETag call() throws Exception {
-                    LOG.info("Start to copy the part: {}.", uploadPartCopy);
+                    LOG.debug("Start to copy the part: {}.", uploadPartCopy);
                     PartETag partETag = nativeStore.uploadPartCopy(getUploadId(),
                             uploadPartCopy.getSrcKey(), uploadPartCopy.getDestKey(), uploadPartCopy.getPartNumber(),
                             uploadPartCopy.getFirstByte(), uploadPartCopy.getLastByte());
