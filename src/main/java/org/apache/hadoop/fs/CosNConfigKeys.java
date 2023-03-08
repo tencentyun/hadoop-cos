@@ -137,22 +137,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String FILESTATUS_LIST_MAX_KEYS = "fs.cosn.filestatus.list_max_keys";
     public static final int DEFAULT_FILESTATUS_LIST_MAX_KEYS = 2;
 
-    // used by normal bucket to control max keys of list status
-    public static final String COSN_LIST_MAX_KEYS = "fs.cosn.liststatus.list_max_keys";
-    public static final int DEFAULT_COSN_LIST_MAX_KEYS = 999;
-
-    // used by posix bucket to control max keys of list status
-    public static final String COSN_POSIX_BUCKET_LIST_MAX_KEYS = "fs.cosn.liststatus.posix_bucket.list_max_keys";
-    public static final int DEFAULT_COSN_POSIX_BUCKET_LIST_MAX_KEYS = 5000;
-
-    // used by normal bucket to control max keys of list status
-    public static final String LISTSTATUS_LIST_MAX_KEYS = "fs.cosn.liststatus.list_max_keys";
-    public static final int DEFAULT_LISTSTATUS_LIST_MAX_KEYS = 999;
-
-    // used by posix bucket to control max keys of list status
-    public static final String LISTSTATUS_POSIX_BUCKET__LIST_MAX_KEYS = "fs.cosn.liststatus.posix_bucket.list_max_keys";
-    public static final int DEFAULT_LISTSTATUS_POSIX_BUCKET_LIST_MAX_KEYS = 5000;
-
     // used for double check complete mpu in case of return cos client exception but status is 200 ok.
     public static final String COSN_COMPLETE_MPU_CHECK = "fs.cosn.complete.mpu.check";
     public static final boolean DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE = true;
