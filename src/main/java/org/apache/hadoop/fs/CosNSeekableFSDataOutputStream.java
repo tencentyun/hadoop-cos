@@ -135,7 +135,7 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
       Preconditions.checkArgument(newLen >= 0 && newLen < this.multipartManager.getMaxFileSizeLimit(),
           String.format("The new length must be a non-negative integer and less than the max file limit [%d].",
               this.multipartManager.getMaxFileSizeLimit()));
-      LOG.info("Call the ftruncate({}) on the cos key [{}].", newLen, this.cosKey);
+      LOG.debug("Call the ftruncate({}) on the cos key [{}].", newLen, this.cosKey);
       // 先将文件刷新提交上去
       this.flush();
       // 然后再变换到需要的长度
@@ -153,7 +153,7 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
       Preconditions.checkArgument(pos < this.multipartManager.getMaxFileSizeLimit(),
           String.format("The seek position [%d] exceeds the maximum file limit [%d].",
               pos, this.multipartManager.getMaxFileSizeLimit()));
-      LOG.info("Call the output seek({}) on the cos key [{}].", pos, this.cosKey);
+      LOG.debug("Call the output seek({}) on the cos key [{}].", pos, this.cosKey);
       // seek 是允许超过当前文件长度的
       this.pos = pos;
     }

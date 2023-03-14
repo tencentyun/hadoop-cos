@@ -300,7 +300,7 @@ public class CosNFSInputStream extends FSInputStream {
             this.position++;
             this.partRemaining--;
             if (null != this.statistics) {
-                this.statistics.incrementBytesRead(byteRead);
+                this.statistics.incrementBytesRead(1);
             }
         }
 
