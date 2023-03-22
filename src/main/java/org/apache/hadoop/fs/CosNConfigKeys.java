@@ -91,10 +91,6 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final boolean DEFAULT_COSN_POSIX_EXTENSION_ENABLED = false;
     // Auxiliary space to support the POSIX seekable writing semantics.
     public static final String COSN_POSIX_EXTENSION_TMP_DIR = "fs.cosn.posix_extension.tmp.dir";
-    public static final String DEFAULT_POSIX_EXTENSION_TMP_DIR = String.format(
-        "%s/posix_extension", DEFAULT_TMP_DIR.endsWith("/")
-            ? DEFAULT_TMP_DIR.substring(0, DEFAULT_TMP_DIR.length() - 1)
-            : DEFAULT_TMP_DIR);
 
     public static final String COSN_POSIX_EXTENSION_TMP_DIR_WATERMARK_HIGH =
         "fs.cosn.posix_extension.tmp.dir.watermark.high";

@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.apache.hadoop.fs.CosNConfigKeys.DEFAULT_TMP_DIR;
+
 /**
  * Current temporarily used to support the seek write part cache.
  * Support the seek read/write by the RandomAccessFile.
@@ -48,8 +50,10 @@ public final class LocalRandomAccessMappedBufferPool {
     }
 
     // 获取用户配置的 POSIX extension 特性目录
-    String cacheDirPath = configuration.get(
-        CosNConfigKeys.COSN_POSIX_EXTENSION_TMP_DIR, CosNConfigKeys.DEFAULT_POSIX_EXTENSION_TMP_DIR);
+    String tmpDir = configuration.get(CosNConfigKeys.COSN_TMP_DIR, DEFAULT_TMP_DIR);
+    String cacheDirPath = configuration.get(CosNConfigKeys.COSN_POSIX_EXTENSION_TMP_DIR,
+        String.format("%s/posix_extension",
+            tmpDir.endsWith("/") ? tmpDir.substring(0, DEFAULT_TMP_DIR.length() - 1) : tmpDir));
     // 正式构建 MappedFactory 用于后续创建本地缓存文件
     boolean deleteOnExit = configuration.getBoolean(
         CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED, CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
