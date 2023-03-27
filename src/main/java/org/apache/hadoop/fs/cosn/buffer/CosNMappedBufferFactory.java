@@ -9,16 +9,23 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
 
 public class CosNMappedBufferFactory implements CosNBufferFactory {
     private static final Logger LOG =
             LoggerFactory.getLogger(CosNMappedBufferFactory.class);
 
-    private final File tmpDir;
+    private final List<File> tmpDirs = new ArrayList<>();
     private final boolean deleteOnExit;
 
-    public CosNMappedBufferFactory(String tmpDir, boolean deleteOnExit) throws IOException {
-        this.tmpDir = CosNMappedBufferFactory.createDir(tmpDir);
+    public CosNMappedBufferFactory(String[] tmpDirList, boolean deleteOnExit) throws IOException {
+        for (String tmpDir: tmpDirList) {
+            File createDir = CosNMappedBufferFactory.createDir(tmpDir);
+            tmpDirs.add(createDir);
+        }
         this.deleteOnExit = deleteOnExit;
     }
 
@@ -58,19 +65,26 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             Constants.BLOCK_TMP_FILE_SUFFIX, size);
     }
 
+    private final AtomicInteger currentIndex = new AtomicInteger();
+
+    private File getTmpDir() {
+        return tmpDirs.get(Math.abs(currentIndex.getAndIncrement() % tmpDirs.size()));
+    }
+
     public CosNMappedBuffer create(String prefix, String suffix, int size) {
-        if (null == this.tmpDir) {
+        File tmpDir = getTmpDir();
+        if (null == tmpDir) {
             LOG.error("The tmp dir is null. no mapped buffer will be created.");
             return null;
         }
 
-        if (!this.tmpDir.exists()) {
+        if (!tmpDir.exists()) {
             LOG.warn("The tmp dir does not exist.");
             // try to create the tmp directory.
             try {
-                CosNMappedBufferFactory.createDir(this.tmpDir.getAbsolutePath());
+                CosNMappedBufferFactory.createDir(tmpDir.getAbsolutePath());
             } catch (IOException e) {
-                LOG.error("Try to create the tmp dir [{}] failed.", this.tmpDir.getAbsolutePath(), e);
+                LOG.error("Try to create the tmp dir [{}] failed.", tmpDir.getAbsolutePath(), e);
                 return null;
             }
         }
@@ -79,7 +93,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             File tmpFile = File.createTempFile(
                     Constants.BLOCK_TMP_FILE_PREFIX,
                     Constants.BLOCK_TMP_FILE_SUFFIX,
-                    this.tmpDir
+                    tmpDir
             );
 
             if (this.deleteOnExit) {
@@ -92,7 +106,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
                     randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, size);
             return (null != buf) ? new CosNMappedBuffer(buf, randomAccessFile, tmpFile) : null;
         } catch (IOException e) {
-            LOG.error("Create tmp file failed. Tmp dir: {}", this.tmpDir, e);
+            LOG.error("Create tmp file failed. Tmp dir: {}", tmpDir, e);
             return null;
         }
     }
