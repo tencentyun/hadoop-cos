@@ -1889,7 +1889,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
                     }
                 }
-                throw new IOException(e);
+                if (retryIndex > this.maxRetryTimes) {
+                    throw new IOException(e);
+                } else {
+                    ++retryIndex;
+                }
             }
         }
     }
