@@ -1880,7 +1880,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     throw cse;
                 }
             } catch (Exception e) {
-                throw new IOException(e);
+                if (useL5Id) {
+                    if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
+                        // L5上报，进行重试
+                        l5EndpointResolver.updateRouteResult(-1);
+                        l5ErrorCodeRetryIndex = 1;
+                    } else {
+                        l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
+                    }
+                }
+                if (retryIndex > this.maxRetryTimes) {
+                    throw new IOException(e);
+                } else {
+                    ++retryIndex;
+                }
             }
         }
     }
