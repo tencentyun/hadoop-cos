@@ -1483,6 +1483,11 @@ public class CosNFileSystem extends FileSystem {
     }
 
     private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
+        // hadoop cos file system contains the constructor import native client outside
+        // in case of null pointer by this native client not init ranger client.
+        if (this.rangerCredentialsClient == null) {
+            return;
+        }
         this.rangerCredentialsClient.doCheckPermission(f, rangerAccessType, getOwnerId(), getWorkingDirectory());
     }
 
