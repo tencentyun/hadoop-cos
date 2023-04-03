@@ -42,6 +42,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_REQUEST_ID = "fs.cosn.request.id";
     public static final String COS_REMOTE_CREDENTIAL_PROVIDER_URL = "fs.cosn.remote-credential-provider.url";
     public static final String COS_REMOTE_CREDENTIAL_PROVIDER_PATH = "fs.cosn.remote-credential-provider.path";
+    public static final String COS_CUSTOM_CREDENTIAL_PROVIDER_URL = "fs.cosn.custom-credential-provider.url";
     public static final String COSN_USERINFO_SECRET_ID_KEY = "fs.cosn.userinfo.secretId";
     public static final String COSN_USERINFO_SECRET_KEY_KEY = "fs.cosn.userinfo.secretKey";
     public static final String COSN_USERINFO_SESSION_TOKEN = "fs.cosn.userinfo.sessionToken";
