@@ -60,7 +60,6 @@ public class CosNFileSystem extends FileSystem {
     private boolean isPosixBucket;
     private NativeFileSystemStore nativeStore;
     private boolean isDefaultNativeStore;
-    private boolean isCreateRecursiveCheckDstDir;
     private Path workingDir;
     private String owner = "Unknown";
     private String group = "Unknown";
@@ -69,7 +68,7 @@ public class CosNFileSystem extends FileSystem {
 
     private RangerCredentialsClient rangerCredentialsClient;
 
-    static final String CSE_ALOGORITHM_USER_METADATA = "client-side-encryption-cek-alg";
+    static final String CSE_ALGORITHM_USER_METADATA = "client-side-encryption-cek-alg";
     private int symbolicLinkSizeThreshold;
 
     // todo: flink or some other case must replace with inner structure.
@@ -257,7 +256,7 @@ public class CosNFileSystem extends FileSystem {
 
         // 如果原文件使用了客户端加密，则不支持
         try {
-            if(this.getXAttr(f, CSE_ALOGORITHM_USER_METADATA) != null) {
+            if(this.getXAttr(f, CSE_ALGORITHM_USER_METADATA) != null) {
                 throw new UnsupportedOperationException("Not supported currently because the file is encrypted by client side");
             }
         } catch (IOException e) {
@@ -346,7 +345,7 @@ public class CosNFileSystem extends FileSystem {
 
         // 如果原文件使用了客户端加密，则不支持
         try {
-            if(this.getXAttr(f, CSE_ALOGORITHM_USER_METADATA) != null) {
+            if(this.getXAttr(f, CSE_ALGORITHM_USER_METADATA) != null) {
                 throw new UnsupportedOperationException("Not supported currently because the file is encrypted by client side");
             }
         } catch (IOException e) {
