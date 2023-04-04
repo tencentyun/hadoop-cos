@@ -327,3 +327,17 @@ File System Counters
     File Output Format Counters
         Bytes Written=40
 ```
+
+### Bucket独立配置
+背景： 跨园区访问不同的bucket，每个bucket的配置项不同，为此支持了一次配置，访问多个bucket的需求
+核心： 单独设置bucket维度的配置优先走独立配置项，没有设置独立配置项的走原配置，原配置没有设置的走默认配置
+例如： fs.cosn.upload.buffer的subkey（trim fs.cosn. prefix)是 upload.buffer.
+如果bucket-appid是 test-123456, 那么bucket的独立配置项就是fs.cosn.bucket.test-123456.upload.buffer
+(格式fs.cosn.bucket.{bucket-appid}.{subkey})
+使用： hadoop fs -ls cosn://test-123456/
+注意： 
+1) 如果设置了fs.cosn.userinfo.appid则可以通过设置fs.cosn.bucket.{bucket}.{subkey}
+使用方式hadoop fs -ls cosn://test/
+2) 如果使用了元数据加速桶，想使用hadoop fs -ls cosn//test/方式访问
+除了需要配置fs.cosn.userinfo.appid外需要设置fs.cosn.trsf.fs.ofs.use.short.bucketname为true
+
