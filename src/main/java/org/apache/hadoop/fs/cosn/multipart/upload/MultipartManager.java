@@ -50,13 +50,14 @@ public class MultipartManager {
   private final List<LocalPart> localParts = Collections.synchronizedList(
       new ArrayList<LocalPart>());
   private final ListeningExecutorService listeningExecutorService;
+  private final ListeningExecutorService listeningCopyExecutorService;
   private volatile boolean splitPartProcess;  // 是否在拆分过程中
   private volatile boolean committed;
   private volatile boolean aborted;
   private volatile boolean closed;
 
   public MultipartManager(NativeFileSystemStore nativeStore,
-    String cosKey, long partSize, ExecutorService executorService) {
+    String cosKey, long partSize, ExecutorService executorService, ExecutorService copyExecutor) {
     this.partSize = partSize;
     this.MAX_FILE_SIZE = this.partSize * 10000L;
     this.nativeStore = nativeStore;
@@ -67,6 +68,7 @@ public class MultipartManager {
     this.closed = false;
 
     this.listeningExecutorService = MoreExecutors.listeningDecorator(executorService);
+    this.listeningCopyExecutorService = MoreExecutors.listeningDecorator(copyExecutor);
   }
 
   /**
@@ -116,20 +118,28 @@ public class MultipartManager {
       if (copyRemaining >= this.partSize) {
         // 使用服务端copy
         this.initializeMultipartUploadIfNeed();
+        List<ListenableFuture<PartETag>> uploadPartFutures = new ArrayList<>();
         try {
           lastByte = firstByte + this.partSize - 1;
           while (copyRemaining >= this.partSize) {
             LOG.debug("Executing the uploadPartCopy [cosKey: {}, uploadId: {}, partNumber: {}].",
                 cosKey, this.uploadId, this.localParts.size() + 1);
-            UploadPartCopy uploadPartCopy = new UploadPartCopy(cosKey, cosKey,
+            final UploadPartCopy uploadPartCopy = new UploadPartCopy(cosKey, cosKey,
                 this.localParts.size() + 1, firstByte, lastByte);
-            this.uploadPartCopy(uploadPartCopy);
+            uploadPartFutures.add(listeningCopyExecutorService.submit(new Callable<PartETag>() {
+              @Override
+              public PartETag call() throws Exception {
+                uploadPartCopy(uploadPartCopy);
+                return null;
+              }
+            }));
             // 补位
             this.localParts.add(null);
             copyRemaining -= ((lastByte - firstByte) + 1);
             firstByte = lastByte + 1;
             lastByte = firstByte + this.partSize - 1;
           }
+          Futures.allAsList(uploadPartFutures).get();
         } catch (Exception exception) {
           LOG.error("Failed to breakDown the cos key [{}]. Abort it.", cosKey, exception);
           this.abort();

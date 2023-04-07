@@ -283,8 +283,8 @@ public class CosNFileSystem extends FileSystem {
             try {
                 seekableOutputStreamClass = Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream");
                 Constructor<?> constructor = seekableOutputStreamClass.getConstructor(Configuration.class, NativeFileSystemStore.class,
-                    String.class, ExecutorService.class);
-                seekableOutputStream = constructor.newInstance(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool);
+                    String.class, ExecutorService.class, ExecutorService.class);
+                seekableOutputStream = constructor.newInstance(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, this.boundedCopyThreadPool);
             } catch (ClassNotFoundException e) {
                 throw new IOException("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream can not be found. " +
                     "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);

@@ -68,7 +68,8 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
     private boolean closed;
 
     public SeekableOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
-                         String cosKey, ExecutorService executorService) throws IOException {
+        String cosKey, ExecutorService executorService, ExecutorService copyExecutor)
+        throws IOException {
       Preconditions.checkNotNull(conf, "hadoop configuration");
       this.nativeStore = Preconditions.checkNotNull(nativeStore, "nativeStore");
       this.cosKey = Preconditions.checkNotNull(cosKey, "cosKey");
@@ -85,7 +86,7 @@ public class CosNSeekableFSDataOutputStream extends FSDataOutputStream
         partSize = Constants.MAX_PART_SIZE;
       }
       this.multipartManager = new MultipartManager(
-          this.nativeStore, this.cosKey, partSize, executorService);
+          this.nativeStore, this.cosKey, partSize, executorService, copyExecutor);
       this.multipartManager.resumeForWrite();
       // 把 pos 置于末尾
       this.pos = this.multipartManager.getCurrentSize();
