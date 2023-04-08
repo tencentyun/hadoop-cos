@@ -324,7 +324,7 @@ public class CosNFileSystem extends FileSystem {
             }
         } else {
             return new FSDataOutputStream(new CosNExtendedFSDataOutputStream(
-                this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, true),
+                this.getConf(), this.nativeStore, cosKey, this.boundedCopyThreadPool, this.boundedCopyThreadPool,true),
                 statistics, fileStatus.getLen());
         }
     }
@@ -374,8 +374,8 @@ public class CosNFileSystem extends FileSystem {
 
         // Use the single thread to truncate.
         try (OutputStream outputStream = new FSDataOutputStream(
-                new CosNExtendedFSDataOutputStream(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool),
-                statistics)) {
+                new CosNExtendedFSDataOutputStream(this.getConf(), this.nativeStore, cosKey,
+                        this.boundedIOThreadPool, this.boundedCopyThreadPool), statistics)) {
             // If the newLength is equal to 0, just wait for 'try finally' to close.
             if (newLength > 0) {
                 try (InputStream inputStream =
@@ -430,7 +430,7 @@ public class CosNFileSystem extends FileSystem {
             // Need to support the synchronous flush.
             return new FSDataOutputStream(
                     new CosNExtendedFSDataOutputStream(this.getConf(), nativeStore, key,
-                            this.boundedIOThreadPool), statistics);
+                            this.boundedIOThreadPool, this.boundedCopyThreadPool), statistics);
         } else {
             return new FSDataOutputStream(
                     new CosNFSDataOutputStream(this.getConf(), nativeStore, key,

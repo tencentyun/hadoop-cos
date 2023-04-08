@@ -1,6 +1,8 @@
 package org.apache.hadoop.fs;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.utils.CRC64;
 import org.apache.hadoop.conf.Configuration;
@@ -21,15 +23,17 @@ import java.util.concurrent.ExecutorService;
 public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
     private static final Logger LOG = LoggerFactory.getLogger(CosNExtendedFSDataOutputStream.class);
 
+    private final ListeningExecutorService copyExecutoService;
+
     public CosNExtendedFSDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
-        String cosKey, ExecutorService executorService) throws IOException {
-        this(conf, nativeStore, cosKey, executorService, false);
+        String cosKey, ExecutorService ioExecutorService, ExecutorService copyExecutorService) throws IOException {
+        this(conf, nativeStore, cosKey, ioExecutorService,  copyExecutorService, false);
     }
 
     public CosNExtendedFSDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
-        String cosKey, ExecutorService executorService, boolean appendFlag) throws IOException {
-        super(conf, nativeStore, cosKey, executorService);
-
+        String cosKey, ExecutorService ioExecutorService, ExecutorService copyExecutorService, boolean appendFlag) throws IOException {
+        super(conf, nativeStore, cosKey, ioExecutorService);
+        this.copyExecutoService = MoreExecutors.listeningDecorator(copyExecutorService);
         if (appendFlag) {
             this.resumeForWrite();
         }
@@ -139,7 +143,8 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
 
             partsSubmitted.incrementAndGet();
             bytesSubmitted.addAndGet(uploadPartCopy.getLastByte() - uploadPartCopy.getFirstByte() + 1);
-            ListenableFuture<PartETag> partETagListenableFuture = executorService.submit(new Callable<PartETag>() {
+            ListenableFuture<PartETag> partETagListenableFuture =
+                    CosNExtendedFSDataOutputStream.this.copyExecutoService.submit(new Callable<PartETag>() {
                 @Override
                 public PartETag call() throws Exception {
                     LOG.debug("Start to copy the part: {}.", uploadPartCopy);
