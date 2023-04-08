@@ -62,4 +62,9 @@ public final class Constants {
     // Prefix for cosn bucket-specific properties: {@value}.
     public static final String FS_COSN_BUCKET_PREFIX = "fs.cosn.bucket.";
 
+    // used by setOwner and setPermission
+    public static final String PERMISSION = "permission";
+    public static final String USERNAME = "username";
+    public static final String GROUP = "group";
+
 }

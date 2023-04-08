@@ -2,8 +2,10 @@ package org.apache.hadoop.fs;
 
 import com.qcloud.cos.auth.COSCredentialsProvider;
 import com.google.common.base.Preconditions;
+import com.qcloud.cos.model.ObjectMetadata;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.auth.*;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.io.retry.RetryPolicies;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.io.retry.RetryProxy;
@@ -19,9 +21,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -307,6 +306,41 @@ public final class CosNUtils {
             }
         }
         return dest;
+    }
+
+
+    /**
+     * 将userMetadata中的key-value pairs添加到objectMetadata，如果key已经存在则覆盖。
+     */
+    public static void mergeUserMetadata(ObjectMetadata objectMetadata,
+        Map<String, String> userMetadata) {
+        if (objectMetadata == null || userMetadata == null) {
+            return;
+        }
+        if (objectMetadata.getUserMetadata() == null) {
+            objectMetadata.setUserMetadata(userMetadata);
+        } else {
+            objectMetadata.getUserMetadata().putAll(userMetadata);
+        }
+    }
+
+    public static FsPermission getPermission(Map<String, String> userMetadata,
+        FsPermission defaultVal) {
+        String permission = getOrDefault(userMetadata, PERMISSION, null);
+        try {
+            return permission != null ? FsPermission.valueOf(permission) : defaultVal;
+        } catch (Throwable e) {
+            LOG.warn("{} is invalid permission: ", permission, e);
+            return defaultVal;
+        }
+    }
+
+    public static <K, V> V getOrDefault(Map<K, V> map, K key, V defaultVal) {
+        if (map == null || key == null) {
+            return defaultVal;
+        }
+        V val = map.get(key);
+        return val == null ? defaultVal : val;
     }
 
 }

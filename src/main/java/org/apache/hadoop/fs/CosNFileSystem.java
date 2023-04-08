@@ -41,6 +41,10 @@ import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import static org.apache.hadoop.fs.cosn.Constants.GROUP;
+import static org.apache.hadoop.fs.cosn.Constants.PERMISSION;
+import static org.apache.hadoop.fs.cosn.Constants.USERNAME;
+
 /*
  * the origin hadoop cos implements
  */
@@ -70,6 +74,7 @@ public class CosNFileSystem extends FileSystem {
 
     static final String CSE_ALGORITHM_USER_METADATA = "client-side-encryption-cek-alg";
     private int symbolicLinkSizeThreshold;
+    private boolean enableSetOwnerAndSetPermission;
 
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
@@ -223,6 +228,8 @@ public class CosNFileSystem extends FileSystem {
 
         this.symbolicLinkSizeThreshold = this.getConf().getInt(
                 CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
+        this.enableSetOwnerAndSetPermission = this.getConf().getBoolean(CosNConfigKeys.COSN_SET_OWNER_AND_PERMISSION_ENABLED,
+            CosNConfigKeys.DEFAULT_COSN_SET_OWNER_AND_PERMISSION_ENABLED);
     }
 
     @Override
@@ -600,6 +607,7 @@ public class CosNFileSystem extends FileSystem {
             CosNPartialListing listing = this.nativeStore.list(key, maxKeys, listObjectsResultInfo);
             if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
                 LOG.debug("List the cos key [{}] to find that it is a directory.", key);
+                tryPutDirObject(key);
                 return newDirectory(absolutePath);
             }
 
@@ -614,6 +622,74 @@ public class CosNFileSystem extends FileSystem {
         }
 
         throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
+    }
+
+    private void tryPutDirObject(String key) {
+        // 通过list发现一个目录，创建它，避免下次重复list，提高性能。
+        try {
+            nativeStore.storeEmptyFile(key);
+        } catch (Throwable e) {
+            LOG.warn("Failed create empty dir object: ", e);
+        }
+    }
+    @Override
+    public void setOwner(Path p, String username, String groupName) throws IOException {
+        if (enableSetOwnerAndSetPermission) {
+            try {
+                checkPosixACLPrecondition(p, "setOwner");
+            } catch (Exception ex) {
+                LOG.warn("{} cannot set owner: {}", p, ex.getMessage());
+                return;
+            }
+            Map<String, String> userMetadata = new HashMap<>(2);
+            if (username != null && !username.isEmpty()) {
+                userMetadata.put(USERNAME, username);
+            }
+            if (groupName != null && !groupName.isEmpty()) {
+                userMetadata.put(GROUP, groupName);
+            }
+            setDirPosixACL(p, userMetadata);
+        }
+    }
+
+    @Override
+    public void setPermission(Path p, FsPermission permission) throws IOException {
+        if (permission == null) {
+            return;
+        }
+        if (enableSetOwnerAndSetPermission) {
+            try {
+                checkPosixACLPrecondition(p, "setPermission");
+            } catch (Exception ex) {
+                LOG.warn("{} cannot set permission: {}", p, ex.getMessage());
+                return;
+            }
+            Map<String, String> userMetadata = new HashMap<>(1);
+            userMetadata.put(PERMISSION, "d" + permission);
+            setDirPosixACL(p, userMetadata);
+        }
+    }
+
+    private void checkPosixACLPrecondition(Path p, String methodName) throws IOException {
+        FileStatus fileStatus = getFileStatus(p);
+        if (!fileStatus.isDirectory()) {
+            throw new UnsupportedOperationException(
+                String.format("%s support only directory!", methodName));
+        }
+    }
+
+    private void setDirPosixACL(Path p, Map<String, String> userMetadata) throws IOException {
+        Path absolutePath = makeAbsolute(p);
+        String key = pathToKey(absolutePath);
+
+        if (key.equals(PATH_DELIMITER)) {
+            // root cannot be set.
+            return;
+        }
+        if (!key.endsWith(PATH_DELIMITER)) {
+            key += PATH_DELIMITER;
+        }
+        nativeStore.copy(key, key, userMetadata);
     }
 
     @Override
@@ -681,19 +757,22 @@ public class CosNFileSystem extends FileSystem {
             priorLastKey = listing.getPriorLastKey();
         } while (priorLastKey != null);
 
-        return status.toArray(new FileStatus[status.size()]);
+        return status.toArray(new FileStatus[0]);
     }
 
     private FileStatus newFile(FileMetadata meta, Path path) {
+        if (enableSetOwnerAndSetPermission) {
+            return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
+                meta.getLastModified(), 0, CosNUtils.getPermission(meta.getUserMetadata(), null),
+                CosNUtils.getOrDefault(meta.getUserMetadata(), USERNAME, this.owner),
+                CosNUtils.getOrDefault(meta.getUserMetadata(), GROUP, this.group),
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(),
+                meta.getCrc64ecm(), meta.getVersionId());
+        }
         return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
                 meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
                 meta.getVersionId());
-    }
-
-    private FileStatus newDirectory(Path path) {
-        return new CosNFileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()));
     }
 
     private FileStatus newSymlink(CosNSymlinkMetadata metadata, Path path) {
@@ -703,14 +782,43 @@ public class CosNFileSystem extends FileSystem {
         return symlinkStatus;
     }
 
+    private FileStatus newDirectory(Path path) {
+        return newDirectory(null, path);
+    }
+
     private FileStatus newDirectory(FileMetadata meta, Path path) {
+        if (enableSetOwnerAndSetPermission && !path.isRoot()) {
+            String key = pathToKey(path);
+            if (!key.endsWith(PATH_DELIMITER)) {
+                key += PATH_DELIMITER;
+            }
+            if (meta != null && meta.getETag() == null) {
+                // meta is mock data. need to fetch the actually meta.
+                try {
+                    meta = nativeStore.queryObjectMetadata(key);
+                } catch (IOException e) {
+                    LOG.warn("query object metadata in newDirectory throws: ", e);
+                }
+            }
+            if (meta != null) {
+                return new CosNFileStatus(0, true, 1, 0, meta.getLastModified(), 0,
+                    CosNUtils.getPermission(meta.getUserMetadata(), null),
+                    CosNUtils.getOrDefault(meta.getUserMetadata(), USERNAME, this.owner),
+                    CosNUtils.getOrDefault(meta.getUserMetadata(), GROUP, this.group),
+                    path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(),
+                    meta.getCrc64ecm(), meta.getVersionId());
+            }
+            // if meta is null, the directory not exists. using the default permissions.
+        }
         if (meta == null) {
-            return newDirectory(path);
+            return new CosNFileStatus(0, true, 1, 0,
+                0, 0, null, this.owner, this.group,
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()));
         }
         return new CosNFileStatus(0, true, 1, 0,
-                meta.getLastModified(), 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
-                meta.getVersionId());
+            meta.getLastModified(), 0, null, this.owner, this.group,
+            path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
+            meta.getVersionId());
     }
 
     /**
@@ -803,6 +911,7 @@ public class CosNFileSystem extends FileSystem {
                     folderPath += PATH_DELIMITER;
                 }
                 nativeStore.storeEmptyFile(folderPath);
+                setPermission(path, permission);
             }
         }
         return true;

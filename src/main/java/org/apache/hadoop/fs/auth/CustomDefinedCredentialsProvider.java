@@ -33,7 +33,7 @@ import javax.annotation.Nullable;
 public class CustomDefinedCredentialsProvider extends AbstractCOSCredentialProvider
     implements COSCredentialsProvider {
 
-  private static final Logger LOG = LoggerFactory.getLogger(CVMInstanceCredentialsProvider.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CustomDefinedCredentialsProvider.class);
 
   private final String appId;
   private final COSCredentialsProvider cosCredentialsProvider;

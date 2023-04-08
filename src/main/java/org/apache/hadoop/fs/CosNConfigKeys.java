@@ -90,6 +90,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_POSIX_EXTENSION_ENABLED = "fs.cosn.posix_extension.enabled";
     public static final boolean DEFAULT_COSN_POSIX_EXTENSION_ENABLED = false;
+
+    public static final String COSN_SET_OWNER_AND_PERMISSION_ENABLED = "fs.cosn.set.owner.permission.enabled";
+
+    public static final boolean DEFAULT_COSN_SET_OWNER_AND_PERMISSION_ENABLED = false;
     // Auxiliary space to support the POSIX seekable writing semantics.
     public static final String COSN_POSIX_EXTENSION_TMP_DIR = "fs.cosn.posix_extension.tmp.dir";
 

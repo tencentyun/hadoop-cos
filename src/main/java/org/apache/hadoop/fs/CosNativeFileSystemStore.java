@@ -579,7 +579,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 if (null == partETag) {
                     handleException(new Exception(errMsg), key);
                 }
-                LOG.warn("Upload the file [{}] uploadId [{}], part [{}] concurrently." +
+                LOG.warn("Upload the file [{}] uploadId [{}], part [{}] concurrently.",
                         key, uploadId, partNum);
                 return partETag;
             } else {
@@ -746,7 +746,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         return null;
     }
 
-    private FileMetadata queryObjectMetadata(String key) throws IOException {
+    public FileMetadata queryObjectMetadata(String key) throws IOException {
         return queryObjectMetadata(key, null);
     }
 
@@ -779,9 +779,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             String crc64ecm = objectMetadata.getCrc64Ecma();
             String crc32cm = (String) objectMetadata.getRawMetadataValue(Constants.CRC32C_RESP_HEADER);
             String versionId = objectMetadata.getVersionId();
-            Map<String, byte[]> userMetadata = null;
+            Map<String, byte[]> userAttributes = null;
             if (objectMetadata.getUserMetadata() != null) {
-                userMetadata = new HashMap<>();
+                userAttributes = new HashMap<>();
                 for (Map.Entry<String, String> userMetadataEntry : objectMetadata.getUserMetadata().entrySet()) {
                     if (userMetadataEntry.getKey().startsWith(ensureValidAttributeName(XATTR_PREFIX))) {
                         String xAttrJsonStr = new String(Base64.decode(userMetadataEntry.getValue()),
@@ -796,14 +796,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         }
 
                         if (null != cosNXAttr) {
-                            userMetadata.put(cosNXAttr.getName(),
+                            userAttributes.put(cosNXAttr.getName(),
                                     cosNXAttr.getValue().getBytes(CosNFileSystem.METADATA_ENCODING));
                         }
                     }
                     //metadata of client side encryption
                     if(userMetadataEntry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX)
                             || userMetadataEntry.getKey().startsWith(COS_TAG_LEN_PREFIX)) {
-                        userMetadata.put(userMetadataEntry.getKey(), userMetadataEntry.getValue().getBytes(CosNFileSystem.METADATA_ENCODING));
+                        userAttributes.put(userMetadataEntry.getKey(), userMetadataEntry.getValue().getBytes(CosNFileSystem.METADATA_ENCODING));
                     }
                 }
             }
@@ -816,9 +816,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 isFile = !key.endsWith(CosNFileSystem.PATH_DELIMITER);
             }
             FileMetadata fileMetadata =
-                    new FileMetadata(key, fileSize, mtime, isFile,
-                            ETag, crc64ecm, crc32cm, versionId,
-                            objectMetadata.getStorageClass(), userMetadata);
+                new FileMetadata(key, fileSize, mtime, isFile, ETag, crc64ecm, crc32cm, versionId,
+                    objectMetadata.getStorageClass(), userAttributes,
+                    objectMetadata.getUserMetadata());
             // record the last request result info
             if (info != null) {
                 info.setRequestID(objectMetadata.getRequestId());
@@ -1120,21 +1120,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         return null;
     }
 
-    public ObjectMetadata getClientSideEncryptionHeader(FileMetadata sourceFileMetadata) {
-        Map<String, String> userClientEncryptionMetadata = new HashMap<>();
-        for (Map.Entry<String, byte[]> userMetadataEntry : sourceFileMetadata.getUserAttributes().entrySet()) {
-            if((userMetadataEntry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX))
-                    || userMetadataEntry.getKey().startsWith(COS_TAG_LEN_PREFIX)){
-                userClientEncryptionMetadata.put(userMetadataEntry.getKey(), new String(userMetadataEntry.getValue()));
-            }
-        }
-        ObjectMetadata newObjectMetadata = new ObjectMetadata();
-        if(! userClientEncryptionMetadata.isEmpty()) {
-            newObjectMetadata.setUserMetadata(userClientEncryptionMetadata);
-        }
-        return  newObjectMetadata;
-    }
-
     @Override
     public boolean retrieveBlock(String key, long byteRangeStart,
                                  long blockSize,
@@ -1339,9 +1324,17 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void copy(String srcKey, String dstKey) throws IOException {
+        copy(srcKey, dstKey, null);
+    }
+
+    /**
+     * 使用copy时，需要区分目录和文件，如果是目录，key需要以/结尾。可参考copyFile和copyDirectory。
+     */
+    @Override
+    public void copy(String srcKey, String dstKey, Map<String, String> userMetadata) throws IOException {
         try {
-            FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
-            ObjectMetadata objectMetadata = getClientSideEncryptionHeader(sourceFileMetadata);
+            FileMetadata sourceFileMetadata = this.queryObjectMetadata(srcKey);
+            ObjectMetadata objectMetadata = new ObjectMetadata();
             if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
@@ -1349,9 +1342,13 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName, dstKey);
             // 如果 sourceFileMetadata 为 null，则有可能这个文件是个软链接，但是也兼容copy
-            if (null != sourceFileMetadata && null != sourceFileMetadata.getStorageClass()) {
-                copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
+            if (null != sourceFileMetadata) {
+                objectMetadata.setUserMetadata(sourceFileMetadata.getUserMetadata());
+                if (null != sourceFileMetadata.getStorageClass()) {
+                    copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
+                }
             }
+            CosNUtils.mergeUserMetadata(objectMetadata, userMetadata);
             copyObjectRequest.setNewObjectMetadata(objectMetadata);
             this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
             copyObjectRequest.setSourceEndpointBuilder(this.cosClient.getClientConfig().getEndpointBuilder());
@@ -1422,7 +1419,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.debug("Rename normal bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
         try {
             FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
-            ObjectMetadata objectMetadata = getClientSideEncryptionHeader(sourceFileMetadata);
+            ObjectMetadata objectMetadata = new ObjectMetadata();
+            objectMetadata.setUserMetadata(sourceFileMetadata.getUserMetadata());
             if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }

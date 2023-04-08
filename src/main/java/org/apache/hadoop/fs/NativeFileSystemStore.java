@@ -3,11 +3,9 @@ package org.apache.hadoop.fs;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.cos.model.PartETag;
-import com.qcloud.cos.model.PartListing;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
-import com.qcloud.cos.COSClient;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
 
 import java.io.File;
@@ -15,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 /**
  * <p>
@@ -67,6 +66,8 @@ public interface NativeFileSystemStore {
 
     FileMetadata retrieveMetadata(String key, CosNResultInfo info) throws IOException;
 
+    FileMetadata queryObjectMetadata(String key) throws IOException;
+
     CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink) throws IOException;
 
     CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink, CosNResultInfo info) throws IOException;
@@ -112,6 +113,8 @@ public interface NativeFileSystemStore {
     void deleteRecursive(String key) throws IOException;
 
     void copy(String srcKey, String dstKey) throws IOException;
+
+    void copy(String srcKey, String dstKey, Map<String, String> userMetadata) throws IOException;
 
     void rename(String srcKey, String dstKey) throws IOException;
 

@@ -23,6 +23,7 @@ public class FileMetadata {
     private final String versionId;
     private final String storageClass;
     private final Map<String, byte[]> userAttributes;
+    private final Map<String, String> userMetadata;
 
     public FileMetadata(String key, long length, long lastModified) {
         this(key, length, lastModified, true);
@@ -49,6 +50,11 @@ public class FileMetadata {
 
     public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
                         String crc32cm, String versionId, String storageClass, Map<String, byte[]> userAttributes) {
+        this(key, length, lastModified, isFile, eTag, crc64ecm, crc32cm, versionId, storageClass, userAttributes, null);
+    }
+
+    public FileMetadata(String key, long length, long lastModified, boolean isFile, String eTag, String crc64ecm,
+                        String crc32cm, String versionId, String storageClass, Map<String, byte[]> userAttributes, Map<String, String> userMetadata) {
         this.key = key;
         this.length = length;
         this.lastModified = lastModified;
@@ -59,6 +65,7 @@ public class FileMetadata {
         this.versionId = versionId;
         this.storageClass = storageClass;
         this.userAttributes = userAttributes;
+        this.userMetadata = userMetadata;
     }
 
     public String getKey() {
@@ -93,8 +100,18 @@ public class FileMetadata {
         return storageClass;
     }
 
+    /**
+     * user attributes for hadoop-cos
+     */
     public Map<String, byte[]> getUserAttributes() {
         return userAttributes;
+    }
+
+    /**
+     * All x-cos-meta-* key-value pairs. for internal use.
+     */
+    public Map<String, String> getUserMetadata() {
+        return userMetadata;
     }
 
     @Override
