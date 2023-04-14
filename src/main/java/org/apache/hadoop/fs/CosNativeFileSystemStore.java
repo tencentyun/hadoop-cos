@@ -193,6 +193,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         throw new IOException("The current version does not support L5 resolver.", e);
                     }
                     config.setEndpointResolver(l5EndpointResolver);
+                    // used by cos java sdk to handle
+                    config.turnOnRefreshEndpointAddrSwitch();
+                    config.setHandlerAfterProcess(l5EndpointResolver);
                 }
             }
         } else {
@@ -217,6 +220,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.COSN_CLIENT_SOCKET_TIMEOUTSEC,
                 CosNConfigKeys.DEFAULT_CLIENT_SOCKET_TIMEOUTSEC);
         config.setSocketTimeout(socketTimeoutSec * 1000);
+
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
         this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,
@@ -1817,7 +1821,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             if (useL5Id) {
                                 if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
                                     // L5上报，进行重试
-                                    l5EndpointResolver.updateRouteResult(-1);
+                                    l5EndpointResolver.handle(-1, 0);
                                     l5ErrorCodeRetryIndex = 1;
                                 } else {
                                     l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
@@ -1883,7 +1887,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 if (useL5Id) {
                     if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
                         // L5上报，进行重试
-                        l5EndpointResolver.updateRouteResult(-1);
+                        l5EndpointResolver.handle(-1, 0);
                         l5ErrorCodeRetryIndex = 1;
                     } else {
                         l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
