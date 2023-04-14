@@ -32,6 +32,14 @@
             <organizationUrl>https://cloud.tencent.com/</organizationUrl>
             <url>https://github.com/yuyang733</url>
         </developer>
+        <developer>
+            <id>alantong</id>
+            <name>Mingda Tong</name>
+            <email>alantong@tencent.com</email>
+            <organization>Tencent Cloud</organization>
+            <organizationUrl>https://cloud.tencent.com/</organizationUrl>
+            <url>https://github.com/vintmd</url>
+        </developer>
     </developers>
 
     <scm>

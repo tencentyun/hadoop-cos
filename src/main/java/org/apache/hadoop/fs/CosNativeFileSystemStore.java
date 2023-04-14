@@ -217,6 +217,12 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.COSN_CLIENT_SOCKET_TIMEOUTSEC,
                 CosNConfigKeys.DEFAULT_CLIENT_SOCKET_TIMEOUTSEC);
         config.setSocketTimeout(socketTimeoutSec * 1000);
+
+        int maxConnectionsCount = conf.getInt(
+                CosNConfigKeys.COSN_CLIENT_MAX_CONNECTIONS_COUNT,
+                CosNConfigKeys.DEFAULT_CLIENT_MAX_CONNECTIONS_COUNT);
+        config.setMaxConnectionsCount(maxConnectionsCount);
+
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
         this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,

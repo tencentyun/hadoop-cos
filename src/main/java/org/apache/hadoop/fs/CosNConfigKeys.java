@@ -180,6 +180,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_CLIENT_SOCKET_TIMEOUTSEC = "fs.cosn.client.socket.timeoutsec";
     public static final int DEFAULT_CLIENT_SOCKET_TIMEOUTSEC = 30;
 
+    public static final String COSN_CLIENT_MAX_CONNECTIONS_COUNT = "fs.cosn.client.max_connections_count";
+    public static final int DEFAULT_CLIENT_MAX_CONNECTIONS_COUNT = 1024;
+
     // default disable emr v2 instance url.
     public static final String COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = "fs.cosn.emrv2.instance.provider.enabled";
     public static final boolean DEFAULT_COSN_EMRV2_INSTANCE_PROVIDER_ENABLED = false;
