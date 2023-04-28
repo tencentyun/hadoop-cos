@@ -50,21 +50,23 @@ public class TencentCloudL5EndpointResolverImpl implements TencentCloudL5Endpoin
     }
 
     @Override
-    public void updateRouteResult(int status) {
+    public void handle(int status, long costMs) {
+        // which is used by cos java sdk to refresh
         if (null != l5IP && l5Port > 0) {
+            int startUsec = (int)(System.currentTimeMillis() - costMs);
             L5API.L5QOSPacket packet = new L5API.L5QOSPacket();
             packet.ip = this.l5IP;
             packet.port = l5Port;
             packet.cmdid = this.cmdId;
             packet.modid = this.modId;
-            packet.start = this.l5Start;
+            packet.start = startUsec;
 
-            for (int i = 0; i < 5; ++i) {
-                L5API.updateRoute(packet, status);
-            }
+            // because inner already retry many times, give the control into the java sdk.
+            L5API.updateRoute(packet, status);
         } else {
-            LOG.error("Update l5 modid: {} cmdid: {} ip: {} port {} failed.",
-                    this.modId, this.cmdId, this.l5IP, this.l5Port);
+            LOG.error("Update l5 modid: {} cmdid: {} ip: {} port {}, " +
+                            "status {}, costMs {} failed.",
+                    this.modId, this.cmdId, this.l5IP, this.l5Port, status, costMs);
         }
     }
 
