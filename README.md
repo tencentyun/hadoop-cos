@@ -341,3 +341,13 @@ File System Counters
 2) 如果使用了元数据加速桶，想使用hadoop fs -ls cosn//test/方式访问
 除了需要配置fs.cosn.userinfo.appid外需要设置fs.cosn.trsf.fs.ofs.use.short.bucketname为true
 
+### 简化Bucket独立配置
+背景： 由于旧版本OFS JAVA SDK对挂载点格式做了访问限制，只支持bucket-appid方式进行访问，
+新版本（1.1.8+）支持bucket方式进行访问，不需要带appid。hadoopcos 8.3.0开始支持
+如需cosn://bucket/ posix方式访问元数据加速桶则添加添加配置项：
+fs.cosn.trsf.fs.ofs.use.short.bucketname true
+fs.cosn.userinfo.appid 12345678
+同理可以简化上一节各Bucket独立配置项通过添加如下配置做到cosn://test/得方式进行访问
+fs.cosn.bucket.test.trsf.fs.ofs.use.short.bucketname true
+fs.cosn.bucket.test.upload.buffer 1024
+fs.cosn.bucket.test.<other config> *
