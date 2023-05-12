@@ -846,18 +846,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public FileMetadata retrieveMetadata(String key) throws IOException {
-        return retrieveMetadata(key, null);
+        return retrieveMetadata(key, null, true);
     }
 
     // this method only used in getFileStatus to get the head request result info
     @Override
     public FileMetadata retrieveMetadata(String key,
-                                         CosNResultInfo info) throws IOException {
+                                         CosNResultInfo info, boolean checkFile) throws IOException {
         if (key.endsWith(CosNFileSystem.PATH_DELIMITER)) {
             key = key.substring(0, key.length() - 1);
         }
 
-        if (!key.isEmpty()) {
+        if (!key.isEmpty() && checkFile) {
             FileMetadata fileMetadata = queryObjectMetadata(key, info);
             if (fileMetadata != null) {
                 return fileMetadata;

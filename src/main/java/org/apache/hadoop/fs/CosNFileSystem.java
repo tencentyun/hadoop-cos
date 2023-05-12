@@ -71,6 +71,10 @@ public class CosNFileSystem extends FileSystem {
     static final String CSE_ALGORITHM_USER_METADATA = "client-side-encryption-cek-alg";
     private int symbolicLinkSizeThreshold;
 
+    // for fileSystem based on CosN like GooseFS will do folder/file check
+    // so in this situation, we need disable this duplicate folder/file check in CosN
+    private boolean createOpCheckExistFile = true;
+
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
     }
@@ -99,6 +103,10 @@ public class CosNFileSystem extends FileSystem {
     public CosNFileSystem withRangerCredentialsClient(RangerCredentialsClient rc) {
         this.rangerCredentialsClient = rc;
         return this;
+    }
+
+    public void disableCreateOpFileExistCheck() {
+        this.createOpCheckExistFile = false;
     }
 
     @Override
@@ -399,28 +407,29 @@ public class CosNFileSystem extends FileSystem {
                                      int bufferSize, short replication,
                                      long blockSize, Progressable progress)
             throws IOException {
-        // preconditions
-        try {
-            FileStatus targetFileStatus = this.getFileStatus(f);
-            if (targetFileStatus.isSymlink()) {
-                f = this.getLinkTarget(f);
-                // call the getFileStatus for the latest path again.
-                targetFileStatus = getFileStatus(f);
-            }
-
-            if (targetFileStatus.isFile() && !overwrite) {
-                throw new FileAlreadyExistsException("File already exists: " + f);
-            }
-            if (targetFileStatus.isDirectory()) {
-                throw new FileAlreadyExistsException("Directory already exists: " + f);
-            }
-        } catch (FileNotFoundException ignore) {
+        if (createOpCheckExistFile) {
+            // preconditions
+            try {
+                FileStatus targetFileStatus = this.innerGetFileStatus(f, !overwrite);
+                if (targetFileStatus.isSymlink()) {
+                    f = this.getLinkTarget(f);
+                    // call the getFileStatus for the latest path again.
+                    targetFileStatus = getFileStatus(f);
+                }
+                if (targetFileStatus.isFile() && !overwrite) {
+                    throw new FileAlreadyExistsException("File already exists: " + f);
+                }
+                if (targetFileStatus.isDirectory()) {
+                    throw new FileAlreadyExistsException("Directory already exists: " + f);
+                }
+            } catch (FileNotFoundException ignore) {
             // NOTE: 这里之前认为可能会出现从 COS 的 SDK 或者 API 上传了一个 / 结尾的有内容对象
             // 那么再在这个文件前缀下面成功创建新的对象而不报错的话，其实是不符合文件系统语义规范的。
             // 同时，也是为了保证一个完整的目录结构，但是确实会带来元数据查询请求的明显放大。
             // 不过这里，因为一般不会出现 / 结尾的内容对象，即使出现也不会覆盖丢失（因为这里相当于它的一个commonPrefix，原始对象还在COS里面）
             // 所以决定去掉这个检查，来改善优化性能。
             // validatePath(f)
+            }
         }
 
         Path absolutePath = makeAbsolute(f);
@@ -553,6 +562,11 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
+        return innerGetFileStatus(f, true);
+    }
+
+    public FileStatus innerGetFileStatus(Path f, boolean checkFile) throws IOException {
+
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -561,7 +575,7 @@ public class CosNFileSystem extends FileSystem {
         }
 
         CosNResultInfo getObjectMetadataResultInfo = new CosNResultInfo();
-        FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo);
+        FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo, checkFile);
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);

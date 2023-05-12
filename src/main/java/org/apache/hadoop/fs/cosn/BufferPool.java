@@ -126,7 +126,9 @@ public final class BufferPool {
                     CosNConfigKeys.DEFAULT_TMP_DIR);
             boolean deleteOnExit = conf.getBoolean(CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED,
                     CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
-            this.bufferFactory = new CosNMappedBufferFactory(tmpDir, deleteOnExit);
+            String[] tmpDirList = tmpDir.split(",");
+            LOG.info("tmp dir list", String.join(";", tmpDirList));
+            this.bufferFactory = new CosNMappedBufferFactory(tmpDirList, deleteOnExit);
         } else {
             String exceptionMsg = String.format("The type of the upload " +
                     "buffer is "

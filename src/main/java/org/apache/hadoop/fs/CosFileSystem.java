@@ -609,6 +609,17 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
+    // CosNFileSystem Support Only ignore exist file and folder check
+    public void disableCreateOpFileExistCheck() throws IOException {
+        LOG.debug("create op file exist check");
+        checkInitialized();
+        if (this.actualImplFS instanceof CosNFileSystem) {
+            ((CosNFileSystem) this.actualImplFS).disableCreateOpFileExistCheck();
+        } else {
+            throw new UnsupportedOperationException("Not supported currently");
+        }
+    }
+
     @Override
     public String getCanonicalServiceName() {
         if (useOFSRanger()) {
