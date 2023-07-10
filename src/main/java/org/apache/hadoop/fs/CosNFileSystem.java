@@ -611,7 +611,9 @@ public class CosNFileSystem extends FileSystem {
 
             LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
             CosNResultInfo listObjectsResultInfo = new CosNResultInfo();
-            CosNPartialListing listing = this.nativeStore.list(key, maxKeys, listObjectsResultInfo);
+            CosNPartialListing listing = this.nativeStore.list(key, maxKeys, null,
+                    this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_RECURSIVE_ENABLED, CosNConfigKeys.DEFAULT_FILESTATUS_LIST_RECURSIVE_ENABLED),
+                    listObjectsResultInfo);
             if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
                 LOG.debug("List the cos key [{}] to find that it is a directory.", key);
                 return newDirectory(absolutePath);

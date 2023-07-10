@@ -205,4 +205,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_FILESTATUS_LIST_OP_ENABLED = "fs.cosn.filestatus.list.op.enabled";
     public static final boolean DEFAULT_FILESTATUS_LIST_OP_ENABLED = true;
+
+    public static final String COSN_FILESTATUS_LIST_RECURSIVE_ENABLED = "fs.cosn.filestatus.list.recursive.enabled";
+    public static final boolean DEFAULT_FILESTATUS_LIST_RECURSIVE_ENABLED = false;
 }
