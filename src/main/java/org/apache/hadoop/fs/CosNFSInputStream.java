@@ -263,7 +263,7 @@ public class CosNFSInputStream extends FSInputStream {
             return;
         }
         if (pos >= this.bufferStart &&  pos <= this.bufferEnd) {
-            LOG.debug("seek cache hit lastpos {}, pos {}, this buffer start {}, end {}",
+            LOG.debug("seek cache hit last pos {}, pos {}, this buffer start {}, end {}",
                     this.position, pos, this.bufferStart, this.bufferEnd);
             this.position = pos;
             this.partRemaining = this.bufferEnd - pos + 1;
