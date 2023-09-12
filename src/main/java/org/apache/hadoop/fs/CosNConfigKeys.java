@@ -132,7 +132,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 8;
     // used to control getFileStatus list to judge dir whether exist.
     public static final String FILESTATUS_LIST_MAX_KEYS = "fs.cosn.filestatus.list_max_keys";
-    public static final int DEFAULT_FILESTATUS_LIST_MAX_KEYS = 2;
+    public static final int DEFAULT_FILESTATUS_LIST_MAX_KEYS = 1;
 
     // used for double check complete mpu in case of return cos client exception but status is 200 ok.
     public static final String COSN_COMPLETE_MPU_CHECK = "fs.cosn.complete.mpu.check";
