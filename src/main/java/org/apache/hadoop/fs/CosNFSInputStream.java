@@ -153,18 +153,10 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     private synchronized void reopen(long pos) throws IOException {
-        long partSize = 0;
-
         if (pos < 0) {
             throw new EOFException(FSExceptionMessages.NEGATIVE_SEEK);
         } else if (pos > this.fileSize) {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
-        } else {
-            if (pos + this.preReadPartSize > this.fileSize) {
-                partSize = this.fileSize - pos;
-            } else {
-                partSize = this.preReadPartSize;
-            }
         }
 
         this.buffer = null;
@@ -183,8 +175,8 @@ public class CosNFSInputStream extends FSInputStream {
                 this.bufferStart = this.previousReadBuffer.getStart();
                 this.bufferEnd = this.previousReadBuffer.getEnd();
                 this.position = pos;
-                this.partRemaining = partSize - (pos - this.bufferStart);
-                this.nextPos = !this.readBufferQueue.isEmpty() ? this.readBufferQueue.getFirst().getStart() : ((pos + partSize) / partSize) * partSize;
+                this.partRemaining = (this.bufferEnd - this.bufferStart + 1) - (pos - this.bufferStart);
+                this.nextPos = !this.readBufferQueue.isEmpty() ? this.readBufferQueue.getFirst().getStart() : pos + this.preReadPartSize;
                 return;
             }
         }
@@ -198,11 +190,11 @@ public class CosNFSInputStream extends FSInputStream {
             }
         }
         // 规整到队头的下一个元素的起始位置
-        this.nextPos = ((pos + partSize) / partSize) * partSize;
+        this.nextPos = pos + this.preReadPartSize;
 
         int currentBufferQueueSize = this.readBufferQueue.size();
         if (currentBufferQueueSize == 0) {
-            this.lastByteStart = pos - partSize;
+            this.lastByteStart = pos - this.preReadPartSize;
         } else {
             ReadBuffer[] readBuffers =
                     this.readBufferQueue.toArray(new ReadBuffer[currentBufferQueueSize]);
@@ -212,12 +204,12 @@ public class CosNFSInputStream extends FSInputStream {
 
         int maxLen = this.maxReadPartNumber - currentBufferQueueSize;
         for (int i = 0; i < maxLen && i < (currentBufferQueueSize + 1) * 2; i++) {
-            if (this.lastByteStart + partSize * (i + 1) > this.fileSize) {
+            if (this.lastByteStart + this.preReadPartSize * (i + 1) > this.fileSize) {
                 break;
             }
 
-            long byteStart = this.lastByteStart + partSize * (i + 1);
-            long byteEnd = byteStart + partSize - 1;
+            long byteStart = this.lastByteStart + this.preReadPartSize * (i + 1);
+            long byteEnd = byteStart + this.preReadPartSize - 1;
             if (byteEnd >= this.fileSize) {
                 byteEnd = this.fileSize - 1;
             }
@@ -264,7 +256,7 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         this.position = pos;
-        this.partRemaining = partSize - (pos - this.bufferStart);
+        this.partRemaining = (this.bufferEnd - this.bufferStart + 1) - (pos - this.bufferStart);
     }
 
     @Override
