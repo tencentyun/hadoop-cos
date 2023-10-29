@@ -153,7 +153,23 @@
 
         <!-- Tencent cloud supports internal configurations, including L5 domain name resolution. -->
         <profile>
+            <!-- NOTE: The following configuration is only used for the Tencent’s internal system. -->
             <id>internal</id>
+            <repositories>
+                <repository>
+                    <id>tencent_public_snapshots</id>
+                    <name>tencent_public_snapshots</name>
+                    <url>https://mirrors.tencent.com/repository/maven/tencent_public_snapshots</url>
+                    <layout>default</layout>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+
             <dependencies>
                 <dependency>
                     <groupId>com.tencent.jungle</groupId>
