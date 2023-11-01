@@ -527,6 +527,13 @@ public class CosFileSystem extends FileSystem {
             if (null != content && !content.isEmpty()) {
                 String transferKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
                         concat(configMap.get(org));
+                // if ofs transfer appid set we ignore it, then we can use appid to version control
+                String transferContent = this.getConf().get(transferKey);
+                if (null != transferContent && !transferContent.isEmpty()) {
+                    LOG.info("transfer ofs config, already has transfer key {}, value {}",
+                            transferKey, transferContent);
+                    continue;
+                }
                 this.getConf().set(transferKey, content);
             }
         }
