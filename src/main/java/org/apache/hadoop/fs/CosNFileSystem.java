@@ -586,15 +586,6 @@ public class CosNFileSystem extends FileSystem {
             }
         }
 
-        CosNResultInfo getSymlinkResultInfo = new CosNResultInfo();
-        if (this.supportsSymlinks()) {
-            CosNSymlinkMetadata cosNSymlinkMetadata =
-                this.nativeStore.retrieveSymlinkMetadata(key, getSymlinkResultInfo);
-            if (null != cosNSymlinkMetadata) {
-                return newSymlink(cosNSymlinkMetadata, absolutePath);
-            }
-        }
-
         if (isPosixBucket) {
             throw new FileNotFoundException("No such file or directory in posix bucket'" + absolutePath + "'");
         }
@@ -620,9 +611,8 @@ public class CosNFileSystem extends FileSystem {
             }
 
             if (listObjectsResultInfo.isKeySameToPrefix()) {
-                LOG.info("List the cos key [{}] same to prefix, getSymlink-id:[{}] head-id:[{}], " +
-                        "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key,
-                    getSymlinkResultInfo.getRequestID(), getObjectMetadataResultInfo.getRequestID(),
+                LOG.info("List the cos key [{}] same to prefix, head-id:[{}], " +
+                        "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key, getObjectMetadataResultInfo.getRequestID(),
                     listObjectsResultInfo.getRequestID(), listObjectsResultInfo.isKeySameToPrefix(),
                     Thread.currentThread().getId(), Thread.currentThread().getName());
             }
@@ -680,6 +670,9 @@ public class CosNFileSystem extends FileSystem {
                         CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(
                                 fileMetadata.getKey());
                         if (null != cosNSymlinkMetadata) {
+                            // 这里 CGI 的 GetSymlink 接口返回的 contentLength 是0，但是 List 接口又返回的是正确的值，
+                            // 因此这里还是取 List 接口返回的软连接大小
+                            cosNSymlinkMetadata.setLength(fileMetadata.getLength());
                             status.add(newSymlink(cosNSymlinkMetadata, subPath));
                             continue;
                         }
@@ -1335,6 +1328,17 @@ public class CosNFileSystem extends FileSystem {
         this.nativeStore.createSymlink(linkKey, targetKey);
     }
 
+    /**
+     * Return a file status object that represents the path. If the path refers to a symlink then the FileStatus of the symlink is returned.
+     * The behavior is equivalent to #getFileStatus() if the underlying file system does not support symbolic links.
+     *
+     * @param f The file or symlink path to be obtained.
+     * @return the filestatus for symbolic links or files themselves.
+     * @throws AccessControlException
+     * @throws FileNotFoundException
+     * @throws UnsupportedFileSystemException
+     * @throws IOException
+     */
     @Override
     public FileStatus getFileLinkStatus(final Path f)
             throws AccessControlException, FileNotFoundException,
@@ -1343,21 +1347,27 @@ public class CosNFileSystem extends FileSystem {
             return super.getFileLinkStatus(f);
         }
 
-        Path absolutePath = makeAbsolute(f);
-        String symlinkKey = pathToKey(absolutePath);
-        CosNSymlinkMetadata cosNSymlinkMetadata = nativeStore.retrieveSymlinkMetadata(symlinkKey);
-        FileStatus fileStatus;
-        if (null != cosNSymlinkMetadata) {
-            fileStatus = newSymlink(cosNSymlinkMetadata, absolutePath);
-        } else {
-            throw new FileNotFoundException("Symbolic does not exist: " + f);
+        // 这里会得到这个文件的元数据，如果不存在，则软连接也不存在，就直接返回了
+        FileStatus fileStatus = this.getFileStatus(f);
+        if (fileStatus.isSymlink()) {
+            // 如果是软连接则需要取出软连接本身的元数据出来
+            Path absolutePath = makeAbsolute(f);
+            String symlinkKey = pathToKey(absolutePath);
+            CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(symlinkKey);
+            if (null != cosNSymlinkMetadata) {
+                fileStatus = newSymlink(cosNSymlinkMetadata, absolutePath);
+            } else {
+                throw new FileNotFoundException("Symbolic does not exist: " + f);
+            }
+
+            // 这里设置为规范化的 target 路径
+            if (fileStatus.isSymlink()) {
+                Path targetQual = FSLinkResolver.qualifySymlinkTarget(uri,
+                        fileStatus.getPath(), fileStatus.getSymlink());
+                fileStatus.setSymlink(targetQual);
+            }
         }
 
-        if (fileStatus.isSymlink()) {
-            Path targetQual = FSLinkResolver.qualifySymlinkTarget(uri,
-                    fileStatus.getPath(), fileStatus.getSymlink());
-            fileStatus.setSymlink(targetQual);
-        }
         return fileStatus;
     }
 
@@ -1368,6 +1378,14 @@ public class CosNFileSystem extends FileSystem {
           CosNConfigKeys.DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED);
     }
 
+    /**
+     * Returns the target of the given symbolic link as it was specified when the link was created.
+     * Links in the path leading up to the final path component are resolved transparently.
+     *
+     * @param f
+     * @return
+     * @throws IOException
+     */
     @Override
     public Path getLinkTarget(final Path f) throws IOException {
         if (!this.supportsSymlinks()) {

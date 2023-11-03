@@ -14,7 +14,7 @@ import java.util.Map;
 @InterfaceStability.Unstable
 public class FileMetadata {
     private final String key;
-    private final long length;
+    private long length;
     private final long lastModified;
     private final boolean isFile;
     private final String ETag;
@@ -67,6 +67,10 @@ public class FileMetadata {
 
     public long getLength() {
         return length;
+    }
+
+    public void setLength(long length) {
+        this.length = length;
     }
 
     public long getLastModified() {
