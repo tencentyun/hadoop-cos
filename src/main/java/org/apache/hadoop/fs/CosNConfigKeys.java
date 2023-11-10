@@ -129,7 +129,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String READ_AHEAD_BLOCK_SIZE_KEY = "fs.cosn.read.ahead.block.size";
     public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 1 * Unit.MB;
     public static final String READ_AHEAD_QUEUE_SIZE = "fs.cosn.read.ahead.queue.size";
-    public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 8;
+    public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 6;
     // used to control getFileStatus list to judge dir whether exist.
     public static final String FILESTATUS_LIST_MAX_KEYS = "fs.cosn.filestatus.list_max_keys";
     public static final int DEFAULT_FILESTATUS_LIST_MAX_KEYS = 1;
