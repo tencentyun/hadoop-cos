@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>8.3.2</version>
+    <version>8.3.3</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Cloud COS Support</name>
@@ -31,6 +31,12 @@
             <organization>Tencent Cloud</organization>
             <organizationUrl>https://cloud.tencent.com/</organizationUrl>
             <url>https://github.com/yuyang733</url>
+            <roles>
+                <role>Founder</role>
+                <role>Admin</role>
+                <role>Maintainer</role>
+                <role>Developer</role>
+            </roles>
         </developer>
         <developer>
             <id>alantong</id>
