@@ -6,6 +6,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.utils.CRC64;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.cosn.ConsistencyChecker;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.cosn.multipart.upload.UploadPartCopy;
 import org.slf4j.Logger;

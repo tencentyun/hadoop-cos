@@ -14,6 +14,7 @@ import org.apache.hadoop.fs.cosn.Abortable;
 import org.apache.hadoop.fs.cosn.BufferInputStream;
 import org.apache.hadoop.fs.cosn.BufferOutputStream;
 import org.apache.hadoop.fs.cosn.BufferPool;
+import org.apache.hadoop.fs.cosn.ConsistencyChecker;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.cosn.buffer.CosNByteBuffer;

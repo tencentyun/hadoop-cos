@@ -1,6 +1,8 @@
-package org.apache.hadoop.fs;
+package org.apache.hadoop.fs.cosn;
 
 import com.qcloud.cos.utils.CRC64;
+import org.apache.hadoop.fs.FileMetadata;
+import org.apache.hadoop.fs.NativeFileSystemStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
