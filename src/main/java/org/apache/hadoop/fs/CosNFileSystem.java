@@ -850,7 +850,7 @@ public class CosNFileSystem extends FileSystem {
         if (fileStatus.isDirectory()) {
             throw new FileNotFoundException("'" + f + "' is a directory");
         }
-        LOG.info("Opening '" + f + "' for reading");
+        LOG.debug("Opening '" + f + "' for reading");
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         return new FSDataInputStream(new BufferedFSInputStream(
