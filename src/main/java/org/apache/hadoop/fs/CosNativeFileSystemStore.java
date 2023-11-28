@@ -1816,7 +1816,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     }
                 } else if (statusCode / 100 == 5) {
                     if (retryIndex <= this.maxRetryTimes) {
-
                         if (statusCode == 503) {
                             if (useL5Id) {
                                 if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
@@ -1869,7 +1868,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                                     return new CompleteMultipartUploadResult();
                                 }
                             }
-
+                            LOG.info("Ready to retry [{}], wait time: [{} - {}] ms", retryIndex, sleepLeast, sleepBound);
                             Thread.sleep(
                                     ThreadLocalRandom.current().nextLong(sleepLeast, sleepBound));
                             ++retryIndex;
