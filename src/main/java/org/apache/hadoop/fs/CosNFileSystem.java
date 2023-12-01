@@ -410,7 +410,7 @@ public class CosNFileSystem extends FileSystem {
         if (createOpCheckExistFile) {
             // preconditions
             try {
-                FileStatus targetFileStatus = this.innerGetFileStatus(f, !overwrite);
+                FileStatus targetFileStatus = this.getFileStatus(f);
                 if (targetFileStatus.isSymlink()) {
                     f = this.getLinkTarget(f);
                     // call the getFileStatus for the latest path again.
@@ -560,12 +560,7 @@ public class CosNFileSystem extends FileSystem {
         this.nativeStore.deleteRecursive(key);
     }
 
-    @Override
     public FileStatus getFileStatus(Path f) throws IOException {
-        return innerGetFileStatus(f, true);
-    }
-
-    public FileStatus innerGetFileStatus(Path f, boolean checkFile) throws IOException {
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
@@ -575,7 +570,7 @@ public class CosNFileSystem extends FileSystem {
         }
 
         CosNResultInfo getObjectMetadataResultInfo = new CosNResultInfo();
-        FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo, checkFile);
+        FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo);
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
