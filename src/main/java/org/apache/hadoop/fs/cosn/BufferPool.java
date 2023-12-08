@@ -109,9 +109,6 @@ public final class BufferPool {
         }
 
         if (this.totalBufferSize == -1) {
-            LOG.info("{} is set to -1, so the 'mapped_disk' buffer will be " +
-                    "used by "
-                    + "default.", CosNConfigKeys.COSN_UPLOAD_BUFFER_SIZE_KEY);
             this.bufferType = CosNBufferType.MAPPED_DISK;
         }
 
@@ -127,7 +124,6 @@ public final class BufferPool {
             boolean deleteOnExit = conf.getBoolean(CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED,
                     CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
             String[] tmpDirList = tmpDir.split(",");
-            LOG.info("tmp dir list", String.join(";", tmpDirList));
             this.bufferFactory = new CosNMappedBufferFactory(tmpDirList, deleteOnExit);
         } else {
             String exceptionMsg = String.format("The type of the upload " +

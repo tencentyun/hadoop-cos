@@ -16,7 +16,7 @@ import java.util.Arrays;
 import static org.apache.hadoop.fs.cosn.Constants.CUSTOM_AUTHENTICATION;
 
 public class RangerCredentialsClient {
-    private static final Logger log = LoggerFactory.getLogger(RangerCredentialsClient.class);
+    private static final Logger logger = LoggerFactory.getLogger(RangerCredentialsClient.class);
 
     private Configuration conf;
 
@@ -109,7 +109,7 @@ public class RangerCredentialsClient {
     }
 
     public Token<?> doGetDelegationToken(String renewer) throws IOException {
-        log.info("getDelegationToken, renewer: {}, stack: {}",
+        logger.info("getDelegationToken, renewer: {}, stack: {}",
                 renewer, Arrays.toString(Thread.currentThread().getStackTrace()).replace(',', '\n'));
         if (this.rangerQcloudObjectStorageStorageClient != null) {
             return this.rangerQcloudObjectStorageStorageClient.getDelegationToken(renewer);
@@ -135,7 +135,7 @@ public class RangerCredentialsClient {
         Class<?>[] cosClasses = CosNUtils.loadCosProviderClasses(
                 conf,
                 CosNConfigKeys.COSN_CREDENTIALS_PROVIDER);
-        log.info("begin to init ranger client, impl {}", Arrays.toString(cosClasses));
+        logger.info("begin to init ranger client, impl {}", Arrays.toString(cosClasses));
 
         if (cosClasses.length == 0) {
             this.enableRangerPluginPermissionCheck = false;
@@ -149,7 +149,7 @@ public class RangerCredentialsClient {
             }
         }
 
-        log.info("begin to init ranger client, enable ranger plugins {}", this.enableRangerPluginPermissionCheck);
+        logger.info("begin to init ranger client, enable ranger plugins {}", this.enableRangerPluginPermissionCheck);
         if (!this.enableRangerPluginPermissionCheck) {
             return;
         }
@@ -175,7 +175,7 @@ public class RangerCredentialsClient {
                         // set ranger policy url and other auth info.
                         // when use posix mode to query bucket. server side also auth the policy url.
                         // so need to pass these configurations to ofs java sdk which carried on when mount fs.
-                        log.info("begin to init ranger client, to get auth policy url");
+                        logger.info("begin to init ranger client, to get auth policy url");
                         RangerAuthPolicyResponse rangerAuthPolicyResp =
                                 rangerQcloudObjectStorageStorageClient.getRangerAuthPolicy();
                         if (rangerAuthPolicyResp != null) {
@@ -186,17 +186,17 @@ public class RangerCredentialsClient {
                                 this.authJarMd5 = rangerAuthPolicyResp.getAuthJarMd5();
                             }
                         }
-                        log.info("begin to init ranger client, finish to get auth policy url {}, auth md5 {}",
+                        logger.info("begin to init ranger client, finish to get auth policy url {}, auth md5 {}",
                                 this.rangerPolicyUrl, this.authJarMd5);
                     } catch (Exception e) {
-                        log.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
+                        logger.error(String.format("init %s failed", CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
                         throw new IOException(String.format("init %s failed",
                                 CosNConfigKeys.COSN_RANGER_PLUGIN_CLIENT_IMPL), e);
                     }
                 }
             }
         } else {
-            log.info("begin to init ranger client, but client is not null, impossible!");
+            logger.info("begin to init ranger client, but client is not null, impossible!");
         }
     } // end of init ranger impl
 
