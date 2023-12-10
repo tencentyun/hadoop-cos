@@ -309,4 +309,27 @@ public final class CosNUtils {
         return dest;
     }
 
+    public static String pathToKey(Path path) {
+        if (path.toUri().getScheme() != null && path.toUri().getPath().isEmpty()) {
+            // allow uris without trailing slash after bucket to refer to root,
+            // like cosn://mybucket
+            return "";
+        }
+        if (!path.isAbsolute()) {
+            throw new IllegalArgumentException("Path must be absolute: " + path);
+        }
+        String ret = path.toUri().getPath();
+        if (ret.endsWith("/") && (ret.indexOf("/") != ret.length() - 1)) {
+            ret = ret.substring(0, ret.length() - 1);
+        }
+        return ret;
+    }
+
+    public static Path keyToPath(String key, String pathDelimiter) {
+        if (!key.startsWith(pathDelimiter)) {
+            return new Path("/" + key);
+        } else {
+            return new Path(key);
+        }
+    }
 }

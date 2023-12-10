@@ -1527,28 +1527,19 @@ public class CosNFileSystem extends FileSystem {
         return new Path(workingDir, path);
     }
 
-    // key and path relate
-    public static String pathToKey(Path path) {
-        if (path.toUri().getScheme() != null && path.toUri().getPath().isEmpty()) {
-            // allow uris without trailing slash after bucket to refer to root,
-            // like cosn://mybucket
-            return "";
-        }
-        if (!path.isAbsolute()) {
-            throw new IllegalArgumentException("Path must be absolute: " + path);
-        }
-        String ret = path.toUri().getPath();
-        if (ret.endsWith("/") && (ret.indexOf("/") != ret.length() - 1)) {
-            ret = ret.substring(0, ret.length() - 1);
-        }
-        return ret;
+    /**
+     * 将一个 hadoop 的 path 路径转换为 COS 的 key 路径。
+     * 由于每个方法都会调用这个方法，因此这里调用了 checkPath 检查传入路径是否归属于当前的文件系统 URI。
+     *
+     * @param path hadoop 的 path 路径，原则上应是一个绝对路径。
+     * @return 传入的 hadoop 的 path 对应的 COS 的 key 路径。
+     */
+    public String pathToKey(Path path) {
+        super.checkPath(path);
+        return CosNUtils.pathToKey(path);
     }
 
-    public static Path keyToPath(String key) {
-        if (!key.startsWith(PATH_DELIMITER)) {
-            return new Path("/" + key);
-        } else {
-            return new Path(key);
-        }
+    public Path keyToPath(String key) {
+        return CosNUtils.keyToPath(key, PATH_DELIMITER);
     }
 }

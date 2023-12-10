@@ -68,7 +68,7 @@ public class RangerCredentialsClient {
         }
 
         Path absolutePath = makeAbsolute(f, workingDirectory);
-        String allowKey = CosNFileSystem.pathToKey(absolutePath);
+        String allowKey = CosNUtils.pathToKey(absolutePath);
         if (allowKey.startsWith("/")) {
             allowKey = allowKey.substring(1);
         }
