@@ -565,7 +565,7 @@ public class CosNFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
-        if (key.length() == 0 || key.equals(PATH_DELIMITER)) { // root always exists
+        if (key.isEmpty() || key.equals(PATH_DELIMITER)) { // root always exists
             return newDirectory(absolutePath);
         }
 
@@ -888,7 +888,7 @@ public class CosNFileSystem extends FileSystem {
         if (null != dstParentPath) {
             LOG.debug("It is not allowed to rename a parent directory:{} to " +
                     "its subdirectory:{}.", src, dst);
-            throw new IOException(String.format(
+            throw new PathIOException(String.format(
                     "It is not allowed to rename a parent directory:%s to its" +
                             " subdirectory:%s",
                     src, dst));
@@ -902,8 +902,6 @@ public class CosNFileSystem extends FileSystem {
             // and the rename operation is not allowed.
             //
             if (dstFileStatus.isFile()) {
-//                throw new FileAlreadyExistsException(String.format(
-//                        "File:%s already exists", dstFileStatus.getPath()));
                 LOG.debug("File: {} already exists.", dstFileStatus.getPath());
                 return false;
             } else {
@@ -919,13 +917,8 @@ public class CosNFileSystem extends FileSystem {
                     statuses = null;
                 }
                 if (null != statuses && statuses.length > 0) {
-                    LOG.debug("Cannot rename {} to {}, file already exists.",
+                    LOG.debug("Cannot rename {} to {}, the destination directory is non-empty.",
                             src, dst);
-//                    throw new FileAlreadyExistsException(
-//                            String.format(
-//                                    "File: %s already exists", dst
-//                            )
-//                    );
                     return false;
                 }
             }
