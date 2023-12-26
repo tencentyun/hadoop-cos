@@ -391,6 +391,7 @@ public class CosNFSInputStream extends FSInputStream {
 
         this.closed = true;
         this.buffer = null;
+        readBufferQueue.clear();
     }
 
     private void checkOpened() throws IOException {
