@@ -455,6 +455,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         } catch (Exception e) {
             String errMsg = String.format("head bucket [%s] occurs an exception: %s.",
                     bucketName, e);
+            LOG.error(errMsg, e);
             handleException(new Exception(errMsg), bucketName);
         }
         return null; // never will get here
