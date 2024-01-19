@@ -482,13 +482,19 @@ public class CosFileSystem extends FileSystem {
         // ofs ranger init get ranger policy auto
         String ofsRangerKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
                 concat(Constants.COSN_POSIX_BUCKCET_OFS_RANGER_FLAG);
-        if (useOFSRanger()) {
-            // set ofs ranger open
-            this.getConf().setBoolean(ofsRangerKey, true);
-            return;
+        String ofsRangerValue = this.getConf().get(ofsRangerKey);
+        if (null == ofsRangerValue || ofsRangerValue.isEmpty()) {
+            if (useOFSRanger()) {
+                // set ofs ranger open
+                this.getConf().setBoolean(ofsRangerKey, true);
+                return;
+            } else {
+                // set false, avoid sdk change the default value
+                this.getConf().setBoolean(ofsRangerKey, false);
+            }
         } else {
-            // set false, avoid sdk change the default value
-            this.getConf().setBoolean(ofsRangerKey, false);
+            LOG.info("ofs transfer config already exist, transfer key {}, value {}",
+                    ofsRangerKey, ofsRangerValue);
         }
 
         if (!this.rangerCredentialsClient.isEnableRangerPluginPermissionCheck()) {
@@ -499,12 +505,24 @@ public class CosFileSystem extends FileSystem {
         if (this.rangerCredentialsClient.getRangerPolicyUrl() != null) {
             String policyUrlKey = Constants.COSN_CONFIG_TRANSFER_PREFIX.
                     concat(Constants.COSN_POSIX_BUCKET_RANGER_POLICY_URL);
-            this.getConf().set(policyUrlKey, this.rangerCredentialsClient.getRangerPolicyUrl());
+            String policyUrlValue = this.getConf().get(policyUrlKey);
+            if (policyUrlValue == null || policyUrlValue.isEmpty()) {
+                this.getConf().set(policyUrlKey, this.rangerCredentialsClient.getRangerPolicyUrl());
+            } else {
+                LOG.info("ofs transfer config already exist, transfer key {}, value {}",
+                        policyUrlKey, policyUrlValue);
+            }
         }
         if (this.rangerCredentialsClient.getAuthJarMd5() != null) {
             String authJarMd5Key = Constants.COSN_CONFIG_TRANSFER_PREFIX.
                     concat(Constants.COSN_POSIX_BUCKET_RANGER_AUTH_JAR_MD5);
-            this.getConf().set(authJarMd5Key, this.rangerCredentialsClient.getAuthJarMd5());
+            String authJarMd5Value = this.getConf().get(authJarMd5Key);
+            if (authJarMd5Value == null || authJarMd5Value.isEmpty()) {
+                this.getConf().set(authJarMd5Key, this.rangerCredentialsClient.getAuthJarMd5());
+            } else {
+                LOG.info("ofs transfer config already exist, transfer key {}, value {}",
+                        authJarMd5Key, authJarMd5Value);
+            }
         }
     }
 
@@ -530,7 +548,7 @@ public class CosFileSystem extends FileSystem {
                 // if ofs transfer appid set we ignore it, then we can use appid to version control
                 String transferContent = this.getConf().get(transferKey);
                 if (null != transferContent && !transferContent.isEmpty()) {
-                    LOG.info("transfer ofs config, already has transfer key {}, value {}",
+                    LOG.info("ofs transfer config already exist, transfer key {}, value {}",
                             transferKey, transferContent);
                     continue;
                 }
