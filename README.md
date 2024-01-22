@@ -351,3 +351,13 @@ fs.cosn.userinfo.appid 12345678
 fs.cosn.bucket.test.trsf.fs.ofs.use.short.bucketname true
 fs.cosn.bucket.test.upload.buffer 1024
 fs.cosn.bucket.test.<other config> *
+
+### 插件配置优先级说明
+插件配置优先级：Bucket独立配置项大于元数据加速桶配置项（fs.cosn.trsf.*) 大于默认配置。
+
+插件配置转化顺序： Bucket独立配置项-> 显式配置fs.cosn.trsf.* 相关配置则不进行转换-> 没有显式配置fs.cosn.trsf.* 的则会自动转换，例如如下配置项：
+1. fs.cosn.userinfo.appid
+2. fs.cosn.bucket.region
+3. fs.cosn.userinfo.region
+4. fs.cosn.server-side-encryption.algorithm
+5. fs.cosn.server-side-encryption.context
