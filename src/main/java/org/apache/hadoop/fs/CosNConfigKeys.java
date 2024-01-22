@@ -208,4 +208,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_FILESTATUS_LIST_RECURSIVE_ENABLED = "fs.cosn.filestatus.list.recursive.enabled";
     public static final boolean DEFAULT_FILESTATUS_LIST_RECURSIVE_ENABLED = false;
+
+    // 存在同名文件，且该文件长度为0时，目录优先（默认关）
+    public static final String COSN_FILESTATUS_DIR_FIRST_ENABLED = "fs.cosn.filestatus.dir.first.enabled";
+    public static final boolean DEFAULT_FILESTATUS_DIR_FIRST_ENABLED = false;
 }
