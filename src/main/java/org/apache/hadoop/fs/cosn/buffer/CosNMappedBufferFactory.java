@@ -60,7 +60,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
     }
 
     @Override
-    public CosNMappedBuffer create(int size) {
+    public CosNByteBuffer create(int size) {
         return this.create(Constants.BLOCK_TMP_FILE_PREFIX,
             Constants.BLOCK_TMP_FILE_SUFFIX, size);
     }
@@ -71,7 +71,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
         return tmpDirs.get(Math.abs(currentIndex.getAndIncrement() % tmpDirs.size()));
     }
 
-    public CosNMappedBuffer create(String prefix, String suffix, int size) {
+    public CosNByteBuffer create(String prefix, String suffix, int size) {
         File tmpDir = getTmpDir();
         if (null == tmpDir) {
             LOG.error("The tmp dir is null. no mapped buffer will be created.");
