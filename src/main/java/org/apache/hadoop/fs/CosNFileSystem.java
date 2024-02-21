@@ -75,6 +75,8 @@ public class CosNFileSystem extends FileSystem {
     // so in this situation, we need disable this duplicate folder/file check in CosN
     private boolean createOpCheckExistFile = true;
 
+    private boolean directoryFirstEnabled;
+
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
     }
@@ -231,6 +233,8 @@ public class CosNFileSystem extends FileSystem {
 
         this.symbolicLinkSizeThreshold = this.getConf().getInt(
                 CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
+        this.directoryFirstEnabled =  this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_DIR_FIRST_ENABLED,
+            CosNConfigKeys.DEFAULT_FILESTATUS_DIR_FIRST_ENABLED);
     }
 
     @Override
@@ -679,8 +683,12 @@ public class CosNFileSystem extends FileSystem {
                 Path subPath = keyToPath(commonPrefix.getKey());
                 String relativePath =
                         pathUri.relativize(subPath.toUri()).getPath();
-                status.add(newDirectory(commonPrefix, new Path(absolutePath,
-                        relativePath)));
+                FileStatus directory = newDirectory(commonPrefix, new Path(absolutePath, relativePath));
+                if (this.directoryFirstEnabled) {
+                    // 如果开启目录优先，需要先调用remove删除可能存在的同名文件，避免目录无法add
+                    status.remove(directory);
+                }
+                status.add(directory);
             }
             priorLastKey = listing.getPriorLastKey();
         } while (priorLastKey != null);
