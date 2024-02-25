@@ -115,7 +115,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private RangerCredentialsClient rangerCredentialsClient = null;
     private boolean useL5Id = false;
     private int l5UpdateMaxRetryTimes;
-    private boolean directoryFirstEnabled;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         COSCredentialProviderList cosCredentialProviderList =
@@ -356,8 +355,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         RangerCredentialsClient rangerCredentialsClient = new RangerCredentialsClient();
         rangerCredentialsClient.doInitialize(conf, bucket);
         this.initialize(uri, conf, rangerCredentialsClient);
-        directoryFirstEnabled = conf.getBoolean(CosNConfigKeys.COSN_FILESTATUS_DIR_FIRST_ENABLED,
-            CosNConfigKeys.DEFAULT_FILESTATUS_DIR_FIRST_ENABLED);
     }
 
     @Override
@@ -753,7 +750,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         return null;
     }
 
-    private FileMetadata queryObjectMetadata(String key) throws IOException {
+    public FileMetadata queryObjectMetadata(String key) throws IOException {
         return queryObjectMetadata(key, null);
     }
 
@@ -863,14 +860,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         if (!key.isEmpty()) {
             FileMetadata fileMetadata = queryObjectMetadata(key, info);
             if (fileMetadata != null) {
-                if (directoryFirstEnabled && fileMetadata.getLength() == 0) {
-                    // 兼容一种场景——存在同名文件和目录，文件长度为0时，跳过文件
-                    key = key + CosNFileSystem.PATH_DELIMITER;
-                    FileMetadata directoryMeta = queryObjectMetadata(key, info);
-                    if (directoryMeta != null) {
-                        return directoryMeta;
-                    }
-                }
                 return fileMetadata;
             }
         }

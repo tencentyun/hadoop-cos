@@ -578,7 +578,7 @@ public class CosNFileSystem extends FileSystem {
         if (meta != null) {
             if (meta.isFile()) {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
-                return newFile(meta, absolutePath);
+                return getFileStatusHelper(meta, absolutePath, key, getObjectMetadataResultInfo.getRequestID());
             } else {
                 LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
                 return newDirectory(meta, absolutePath);
@@ -589,6 +589,45 @@ public class CosNFileSystem extends FileSystem {
             throw new FileNotFoundException("No such file or directory in posix bucket'" + absolutePath + "'");
         }
 
+        // 对于普通桶，可能存在一些以key为前缀的对象，这种情况下key也可以视为目录。
+        FileStatus res = getFileStatusByList(key, absolutePath, getObjectMetadataResultInfo.getRequestID());
+        if (res != null) {
+            return res;
+        }
+
+        throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
+    }
+
+    /**
+     * 获取FileStatus
+     * 如果directoryFirstEnabled为true且存在同名空文件和目录时，返回目录。
+     * 否则返回文件。
+     */
+    private FileStatus getFileStatusHelper(FileMetadata meta, Path absolutePath, String key,
+        String headRequestId) throws IOException {
+        if (directoryFirstEnabled && meta.getLength() == 0) {
+
+            if (!key.endsWith(PATH_DELIMITER)) {
+                key += PATH_DELIMITER;
+            }
+            FileMetadata directoryMeta = nativeStore.queryObjectMetadata(key);
+            if (directoryMeta != null) {
+                return newDirectory(directoryMeta, absolutePath);
+            }
+
+            FileStatus res = getFileStatusByList(key, absolutePath, headRequestId);
+            if (res != null) {
+                return res;
+            }
+        }
+        return newFile(meta, absolutePath);
+    }
+
+    /**
+     * 使用list接口查询目录
+     * @return null 如果目录不存在
+     */
+    private FileStatus getFileStatusByList(String key, Path absolutePath, String headRequestId) throws IOException {
         if (this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_OP_ENABLED,
             CosNConfigKeys.DEFAULT_FILESTATUS_LIST_OP_ENABLED)) {
             if (!key.endsWith(PATH_DELIMITER)) {
@@ -611,14 +650,13 @@ public class CosNFileSystem extends FileSystem {
 
             if (listObjectsResultInfo.isKeySameToPrefix()) {
                 LOG.info("List the cos key [{}] same to prefix, head-id:[{}], " +
-                        "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key, getObjectMetadataResultInfo.getRequestID(),
+                        "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key, headRequestId,
                     listObjectsResultInfo.getRequestID(), listObjectsResultInfo.isKeySameToPrefix(),
                     Thread.currentThread().getId(), Thread.currentThread().getName());
             }
             LOG.debug("Can not find the cos key [{}] on COS.", key);
         }
-
-        throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
+        return null;
     }
 
     @Override
@@ -1003,8 +1041,9 @@ public class CosNFileSystem extends FileSystem {
             throw new IOException("can not copy a directory to a subdirectory" +
                     " of self");
         }
-
-        if (this.nativeStore.retrieveMetadata(srcKey) == null) {
+        // 这个方法是普通桶调用，普通桶严格区分文件对象和目录对象，这里srcKey是带后缀的，如果使用retrieveMetadata
+        // 可能会吞掉目录对象不存在的问题。导致后面的copy srcKey时，报404错误。
+        if (this.nativeStore.queryObjectMetadata(srcKey) == null) {
             this.nativeStore.storeEmptyFile(srcKey);
         } else {
             this.nativeStore.copy(srcKey, dstKey);
