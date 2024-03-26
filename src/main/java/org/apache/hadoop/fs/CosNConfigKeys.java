@@ -203,6 +203,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_SUPPORT_SYMLINK_ENABLED = "fs.cosn.support_symlink.enabled";
     public static final boolean DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED = false;
 
+    // 这个仅限于 GooseFS / GooseFS Lite 某些确定不会有同名文件和目录的场景才能关闭。
+    @Deprecated
     public static final String COSN_FILESTATUS_LIST_OP_ENABLED = "fs.cosn.filestatus.list.op.enabled";
     public static final boolean DEFAULT_FILESTATUS_LIST_OP_ENABLED = true;
 
