@@ -7,8 +7,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.SocketException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CosNFileReadTask implements Runnable {
     static final Logger LOG = LoggerFactory.getLogger(CosNFileReadTask.class);
@@ -18,6 +18,7 @@ public class CosNFileReadTask implements Runnable {
     private final NativeFileSystemStore store;
     private final CosNFSInputStream.ReadBuffer readBuffer;
     private final int socketErrMaxRetryTimes;
+    private final AtomicBoolean closed;
 
     /**
      * cos file read task
@@ -29,12 +30,13 @@ public class CosNFileReadTask implements Runnable {
     public CosNFileReadTask(Configuration conf, String key,
                             NativeFileSystemStore store,
                             CosNFSInputStream.ReadBuffer readBuffer,
-                            int socketErrMaxRetryTimes) {
+                            int socketErrMaxRetryTimes, AtomicBoolean closed) {
         this.conf = conf;
         this.key = key;
         this.store = store;
         this.readBuffer = readBuffer;
         this.socketErrMaxRetryTimes = socketErrMaxRetryTimes;
+        this.closed = closed;
     }
 
     @Override
@@ -53,9 +55,22 @@ public class CosNFileReadTask implements Runnable {
         LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
                 this.getClass().getClassLoader(), currentThread.getContextClassLoader());
         currentThread.setContextClassLoader(this.getClass().getClassLoader());
-
         try {
             this.readBuffer.lock();
+            if (closed.get()) {
+                this.setFailResult("the input stream has been canceled.", new IOException("the input stream has been canceled."));
+                this.readBuffer.setException(new IOException("the input stream has been canceled."));
+                this.readBuffer.signalAll();
+                return;
+            }
+            try {
+                this.readBuffer.allocate();
+            } catch (Exception e) {
+                this.setFailResult("allocate read buffer failed.", new IOException(e));
+                this.readBuffer.setException(new IOException(e));
+                this.readBuffer.signalAll();
+                return;
+            }
             int retryIndex = 1;
             boolean needRetry = false;
             while (true) {

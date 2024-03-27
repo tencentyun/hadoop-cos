@@ -235,6 +235,8 @@ public class CosNFileSystem extends FileSystem {
                 CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
         this.directoryFirstEnabled =  this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_DIR_FIRST_ENABLED,
             CosNConfigKeys.DEFAULT_FILESTATUS_DIR_FIRST_ENABLED);
+        ReadBufferHolder.initialize(this.getConf().getLong(CosNConfigKeys.COSN_READ_BUFFER_POOL_CAPACITY,
+            CosNConfigKeys.DEFAULT_READ_BUFFER_POOL_CAPACITY));
     }
 
     @Override

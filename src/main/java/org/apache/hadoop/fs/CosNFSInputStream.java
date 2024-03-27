@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -25,8 +27,7 @@ public class CosNFSInputStream extends FSInputStream {
 
         private final Lock lock = new ReentrantLock();
         private Condition readyCondition = lock.newCondition();
-
-        private byte[] buffer;
+        private MemoryAllocator.Memory memory;
         private int status;
         private long start;
         private long end;
@@ -35,7 +36,6 @@ public class CosNFSInputStream extends FSInputStream {
         public ReadBuffer(long start, long end) {
             this.start = start;
             this.end = end;
-            this.buffer = new byte[(int) (this.end - this.start) + 1];
             this.status = INIT;
             this.exception = null;
         }
@@ -59,7 +59,11 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         public byte[] getBuffer() {
-            return this.buffer;
+            return this.memory.array();
+        }
+
+        public long length() {
+            return end - start + 1;
         }
 
         public int getStatus() {
@@ -85,6 +89,18 @@ public class CosNFSInputStream extends FSInputStream {
         public long getEnd() {
             return end;
         }
+
+        public void allocate() throws OutOfMemoryException, InterruptedException {
+            this.memory = ReadBufferHolder.getBufferAllocator()
+                .allocate((int) (this.end - this.start) + 1, 5, TimeUnit.SECONDS);
+        }
+
+        public void free() {
+            if (this.memory != null) {
+                this.memory.free();
+                this.memory = null;
+            }
+        }
     }
 
     private FileSystem.Statistics statistics;
@@ -100,8 +116,8 @@ public class CosNFSInputStream extends FSInputStream {
     private long bufferEnd;
     private final long preReadPartSize;
     private final int maxReadPartNumber;
-    private byte[] buffer;
-    private boolean closed = false;
+    private ReadBuffer currentReadBuffer;
+    private final AtomicBoolean closed;
     private final int socketErrMaxRetryTimes;
 
     private final ExecutorService readAheadExecutorService;
@@ -149,7 +165,28 @@ public class CosNFSInputStream extends FSInputStream {
         this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue =
                 new ArrayDeque<>(this.maxReadPartNumber);
-        this.closed = false;
+        this.closed = new AtomicBoolean();
+    }
+
+    private void tryFreeBuffer(ReadBuffer readBuffer) {
+        if (readBuffer != null
+                && readBuffer != previousReadBuffer
+                && readBuffer != currentReadBuffer
+                && (readBufferQueue.isEmpty() || readBufferQueue.peek() != readBuffer)) {
+            readBuffer.free();
+        }
+    }
+
+    private void setCurrentReadBuffer(ReadBuffer readBuffer) {
+        ReadBuffer readyFree = currentReadBuffer;
+        currentReadBuffer = readBuffer;
+        tryFreeBuffer(readyFree);
+    }
+
+    public void setPreviousReadBuffer(ReadBuffer readBuffer) {
+        ReadBuffer readyFree = previousReadBuffer;
+        previousReadBuffer = readBuffer;
+        tryFreeBuffer(readyFree);
     }
 
     private synchronized void reopen(long pos) throws IOException {
@@ -159,7 +196,7 @@ public class CosNFSInputStream extends FSInputStream {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
         }
 
-        this.buffer = null;
+        setCurrentReadBuffer(null);
         this.bufferStart = -1;
         this.bufferEnd = -1;
 
@@ -171,7 +208,7 @@ public class CosNFSInputStream extends FSInputStream {
             // 如果不是，那么随机读只可能是发生了超出前一块范围的回溯随机读，或者是在预读队列范围或者是超出预读队列范围。
             // 如果是在预读队列范围内，那么依赖在预读队列中查找直接定位到要读的块，如果是超出预读队列范围，那么队列会被排空，然后重新定位到要读的块和位置
             if (null != this.previousReadBuffer && pos >= this.previousReadBuffer.getStart() && pos <= this.previousReadBuffer.getEnd()) {
-                this.buffer = this.previousReadBuffer.getBuffer();
+                setCurrentReadBuffer(previousReadBuffer);
                 this.bufferStart = this.previousReadBuffer.getStart();
                 this.bufferEnd = this.previousReadBuffer.getEnd();
                 this.position = pos;
@@ -184,7 +221,7 @@ public class CosNFSInputStream extends FSInputStream {
         while (!this.readBufferQueue.isEmpty()) {
             if (pos < this.readBufferQueue.getFirst().getStart() || pos > this.readBufferQueue.getFirst().getEnd()) {
                 // 定位到要读的块，同时保存淘汰出来的队头元素，供小范围的随机读回溯
-                this.previousReadBuffer = this.readBufferQueue.poll();
+                setPreviousReadBuffer(this.readBufferQueue.poll());
             } else {
                 break;
             }
@@ -215,12 +252,12 @@ public class CosNFSInputStream extends FSInputStream {
             }
 
             ReadBuffer readBuffer = new ReadBuffer(byteStart, byteEnd);
-            if (readBuffer.getBuffer().length == 0) {
+            if (readBuffer.length() == 0) {
                 readBuffer.setStatus(ReadBuffer.SUCCESS);
             } else {
                 this.readAheadExecutorService.execute(
                         new CosNFileReadTask(this.conf, this.key, this.store,
-                                readBuffer, this.socketErrMaxRetryTimes));
+                                readBuffer, this.socketErrMaxRetryTimes, closed));
             }
 
             this.readBufferQueue.add(readBuffer);
@@ -236,11 +273,14 @@ public class CosNFSInputStream extends FSInputStream {
             readBuffer.await(ReadBuffer.INIT);
             if (readBuffer.getStatus() == ReadBuffer.ERROR) {
                 innerException = readBuffer.getException();
-                this.buffer = null;
+                setCurrentReadBuffer(null);
                 this.bufferStart = -1;
                 this.bufferEnd = -1;
+                if (readBuffer.getException().getCause() instanceof OutOfMemoryException) {
+                    throw readBuffer.getException();
+                }
             } else {
-                this.buffer = readBuffer.getBuffer();
+                setCurrentReadBuffer(readBuffer);
                 this.bufferStart = readBuffer.getStart();
                 this.bufferEnd = readBuffer.getEnd();
             }
@@ -250,7 +290,7 @@ public class CosNFSInputStream extends FSInputStream {
             readBuffer.unLock();
         }
 
-        if (null == this.buffer) {
+        if (null == this.currentReadBuffer) {
             LOG.error(String.format("Null IO stream key:%s", this.key), innerException);
             throw new IOException("Null IO stream.", innerException);
         }
@@ -314,8 +354,8 @@ public class CosNFSInputStream extends FSInputStream {
 
         int byteRead = -1;
         if (this.partRemaining != 0) {
-            byteRead =
-                    this.buffer[(int) (this.buffer.length - this.partRemaining)] & 0xff;
+            byte[] buffer = currentReadBuffer.getBuffer();
+            byteRead = buffer[(int) (buffer.length - this.partRemaining)] & 0xff;
         }
         if (byteRead >= 0) {
             this.position++;
@@ -347,9 +387,10 @@ public class CosNFSInputStream extends FSInputStream {
             }
 
             int bytes = 0;
-            for (int i = this.buffer.length - (int) partRemaining;
-                 i < this.buffer.length; i++) {
-                b[off + bytesRead] = this.buffer[i];
+            byte[] buffer = currentReadBuffer.getBuffer();
+            for (int i = buffer.length - (int) partRemaining;
+                 i < buffer.length; i++) {
+                b[off + bytesRead] = buffer[i];
                 bytes++;
                 bytesRead++;
                 if (off + bytesRead >= len) {
@@ -385,16 +426,20 @@ public class CosNFSInputStream extends FSInputStream {
     }
     @Override
     public void close() throws IOException {
-        if (this.closed) {
+        if (this.closed.get()) {
             return;
         }
 
-        this.closed = true;
-        this.buffer = null;
+        this.closed.set(true);
+        while (!readBufferQueue.isEmpty()) {
+            readBufferQueue.poll().free();
+        }
+        setCurrentReadBuffer(null);
+        setPreviousReadBuffer(null);
     }
 
     private void checkOpened() throws IOException {
-        if(this.closed) {
+        if(this.closed.get()) {
             throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
         }
     }
