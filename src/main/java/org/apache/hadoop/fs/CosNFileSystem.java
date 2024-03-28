@@ -10,6 +10,7 @@ import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
 import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
+import org.apache.hadoop.fs.cosn.ReadBufferHolder;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.AccessControlException;
@@ -235,6 +236,11 @@ public class CosNFileSystem extends FileSystem {
                 CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
         this.directoryFirstEnabled =  this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_DIR_FIRST_ENABLED,
             CosNConfigKeys.DEFAULT_FILESTATUS_DIR_FIRST_ENABLED);
+        ReadBufferHolder.initialize(this.getConf().getLong(CosNConfigKeys.COSN_READ_BUFFER_POOL_CAPACITY,
+            CosNConfigKeys.DEFAULT_READ_BUFFER_POOL_CAPACITY));
+        if (this.getConf().getInt(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS, 5) < 0) {
+            throw new IllegalArgumentException("fs.cosn.read.buffer.allocate.timeout.seconds cannot be negative.");
+        }
     }
 
     @Override

@@ -7,8 +7,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.SocketException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CosNFileReadTask implements Runnable {
     static final Logger LOG = LoggerFactory.getLogger(CosNFileReadTask.class);
@@ -18,6 +19,7 @@ public class CosNFileReadTask implements Runnable {
     private final NativeFileSystemStore store;
     private final CosNFSInputStream.ReadBuffer readBuffer;
     private final int socketErrMaxRetryTimes;
+    private final AtomicBoolean closed;
 
     /**
      * cos file read task
@@ -29,12 +31,13 @@ public class CosNFileReadTask implements Runnable {
     public CosNFileReadTask(Configuration conf, String key,
                             NativeFileSystemStore store,
                             CosNFSInputStream.ReadBuffer readBuffer,
-                            int socketErrMaxRetryTimes) {
+                            int socketErrMaxRetryTimes, AtomicBoolean closed) {
         this.conf = conf;
         this.key = key;
         this.store = store;
         this.readBuffer = readBuffer;
         this.socketErrMaxRetryTimes = socketErrMaxRetryTimes;
+        this.closed = closed;
     }
 
     @Override
@@ -53,9 +56,20 @@ public class CosNFileReadTask implements Runnable {
         LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
                 this.getClass().getClassLoader(), currentThread.getContextClassLoader());
         currentThread.setContextClassLoader(this.getClass().getClassLoader());
-
         try {
             this.readBuffer.lock();
+            if (closed.get()) {
+                this.setFailResult("the input stream has been canceled.", new IOException("the input stream has been canceled."));
+                return;
+            }
+            try {
+                this.readBuffer.allocate(
+                    conf.getInt(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS, 5),
+                    TimeUnit.SECONDS);
+            } catch (Exception e) {
+                this.setFailResult("allocate read buffer failed.", new IOException(e));
+                return;
+            }
             int retryIndex = 1;
             boolean needRetry = false;
             while (true) {
@@ -85,14 +99,16 @@ public class CosNFileReadTask implements Runnable {
                         this.setFailResult(errMsg, ioException);
                         break;
                     }
+                } catch (Throwable throwable) {
+                    this.setFailResult("retrieve block failed", new IOException(throwable));
                 }
 
                 if (!needRetry) {
                     break;
                 }
             } // end of retry
-            this.readBuffer.signalAll();
         } finally {
+            this.readBuffer.signalAll();
             this.readBuffer.unLock();
         }
     }
