@@ -214,4 +214,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // 存在同名文件，且该文件长度为0时，目录优先（默认关）
     public static final String COSN_FILESTATUS_DIR_FIRST_ENABLED = "fs.cosn.filestatus.dir.first.enabled";
     public static final boolean DEFAULT_FILESTATUS_DIR_FIRST_ENABLED = false;
+
+    public static final String COSN_READ_BUFFER_POOL_CAPACITY = "fs.cosn.read.buffer.pool.capacity";
+    public static final long DEFAULT_READ_BUFFER_POOL_CAPACITY = -1;
+
+    public static final String COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = "fs.cosn.read.buffer.allocate.timeout.seconds";
+    public static final long DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = 5;
 }
