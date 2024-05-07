@@ -74,7 +74,7 @@ public class RangerCredentialsClient {
         }
 
         PermissionRequest permissionReq = new PermissionRequest(ServiceType.COS, accessType,
-                CosNUtils.getBucketNameWithoutAppid(this.bucket, this.conf.get(CosNConfigKeys.COSN_APPID_KEY)),
+                CosNUtils.getBucketNameWithAppid(this.bucket, this.conf.get(CosNConfigKeys.COSN_APPID_KEY)),
                 allowKey, "", "");
         boolean allowed = false;
         String checkPermissionActualUserName = ownerId;
@@ -101,7 +101,7 @@ public class RangerCredentialsClient {
         }
 
         GetSTSResponse stsResp = this.rangerQcloudObjectStorageStorageClient.getSTS(bucketRegion,
-                bucket);
+                CosNUtils.getBucketNameWithAppid(this.bucket, this.conf.get(CosNConfigKeys.COSN_APPID_KEY)));
         if (!stsResp.isCheckAuthPass()) {
             throw new IOException(String.format("Permission denied, [operation: %s], please check user and " +
                     "password", CUSTOM_AUTHENTICATION));

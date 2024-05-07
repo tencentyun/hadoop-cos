@@ -140,6 +140,21 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String MAX_CONNECTION_NUM = "fs.cosn.max.connection.num";
     public static final int DEFAULT_MAX_CONNECTION_NUM = 1024;
 
+    public static final String COSN_USE_SHORT_CONNECTION = "fs.cosn.use.short.connection";
+
+    public static final boolean DEFAULT_COSN_USE_SHORT_CONNECTION = false;
+
+    public static final String COSN_CONNECTION_REQUEST_TIMEOUT = "fs.cosn.connection.request.timeout";
+    public static final int DEFAULT_COSN_CONNECTION_REQUEST_TIMEOUT = -1;
+
+    public static final String COSN_CONNECTION_TIMEOUT = "fs.cosn.connection.timeout";
+
+    public static final int DEFAULT_COSN_CONNECTION_TIMEOUT = 10000;
+
+    public static final String COSN_IDLE_CONNECTION_ALIVE = "fs.cosn.idle.connection.alive";
+
+    public static final int DEFAULT_COSN_IDLE_CONNECTION_ALIVE = 60000;
+
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
