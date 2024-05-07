@@ -19,9 +19,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -220,7 +217,7 @@ public final class CosNUtils {
         }
     }
 
-    public static String getBucketNameWithoutAppid(String originBucketName, String appidStr) {
+    public static String getBucketNameWithAppid(String originBucketName, String appidStr) {
         if (appidStr == null || appidStr.isEmpty()) {
             return originBucketName;
         }

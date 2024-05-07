@@ -7,7 +7,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CosNConfigKeys;
 import org.apache.hadoop.fs.CosNUtils;
 import org.apache.hadoop.fs.RangerCredentialsClient;
-import org.apache.hadoop.fs.cosn.ranger.client.RangerQcloudObjectStorageClient;
 import org.apache.hadoop.fs.cosn.ranger.security.sts.GetSTSResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +31,7 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
         super(uri, conf);
         if (null != conf) {
             this.appId = conf.get(CosNConfigKeys.COSN_APPID_KEY);
-            this.bucketNameWithoutAppid = CosNUtils.getBucketNameWithoutAppid(
+            this.bucketNameWithoutAppid = CosNUtils.getBucketNameWithAppid(
                     uri.getHost(), conf.get(CosNConfigKeys.COSN_APPID_KEY));
             this.bucketRegion = conf.get(CosNConfigKeys.COSN_REGION_KEY);
             // native store keep the ranger client not null.

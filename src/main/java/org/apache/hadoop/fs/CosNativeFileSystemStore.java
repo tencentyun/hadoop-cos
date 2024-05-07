@@ -292,11 +292,24 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.info("hadoop cos retry times: {}, cos client retry times: {}",
                 this.maxRetryTimes, clientMaxRetryTimes);
 
-        // 设置连接池的最大连接数目
+        if (conf.getBoolean(CosNConfigKeys.COSN_USE_SHORT_CONNECTION,
+                CosNConfigKeys.DEFAULT_COSN_USE_SHORT_CONNECTION)) {
+           config.setShortConnection();
+        }
+
         config.setMaxConnectionsCount(
                 conf.getInt(
                         CosNConfigKeys.MAX_CONNECTION_NUM,
                         CosNConfigKeys.DEFAULT_MAX_CONNECTION_NUM));
+        config.setConnectionRequestTimeout(
+                conf.getInt(CosNConfigKeys.COSN_CONNECTION_REQUEST_TIMEOUT,
+                        CosNConfigKeys.DEFAULT_COSN_CONNECTION_REQUEST_TIMEOUT));
+        config.setConnectionTimeout(
+                conf.getInt(CosNConfigKeys.COSN_CONNECTION_TIMEOUT,
+                        CosNConfigKeys.DEFAULT_COSN_CONNECTION_TIMEOUT));
+        config.setIdleConnectionAlive(
+                conf.getInt(CosNConfigKeys.COSN_IDLE_CONNECTION_ALIVE,
+                        CosNConfigKeys.DEFAULT_COSN_IDLE_CONNECTION_ALIVE));
 
         // 设置是否进行服务器端加密
         String serverSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
