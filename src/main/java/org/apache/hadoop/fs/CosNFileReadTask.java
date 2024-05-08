@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -76,14 +77,14 @@ public class CosNFileReadTask implements Runnable {
                 try {
                     this.retrieveBlock();
                     needRetry = false;
-                } catch (IOException ioException) {
+                } catch (SocketException socketException) {
                     // if we get stream success, but exceptions occurs when read cos input stream
                     String errMsg = String.format("retrieve block sdk socket failed, " +
                                     "retryIndex: [%d / %d], key: %s, range: [%d , %d], exception: %s",
                             retryIndex, this.socketErrMaxRetryTimes, this.key,
-                            this.readBuffer.getStart(), this.readBuffer.getEnd(), ioException.toString());
+                            this.readBuffer.getStart(), this.readBuffer.getEnd(), socketException.toString());
                     if (retryIndex <= this.socketErrMaxRetryTimes) {
-                        LOG.info(errMsg, ioException);
+                        LOG.info(errMsg, socketException);
                         long sleepLeast = retryIndex * 300L;
                         long sleepBound = retryIndex * 500L;
                         try {
@@ -96,11 +97,19 @@ public class CosNFileReadTask implements Runnable {
                             break;
                         }
                     } else {
-                        this.setFailResult(errMsg, ioException);
+                        this.setFailResult(errMsg, socketException);
                         break;
                     }
+                } catch (IOException ioException) {
+                    String errMsg = String.format("retrieve block failed, " +
+                                    "retryIndex: [%d / %d], key: %s, range: [%d , %d], io exception: %s",
+                            retryIndex, this.socketErrMaxRetryTimes, this.key,
+                            this.readBuffer.getStart(), this.readBuffer.getEnd(), ioException);
+                    this.setFailResult(errMsg, ioException);
+                    break;
                 } catch (Throwable throwable) {
                     this.setFailResult("retrieve block failed", new IOException(throwable));
+                    break;
                 }
 
                 if (!needRetry) {
