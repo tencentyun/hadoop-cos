@@ -11,12 +11,15 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import javax.annotation.Nullable;
 
 
 public class CosNFSInputStream extends FSInputStream {
@@ -61,8 +64,13 @@ public class CosNFSInputStream extends FSInputStream {
             readyCondition.signalAll();
         }
 
+        @Nullable
         public byte[] getBuffer() {
-            return this.memory.array();
+            final MemoryAllocator.Memory finalMemory = memory;
+            if (finalMemory == null) {
+                return null;
+            }
+            return finalMemory.array();
         }
 
         public int length() {
@@ -358,6 +366,7 @@ public class CosNFSInputStream extends FSInputStream {
         int byteRead = -1;
         if (this.partRemaining != 0) {
             byte[] buffer = currentReadBuffer.getBuffer();
+            Objects.requireNonNull(buffer);
             byteRead = buffer[(int) (buffer.length - this.partRemaining)] & 0xff;
         }
         if (byteRead >= 0) {
@@ -391,6 +400,7 @@ public class CosNFSInputStream extends FSInputStream {
 
             int bytes = 0;
             byte[] buffer = currentReadBuffer.getBuffer();
+            Objects.requireNonNull(buffer);
             for (int i = buffer.length - (int) partRemaining;
                  i < buffer.length; i++) {
                 b[off + bytesRead] = buffer[i];
