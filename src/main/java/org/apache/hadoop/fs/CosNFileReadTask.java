@@ -8,9 +8,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketException;
+import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.apache.hadoop.fs.CosNConfigKeys.DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS;
 
 public class CosNFileReadTask implements Runnable {
     static final Logger LOG = LoggerFactory.getLogger(CosNFileReadTask.class);
@@ -59,14 +62,11 @@ public class CosNFileReadTask implements Runnable {
         currentThread.setContextClassLoader(this.getClass().getClassLoader());
         try {
             this.readBuffer.lock();
-            if (closed.get()) {
-                this.setFailResult("the input stream has been canceled.", new IOException("the input stream has been canceled."));
-                return;
-            }
+            checkStreamClosed();
             try {
                 this.readBuffer.allocate(
-                    conf.getInt(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS, 5),
-                    TimeUnit.SECONDS);
+                    conf.getLong(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS,
+                        DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS), TimeUnit.SECONDS);
             } catch (Exception e) {
                 this.setFailResult("allocate read buffer failed.", new IOException(e));
                 return;
@@ -107,15 +107,17 @@ public class CosNFileReadTask implements Runnable {
                             this.readBuffer.getStart(), this.readBuffer.getEnd(), ioException);
                     this.setFailResult(errMsg, ioException);
                     break;
-                } catch (Throwable throwable) {
-                    this.setFailResult("retrieve block failed", new IOException(throwable));
-                    break;
                 }
 
                 if (!needRetry) {
                     break;
                 }
             } // end of retry
+        } catch (Throwable throwable) {
+            this.setFailResult(
+                String.format("retrieve block failed, key: %s, range: [%d , %d], exception: %s",
+                    this.key, this.readBuffer.getStart(), this.readBuffer.getEnd(), throwable),
+                new IOException(throwable));
         } finally {
             this.readBuffer.signalAll();
             this.readBuffer.unLock();
@@ -125,17 +127,25 @@ public class CosNFileReadTask implements Runnable {
     public void setFailResult(String msg, IOException e) {
         this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.ERROR);
         this.readBuffer.setException(e);
-        LOG.error(msg);
+        if (e.getCause() != null && e.getCause() instanceof CancelledException) {
+            // 预期操作，以warn级别导出
+            LOG.warn(msg);
+        } else {
+            LOG.error(msg);
+        }
     }
 
     // not thread safe
-    public void retrieveBlock() throws IOException {
+    private void retrieveBlock() throws IOException, CancelledException {
+        byte[] dataBuf = readBuffer.getBuffer();
+        checkStreamClosed();
+        Objects.requireNonNull(dataBuf);
         InputStream inputStream = this.store.retrieveBlock(
                 this.key, this.readBuffer.getStart(),
                 this.readBuffer.getEnd());
         IOUtils.readFully(
-                inputStream, this.readBuffer.getBuffer(), 0,
-                readBuffer.getBuffer().length);
+            inputStream, dataBuf, 0,
+            dataBuf.length);
         int readEof = inputStream.read();
         if (readEof != -1) {
             LOG.error("Expect to read the eof, but the return is not -1. key: {}.", this.key);
@@ -143,4 +153,18 @@ public class CosNFileReadTask implements Runnable {
         inputStream.close();
         this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.SUCCESS);
     }
+
+    private void checkStreamClosed() throws CancelledException {
+        if (closed.get()) {
+            throw new CancelledException("the input stream has been canceled.");
+        }
+    }
+
+
+    private static class CancelledException extends Exception {
+        public CancelledException(String message) {
+            super(message);
+        }
+    }
 }
+
