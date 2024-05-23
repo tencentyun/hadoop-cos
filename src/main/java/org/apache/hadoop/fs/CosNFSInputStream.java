@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
@@ -288,6 +289,9 @@ public class CosNFSInputStream extends FSInputStream {
                 this.bufferStart = -1;
                 this.bufferEnd = -1;
                 if (readBuffer.getException().getCause() instanceof CosNOutOfMemoryException) {
+                    throw readBuffer.getException();
+                }
+                if (readBuffer.getException() instanceof AccessDeniedException) {
                     throw readBuffer.getException();
                 }
             } else {

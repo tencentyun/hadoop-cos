@@ -73,6 +73,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.security.KeyPair;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -144,7 +145,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 throw new IOException(exceptionMsg);
             }
 
-            if (null == region) {
+            if (null != endpointSuffix) {
                 config = new ClientConfig(new Region(""));
                 config.setEndPointSuffix(endpointSuffix);
             } else {
@@ -1123,6 +1124,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     (COSObject) this.callCOSClientWithRetry(request);
             return cosObject.getObjectContent();
         } catch (CosServiceException e) {
+            if (e.getErrorCode().compareToIgnoreCase("InvalidObjectState") == 0) {
+                // 可能是归档数据，应该抛出新的异常
+                throw new AccessDeniedException(key, null, e.getMessage());
+            }
             String errMsg =
                     String.format("Retrieving the key %s with the byteRangeStart [%d] " +
                                     "occurs an exception: %s.",
