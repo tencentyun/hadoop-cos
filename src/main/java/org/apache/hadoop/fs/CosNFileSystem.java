@@ -66,6 +66,7 @@ public class CosNFileSystem extends FileSystem {
     private String group = "Unknown";
     private ExecutorService boundedIOThreadPool;
     private ExecutorService boundedCopyThreadPool;
+    private ExecutorService boundedDeleteThreadPool;
 
     private RangerCredentialsClient rangerCredentialsClient;
 
@@ -163,8 +164,7 @@ public class CosNFileSystem extends FileSystem {
                 String.format("The readAheadQueueSize[%d] should be positive.", readAheadPoolSize));
         // 核心线程数取用户配置的为准，最大线程数结合用户配置和IO密集型任务的最优线程数来看
         int ioCoreTaskSize = uploadThreadPoolSize + readAheadPoolSize;
-        int ioMaxTaskSize = Math.max(uploadThreadPoolSize + readAheadPoolSize,
-                Runtime.getRuntime().availableProcessors() * 2 + 1);
+        int ioMaxTaskSize = Math.max(ioCoreTaskSize, CosNConfigKeys.DEFAULT_IO_THREAD_POOL_MAX_SIZE);
         if (this.getConf().get(CosNConfigKeys.IO_THREAD_POOL_MAX_SIZE_KEY) != null) {
             int ioThreadPoolMaxSize = this.getConf().getInt(
                     CosNConfigKeys.IO_THREAD_POOL_MAX_SIZE_KEY, CosNConfigKeys.DEFAULT_IO_THREAD_POOL_MAX_SIZE);
@@ -205,12 +205,11 @@ public class CosNFileSystem extends FileSystem {
                 }
         );
 
+        // copy 线程池初始化
         int copyThreadPoolSize = this.getConf().getInt(
                 CosNConfigKeys.COPY_THREAD_POOL_SIZE_KEY,
                 CosNConfigKeys.DEFAULT_COPY_THREAD_POOL_SIZE
         );
-        Preconditions.checkArgument(copyThreadPoolSize > 0,
-                String.format("The copyThreadPoolSize[%d] should be positive.", copyThreadPoolSize));
         this.boundedCopyThreadPool = new ThreadPoolExecutor(
                 copyThreadPoolSize, copyThreadPoolSize,
                 threadKeepAlive, TimeUnit.SECONDS,
@@ -231,6 +230,39 @@ public class CosNFileSystem extends FileSystem {
                     }
                 }
         );
+
+        // delete 线程池初始化
+        int deleteThreadPoolSize = this.getConf().getInt(
+                CosNConfigKeys.DELETE_THREAD_POOL_SIZE_KEY,
+                CosNConfigKeys.DEFAULT_DELETE_THREAD_POOL_SIZE);
+        int maxDeleteThreadPoolSize = Math.max(deleteThreadPoolSize, CosNConfigKeys.DEFAULT_DELETE_THREAD_POOL_MAX_SIZE);
+        if (this.getConf().get(CosNConfigKeys.DELETE_THREAD_POOL_MAX_SIZE_KEY) != null) {
+            int deleteThreadPoolMaxSize = this.getConf().getInt(
+                    CosNConfigKeys.DELETE_THREAD_POOL_MAX_SIZE_KEY, CosNConfigKeys.DEFAULT_DELETE_THREAD_POOL_MAX_SIZE);
+            Preconditions.checkArgument(deleteThreadPoolMaxSize > 0,
+                    String.format("The deleteThreadPoolMaxSize[%d] should be positive.", deleteThreadPoolMaxSize));
+            deleteThreadPoolSize = Math.min(deleteThreadPoolSize, deleteThreadPoolMaxSize);
+            maxDeleteThreadPoolSize = deleteThreadPoolMaxSize;
+        }
+        this.boundedDeleteThreadPool = new ThreadPoolExecutor(
+                deleteThreadPoolSize, maxDeleteThreadPoolSize,
+                threadKeepAlive, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(deleteThreadPoolSize),
+                new ThreadFactoryBuilder().setNameFormat("cos-delete-%d").setDaemon(true).build(),
+                new RejectedExecutionHandler() {
+                    @Override
+                    public void rejectedExecution(Runnable r,
+                                                  ThreadPoolExecutor executor) {
+                        if (!executor.isShutdown()) {
+                            try {
+                                executor.getQueue().put(r);
+                            } catch (InterruptedException e) {
+                                LOG.error("put a delete task into the download " +
+                                        "thread pool occurs an exception.", e);
+                            }
+                        }
+                    }
+                });
 
         this.symbolicLinkSizeThreshold = this.getConf().getInt(
                 CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
@@ -521,24 +553,31 @@ public class CosNFileSystem extends FileSystem {
         do {
             CosNPartialListing listing =
                     nativeStore.list(key, listMaxLength, priorLastKey, true);
+
+            List<String> deletingFileList = new ArrayList<>(listing.getFiles().length);
             for (FileMetadata file : listing.getFiles()) {
                 checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
-                this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                        this.nativeStore, file.getKey(), deleteFileContext));
+                deletingFileList.add(file.getKey());
                 deleteToFinishes++;
-                if (!deleteFileContext.isDeleteSuccess()) {
-                    break;
-                }
             }
+            this.boundedDeleteThreadPool.execute(new CosNDeleteFileTask(
+                    this.nativeStore, deletingFileList, deleteFileContext));
+            if (!deleteFileContext.isDeleteSuccess()) {
+                break;
+            }
+
+            List<String> deletingCommonPrefixList = new ArrayList<>(listing.getCommonPrefixes().length);
             for (FileMetadata commonPrefix : listing.getCommonPrefixes()) {
                 checkPermission(new Path(commonPrefix.getKey()), RangerAccessType.DELETE);
-                this.boundedCopyThreadPool.execute(new CosNDeleteFileTask(
-                        this.nativeStore, commonPrefix.getKey(), deleteFileContext));
+                deletingCommonPrefixList.add(commonPrefix.getKey());
                 deleteToFinishes++;
-                if (!deleteFileContext.isDeleteSuccess()) {
-                    break;
-                }
             }
+            this.boundedDeleteThreadPool.execute(new CosNDeleteFileTask(
+                    this.nativeStore, deletingCommonPrefixList, deleteFileContext));
+            if (!deleteFileContext.isDeleteSuccess()) {
+                break;
+            }
+
             priorLastKey = listing.getPriorLastKey();
         } while (priorLastKey != null);
 
@@ -1066,14 +1105,15 @@ public class CosNFileSystem extends FileSystem {
                 checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
                         this.nativeStore,
-                        file.getKey(),
-                        dstKey.concat(file.getKey().substring(srcKey.length())),
+                        file.getKey(), dstKey.concat(file.getKey().substring(srcKey.length())),
                         copyFileContext));
                 copiesToFinishes++;
-                if (!copyFileContext.isCopySuccess()) {
-                    break;
-                }
             }
+
+            if (!copyFileContext.isCopySuccess()) {
+                break;
+            }
+
             priorLastKey = objectList.getPriorLastKey();
         } while (null != priorLastKey);
 
