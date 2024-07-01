@@ -34,14 +34,11 @@ public class CosNDeleteFileContext {
     }
 
     public boolean hasException() {
-        if (this.deleteException != null) {
-            return true;
-        }
-        return false;
+        return this.deleteException != null;
     }
 
     public void awaitAllFinish(int deletesFinish) throws InterruptedException {
-        while (this.deletesFinish.get() != deletesFinish) {
+        while (this.deletesFinish.get() != deletesFinish && !this.hasException()) {
             this.readyCondition.await();
         }
     }
@@ -60,6 +57,10 @@ public class CosNDeleteFileContext {
 
     public void incDeletesFinish() {
         this.deletesFinish.addAndGet(1);
+    }
+
+    public void incDeletesFinish(int deletesFinish) {
+        this.deletesFinish.addAndGet(deletesFinish);
     }
 }
 
