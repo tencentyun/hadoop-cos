@@ -1429,27 +1429,13 @@ public class CosNFileSystem extends FileSystem {
         }
 
         // 这里会得到这个文件的元数据，如果不存在，则软连接也不存在，就直接返回了
-        FileStatus fileStatus = this.getFileStatus(f);
-        if (fileStatus.isSymlink()) {
-            // 如果是软连接则需要取出软连接本身的元数据出来
-            Path absolutePath = makeAbsolute(f);
-            String symlinkKey = pathToKey(absolutePath);
-            CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(symlinkKey);
-            if (null != cosNSymlinkMetadata) {
-                fileStatus = newSymlink(cosNSymlinkMetadata, absolutePath);
-            } else {
-                throw new FileNotFoundException("Symbolic does not exist: " + f);
-            }
-
-            // 这里设置为规范化的 target 路径
-            if (fileStatus.isSymlink()) {
-                Path targetQual = FSLinkResolver.qualifySymlinkTarget(uri,
-                        fileStatus.getPath(), fileStatus.getSymlink());
-                fileStatus.setSymlink(targetQual);
-            }
+        CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(pathToKey(f));
+        if (null != cosNSymlinkMetadata) {
+            // 这个对象是一个软连接
+            return newSymlink(cosNSymlinkMetadata, f);
         }
-
-        return fileStatus;
+        // 不是软连接，继续以普通文件的方式获取元数据。
+        return this.getFileStatus(f);
     }
 
     @Override
@@ -1478,12 +1464,9 @@ public class CosNFileSystem extends FileSystem {
             @Override
             public Path doCall(Path path) throws IOException, UnresolvedLinkException {
                 Path targetPath = CosNFileSystem.this.resolveLink(path);
-                try {
-                    FileStatus targetFileStatus = getFileStatus(targetPath);
-                    if (targetFileStatus.isSymlink()) {
-                        throw new UnresolvedLinkException();
-                    }
-                } catch (FileNotFoundException ignored) {
+                FileStatus targetFileStatus = getFileLinkStatus(targetPath);
+                if (targetFileStatus.isSymlink()) {
+                    throw new UnresolvedLinkException();
                 }
                 return targetPath;
             }
