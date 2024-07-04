@@ -1515,14 +1515,30 @@ public class CosNFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         try {
-            super.close();
-        } finally {
-            this.boundedIOThreadPool.shutdown();
-            this.boundedCopyThreadPool.shutdown();
+            try {
+                this.boundedIOThreadPool.shutdown();
+                this.boundedIOThreadPool.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                LOG.warn("Interrupted while waiting for IO thread pool to terminate");
+            }
+            try {
+                this.boundedCopyThreadPool.shutdown();
+                this.boundedCopyThreadPool.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                LOG.warn("Interrupted while waiting for copy thread pool to terminate");
+            }
+            try {
+                this.boundedDeleteThreadPool.shutdown();
+                this.boundedDeleteThreadPool.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                LOG.warn("Interrupted while waiting for delete thread pool to terminate");
+            }
             BufferPool.getInstance().close();
             if (null != this.nativeStore && this.isDefaultNativeStore) {
                 this.nativeStore.close();
             }
+        } finally {
+            super.close();
         }
     }
 
