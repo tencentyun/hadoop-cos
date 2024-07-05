@@ -1515,11 +1515,39 @@ public class CosNFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         try {
+            // 先释放掉 IO 线程池以及相关的 IO 资源。
+            try {
+                this.boundedIOThreadPool.shutdown();
+                if (this.boundedIOThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                    LOG.warn("boundedIOThreadPool shutdown timeout, force shutdown now.");
+                    this.boundedIOThreadPool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                LOG.error("boundedIOThreadPool shutdown interrupted.", e);
+            }
+            BufferPool.getInstance().close();
             super.close();
         } finally {
-            this.boundedIOThreadPool.shutdown();
-            this.boundedCopyThreadPool.shutdown();
-            BufferPool.getInstance().close();
+            // copy 和 delete 因为涉及到元数据操作，因此最后再释放
+            try {
+                this.boundedCopyThreadPool.shutdown();
+                if (this.boundedCopyThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                    LOG.warn("boundedCopyThreadPool shutdown timeout, force shutdown now.");
+                    this.boundedCopyThreadPool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                LOG.error("boundedCopyThreadPool shutdown interrupted.", e);
+            }
+            try {
+                this.boundedDeleteThreadPool.shutdown();
+                if (this.boundedDeleteThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                    LOG.warn("boundedDeleteThreadPool shutdown timeout, force shutdown now.");
+                    this.boundedDeleteThreadPool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                LOG.error("boundedDeleteThreadPool shutdown interrupted.", e);
+            }
+            // 最后再关闭 NativeStore
             if (null != this.nativeStore && this.isDefaultNativeStore) {
                 this.nativeStore.close();
             }

@@ -55,7 +55,6 @@ public class CosFileSystem extends FileSystem {
     private boolean isPosixUseOFSRanger;
     private boolean isPosixImpl = false;
     private FileSystem actualImplFS = null;
-    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private URI uri;
     private Path workingDir;
@@ -707,10 +706,6 @@ public class CosFileSystem extends FileSystem {
     @Override
     public void close() throws IOException {
         LOG.info("begin to close cos file system");
-        if (this.closed.getAndSet(true)) {
-            // already closed
-            return;
-        }
         this.initialized = false;
         try {
             super.close();
