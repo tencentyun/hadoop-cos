@@ -273,6 +273,8 @@ public class CosNFileSystem extends FileSystem {
         if (this.getConf().getInt(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS, 5) < 0) {
             throw new IllegalArgumentException("fs.cosn.read.buffer.allocate.timeout.seconds cannot be negative.");
         }
+        this.createOpCheckExistFile = this.getConf().getBoolean(CosNConfigKeys.COSN_CREATE_FILE_EXIST_OP_ENABLED,
+            CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
     }
 
     @Override

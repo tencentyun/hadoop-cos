@@ -236,6 +236,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_FILESTATUS_DIR_FIRST_ENABLED = "fs.cosn.filestatus.dir.first.enabled";
     public static final boolean DEFAULT_FILESTATUS_DIR_FIRST_ENABLED = false;
 
+    // create 新文件的时候，检查文件的存在性
+    public static final String COSN_CREATE_FILE_EXIST_OP_ENABLED = "fs.cosn.create.check.file.exist.op.enabled";
+    public static final boolean DEFAULT_COSN_CREATE_FILE_EXIST_OP_ENABLED = true;
+
     public static final String COSN_READ_BUFFER_POOL_CAPACITY = "fs.cosn.read.buffer.pool.capacity";
     public static final long DEFAULT_READ_BUFFER_POOL_CAPACITY = -1;
 
