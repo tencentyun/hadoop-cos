@@ -60,10 +60,16 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_USE_HTTPS_KEY = "fs.cosn.useHttps";
     public static final boolean DEFAULT_USE_HTTPS = true;   // 现在 COS 强制使用 https 作为访问协议
 
-    // 这个腾讯内部 L5 负载均衡系统的配置，主要限于内部项目依赖使用
+    // 这个腾讯内部 L5 负载均衡系统的配置，主要限于内部项目依赖使用，现在改用北极星了
+    @Deprecated
     public static final String COSN_L5_KEY = "fs.cosn.bucket.l5";
     public static final boolean DEFAULT_COSN_USE_L5_ENABLE = false;
     public static final String COSN_USE_L5_ENABLE = "fs.cosn.use.l5.enable";
+
+    public static final String COSN_USE_POLARIS_ENABLED = "fs.cosn.polaris.enabled";
+    public static final boolean DEFAULT_COSN_USE_POLARIS_ENABLED = false;
+    public static final String COSN_POLARIS_NAMESPACE = "fs.cosn.polaris.namespace";
+    public static final String COSN_POLARIS_SERVICE = "fs.cosn.polaris.service";
 
     public static final String COSN_L5_UPDATE_MAX_RETRIES_KEY = "fs.cosn.l5.update.maxRetries";
     public static final int DEFAULT_COSN_L5_UPDATE_MAX_RETRIES = 5;

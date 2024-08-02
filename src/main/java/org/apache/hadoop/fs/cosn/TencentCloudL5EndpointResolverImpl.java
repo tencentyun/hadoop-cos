@@ -10,6 +10,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * 这个类是专供于腾讯云 L5 解析方式
  */
+@Deprecated
 public class TencentCloudL5EndpointResolverImpl implements TencentCloudL5EndpointResolver {
     private static final Logger LOG = LoggerFactory.getLogger(TencentCloudL5EndpointResolverImpl.class);
 
@@ -86,7 +87,7 @@ public class TencentCloudL5EndpointResolverImpl implements TencentCloudL5Endpoin
                     this.l5IP = packet.ip;
                     this.l5Port = packet.port;
                     this.l5Start = packet.start;
-                    cgiIpAddr = String.format("%s:%d", packet.ip, packet.port);
+                    cgiIpAddr = EndpointResolveHelper.buildUrl(packet.ip, packet.port);
                     break;
                 }
             } catch (L5APIException e) {

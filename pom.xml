@@ -193,6 +193,19 @@
                         <enabled>true</enabled>
                     </snapshots>
                 </repository>
+
+                <repository>
+                    <id>tencent_public</id>
+                    <name>tencent_public</name>
+                    <url>https://mirrors.tencent.com/repository/maven/tencent_public/</url>
+                    <layout>default</layout>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </repository>
             </repositories>
 
             <dependencies>
@@ -200,6 +213,12 @@
                     <groupId>com.tencent.jungle</groupId>
                     <artifactId>jungle-udp-l5</artifactId>
                     <version>1.0.0-20190917.073536-2</version>
+                </dependency>
+
+                <dependency>
+                    <groupId>com.tencent.nameservice</groupId>
+                    <artifactId>polaris-factory-shaded</artifactId>
+                    <version>3.3.7</version>
                 </dependency>
             </dependencies>
         </profile>

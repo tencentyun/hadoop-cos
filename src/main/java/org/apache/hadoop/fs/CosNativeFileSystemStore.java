@@ -64,6 +64,7 @@ import org.apache.hadoop.fs.cosn.CustomerDomainEndpointResolver;
 import org.apache.hadoop.fs.cosn.ResettableFileInputStream;
 import org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
+import org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,14 +109,16 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private int trafficLimit;
     private boolean crc32cEnabled;
     private boolean completeMPUCheckEnabled;
-    private boolean partConflictCheckEnabled;
     private long partSize;
     private boolean clientEncryptionEnabled;
     private CosNEncryptionSecrets encryptionSecrets;
-    private TencentCloudL5EndpointResolver l5EndpointResolver;
     private RangerCredentialsClient rangerCredentialsClient = null;
     private boolean useL5Id = false;
     private int l5UpdateMaxRetryTimes;
+    private TencentCloudL5EndpointResolver tencentL5EndpointResolver;
+
+    private boolean usePolaris = false;
+    private TencentPolarisEndpointResolver tencentPolarisEndpointResolver;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         COSCredentialProviderList cosCredentialProviderList =
@@ -187,18 +190,33 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     Class<?> l5EndpointResolverClass;
                     try {
                         l5EndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolverImpl");
-                        this.l5EndpointResolver = (TencentCloudL5EndpointResolver) l5EndpointResolverClass.newInstance();
-                        this.l5EndpointResolver.setModId(l5modId);
-                        this.l5EndpointResolver.setCmdId(l5cmdId);
+                        this.tencentL5EndpointResolver = (TencentCloudL5EndpointResolver) l5EndpointResolverClass.newInstance();
+                        this.tencentL5EndpointResolver.setModId(l5modId);
+                        this.tencentL5EndpointResolver.setCmdId(l5cmdId);
                     } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
                         throw new IOException("The current version does not support L5 resolver.", e);
                     }
-                    config.setEndpointResolver(l5EndpointResolver);
+                    config.setEndpointResolver(tencentL5EndpointResolver);
                     // used by cos java sdk to handle
                     config.turnOnRefreshEndpointAddrSwitch();
-                    config.setHandlerAfterProcess(l5EndpointResolver);
+                    config.setHandlerAfterProcess(tencentL5EndpointResolver);
                 }
             }
+
+            // 使用北极星初始化
+            this.usePolaris = conf.getBoolean(
+                    CosNConfigKeys.COSN_USE_POLARIS_ENABLED,
+                    CosNConfigKeys.DEFAULT_COSN_USE_POLARIS_ENABLED);
+            if (this.usePolaris) {
+                String namespace = conf.get(CosNConfigKeys.COSN_POLARIS_NAMESPACE);
+                String service = conf.get(CosNConfigKeys.COSN_POLARIS_SERVICE);
+                this.tencentPolarisEndpointResolver = new TencentPolarisEndpointResolver(namespace, service)
+                        .withMaxRetries(l5UpdateMaxRetryTimes); // 这里 L5 的重试次数
+                config.setEndpointResolver(tencentPolarisEndpointResolver);
+                config.turnOnRefreshEndpointAddrSwitch();
+                config.setHandlerAfterProcess(tencentPolarisEndpointResolver);
+            }
+
         } else {
             config = new ClientConfig(new Region(""));
             LOG.info("Use Customer Domain is {}", customerDomain);
@@ -334,7 +352,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         // 设置是否进行客户端加密
         if (clientEncryptionEnabled) {
-
             LOG.info("client side encryption enabled");
             // 为防止请求头部被篡改导致的数据无法解密，强烈建议只使用 https 协议发起请求
             config.setHttpProtocol(HttpProtocol.https);
@@ -1839,7 +1856,17 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             if (useL5Id) {
                                 if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
                                     // L5上报，进行重试
-                                    l5EndpointResolver.handle(-1, 0);
+                                    tencentL5EndpointResolver.handle(-1, 0);
+                                    l5ErrorCodeRetryIndex = 1;
+                                } else {
+                                    l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
+                                }
+                            }
+
+                            if (this.usePolaris) {
+                                if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
+                                    // Polaris上报，进行重试
+                                    this.tencentPolarisEndpointResolver.handle(-1, 0);
                                     l5ErrorCodeRetryIndex = 1;
                                 } else {
                                     l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
