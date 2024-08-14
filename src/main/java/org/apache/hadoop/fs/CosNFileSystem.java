@@ -1503,7 +1503,7 @@ public class CosNFileSystem extends FileSystem {
             // 先释放掉 IO 线程池以及相关的 IO 资源。
             try {
                 this.boundedIOThreadPool.shutdown();
-                if (this.boundedIOThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                if (!this.boundedIOThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
                     LOG.warn("boundedIOThreadPool shutdown timeout, force shutdown now.");
                     this.boundedIOThreadPool.shutdownNow();
                 }
@@ -1516,7 +1516,7 @@ public class CosNFileSystem extends FileSystem {
             // copy 和 delete 因为涉及到元数据操作，因此最后再释放
             try {
                 this.boundedCopyThreadPool.shutdown();
-                if (this.boundedCopyThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                if (!this.boundedCopyThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
                     LOG.warn("boundedCopyThreadPool shutdown timeout, force shutdown now.");
                     this.boundedCopyThreadPool.shutdownNow();
                 }
@@ -1525,7 +1525,7 @@ public class CosNFileSystem extends FileSystem {
             }
             try {
                 this.boundedDeleteThreadPool.shutdown();
-                if (this.boundedDeleteThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
+                if (!this.boundedDeleteThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
                     LOG.warn("boundedDeleteThreadPool shutdown timeout, force shutdown now.");
                     this.boundedDeleteThreadPool.shutdownNow();
                 }
