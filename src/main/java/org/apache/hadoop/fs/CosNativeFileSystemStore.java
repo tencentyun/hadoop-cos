@@ -66,7 +66,6 @@ import org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
 import org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolver;
 import org.apache.hadoop.fs.cosn.TencentPolarisSidecarClient;
-import org.apache.hadoop.fs.cosn.TencentPolarisSidecarEndpointResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
