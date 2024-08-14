@@ -65,6 +65,8 @@ import org.apache.hadoop.fs.cosn.ResettableFileInputStream;
 import org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
 import org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolver;
+import org.apache.hadoop.fs.cosn.TencentPolarisSidecarClient;
+import org.apache.hadoop.fs.cosn.TencentPolarisSidecarEndpointResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -217,6 +219,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 config.setHandlerAfterProcess(tencentPolarisEndpointResolver);
             }
 
+            boolean usePolarisSidecar = conf.getBoolean(CosNConfigKeys.COSN_USE_POLARIS_SIDECAR_ENABLED,
+                    CosNConfigKeys.DEFAULT_COSN_USE_POLARIS_SIDECAR_ENABLED);
+            if( usePolarisSidecar ){
+                String namespace = conf.get(CosNConfigKeys.COSN_POLARIS_NAMESPACE);
+                String service = conf.get(CosNConfigKeys.COSN_POLARIS_SERVICE);
+                String address = conf.get(CosNConfigKeys.COSN_POLARIS_SIDECAR_ADDRESS);
+                TencentPolarisSidecarClient polarisSideCarClient = new TencentPolarisSidecarClient(address);
+                TencentPolarisSidecarEndpointResolver tencentPolarisSidecarEndpointResolver =
+                        new TencentPolarisSidecarEndpointResolver(polarisSideCarClient,namespace, service)
+                                .withMaxRetries(l5UpdateMaxRetryTimes); // 这里 L5 的重试次数
+                config.setEndpointResolver(tencentPolarisSidecarEndpointResolver);
+                config.turnOnRefreshEndpointAddrSwitch();
+                config.setHandlerAfterProcess(tencentPolarisSidecarEndpointResolver);
+            }
         } else {
             config = new ClientConfig(new Region(""));
             LOG.info("Use Customer Domain is {}", customerDomain);
