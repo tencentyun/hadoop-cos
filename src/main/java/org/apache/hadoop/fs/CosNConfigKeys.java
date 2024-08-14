@@ -251,4 +251,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = "fs.cosn.read.buffer.allocate.timeout.seconds";
     public static final long DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = 5;
+
+    // 这里问了一下 cos-java-sdk 的维护同事，在新版本的 SDK 里面增加了一个配置，可以控制是否打印关闭时的堆栈信息。
+    // 这里主要是为了给客户排查他们是否主动关闭 Client。
+    public static final String COSN_CLIENT_SHUTDOWN_STACK_TRACE_LOG = "fs.cosn.client.shutdown.stack.trace.log";
+    public static final boolean DEFAULT_COSN_CLIENT_SHUTDOWN_STACK_TRACE_LOG = false;
 }

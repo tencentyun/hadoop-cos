@@ -329,6 +329,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         config.setIdleConnectionAlive(
                 conf.getInt(CosNConfigKeys.COSN_IDLE_CONNECTION_ALIVE,
                         CosNConfigKeys.DEFAULT_COSN_IDLE_CONNECTION_ALIVE));
+        config.setPrintShutdownStackTrace(
+                conf.getBoolean(CosNConfigKeys.COSN_CLIENT_SHUTDOWN_STACK_TRACE_LOG,
+                        CosNConfigKeys.DEFAULT_COSN_CLIENT_SHUTDOWN_STACK_TRACE_LOG));
 
         // 设置是否进行服务器端加密
         String serverSideEncryptionAlgorithm = conf.get(CosNConfigKeys.COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM, "");
@@ -1998,7 +2001,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         } finally {
             try {
                 delete(key);
-            } catch (IOException e){
+            } catch (IOException e) {
                 String errMsg = String.format(
                         "delete CSE temporary file failed, cos key: %s, " +
                                 "exception: %s", key, e);
