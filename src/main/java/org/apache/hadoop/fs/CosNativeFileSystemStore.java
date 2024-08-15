@@ -74,6 +74,8 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
@@ -212,11 +214,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (this.usePolaris) {
                 String namespace = conf.get(CosNConfigKeys.COSN_POLARIS_NAMESPACE);
                 String service = conf.get(CosNConfigKeys.COSN_POLARIS_SERVICE);
-                this.tencentPolarisEndpointResolver = new TencentPolarisEndpointResolver(namespace, service)
-                        .withMaxRetries(l5UpdateMaxRetryTimes); // 这里 L5 的重试次数
-                config.setEndpointResolver(tencentPolarisEndpointResolver);
+                try {
+                    Class<?> polarisEndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolverImpl");
+                    Constructor<?> constructor = polarisEndpointResolverClass.getConstructor(String.class, String.class);
+                    this.tencentPolarisEndpointResolver = (TencentPolarisEndpointResolver) constructor.newInstance(namespace, service);
+                } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException |
+                         InstantiationException | IllegalAccessException e) {
+                    throw new IOException("The current version does not support Polaris resolver.", e);
+                }
+
+                config.setEndpointResolver(this.tencentPolarisEndpointResolver);
                 config.turnOnRefreshEndpointAddrSwitch();
-                config.setHandlerAfterProcess(tencentPolarisEndpointResolver);
+                config.setHandlerAfterProcess(this.tencentPolarisEndpointResolver);
             }
 
             boolean usePolarisSidecar = conf.getBoolean(CosNConfigKeys.COSN_USE_POLARIS_SIDECAR_ENABLED,
