@@ -74,6 +74,11 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_L5_UPDATE_MAX_RETRIES_KEY = "fs.cosn.l5.update.maxRetries";
     public static final int DEFAULT_COSN_L5_UPDATE_MAX_RETRIES = 5;
 
+    // 如果进程不能内嵌运行北极星，使用sidecar方式运行
+    public static final String COSN_USE_POLARIS_SIDECAR_ENABLED = "fs.cosn.polaris.sidecar.enabled";
+    public static final boolean DEFAULT_COSN_USE_POLARIS_SIDECAR_ENABLED = false;
+    public static final String COSN_POLARIS_SIDECAR_ADDRESS = "fs.cosn.polaris.sidecar.address";
+
     public static final String COSN_TMP_DIR = "fs.cosn.tmp.dir";
     public static final String DEFAULT_TMP_DIR = "/tmp/hadoop_cos";
 

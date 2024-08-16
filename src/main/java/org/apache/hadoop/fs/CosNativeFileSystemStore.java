@@ -65,6 +65,7 @@ import org.apache.hadoop.fs.cosn.ResettableFileInputStream;
 import org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
 import org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolver;
+import org.apache.hadoop.fs.cosn.TencentPolarisSidecarClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -226,6 +227,25 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 config.setHandlerAfterProcess(this.tencentPolarisEndpointResolver);
             }
 
+            boolean usePolarisSidecar = conf.getBoolean(CosNConfigKeys.COSN_USE_POLARIS_SIDECAR_ENABLED,
+                    CosNConfigKeys.DEFAULT_COSN_USE_POLARIS_SIDECAR_ENABLED);
+            if( usePolarisSidecar ){
+                String namespace = conf.get(CosNConfigKeys.COSN_POLARIS_NAMESPACE);
+                String service = conf.get(CosNConfigKeys.COSN_POLARIS_SERVICE);
+                String address = conf.get(CosNConfigKeys.COSN_POLARIS_SIDECAR_ADDRESS);
+                TencentPolarisSidecarClient polarisSideCarClient = new TencentPolarisSidecarClient(address);
+                try {
+                    Class<?> polarisEndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentPolarisSidecarEndpointResolverImpl");
+                    Constructor<?> constructor = polarisEndpointResolverClass.getConstructor(TencentPolarisSidecarClient.class, String.class, String.class);
+                    this.tencentPolarisEndpointResolver = (TencentPolarisEndpointResolver) constructor.newInstance(polarisSideCarClient, namespace, service);
+                } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException |
+                         InstantiationException | IllegalAccessException e) {
+                    throw new IOException("The current version does not support Polaris sidecar resolver.", e);
+                }
+                config.setEndpointResolver(this.tencentPolarisEndpointResolver);
+                config.turnOnRefreshEndpointAddrSwitch();
+                config.setHandlerAfterProcess(this.tencentPolarisEndpointResolver);
+            }
         } else {
             config = new ClientConfig(new Region(""));
             LOG.info("Use Customer Domain is {}", customerDomain);
