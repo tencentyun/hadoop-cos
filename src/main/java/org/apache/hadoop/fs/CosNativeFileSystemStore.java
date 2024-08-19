@@ -3,10 +3,12 @@ package org.apache.hadoop.fs;
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.COSEncryptionClient;
 import com.qcloud.cos.ClientConfig;
+import com.qcloud.cos.endpoint.EndpointResolver;
 import com.qcloud.cos.endpoint.SuffixEndpointBuilder;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.exception.ResponseNotCompleteException;
+import com.qcloud.cos.http.HandlerAfterProcess;
 import com.qcloud.cos.http.HttpProtocol;
 import com.qcloud.cos.internal.SkipMd5CheckStrategy;
 import com.qcloud.cos.internal.crypto.CryptoConfiguration;
@@ -62,10 +64,7 @@ import org.apache.hadoop.fs.auth.COSCredentialProviderList;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.CustomerDomainEndpointResolver;
 import org.apache.hadoop.fs.cosn.ResettableFileInputStream;
-import org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolver;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
-import org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolver;
-import org.apache.hadoop.fs.cosn.TencentPolarisSidecarClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -118,10 +117,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private RangerCredentialsClient rangerCredentialsClient = null;
     private boolean useL5Id = false;
     private int l5UpdateMaxRetryTimes;
-    private TencentCloudL5EndpointResolver tencentL5EndpointResolver;
+    private EndpointResolver tencentL5EndpointResolver;
 
     private boolean usePolaris = false;
-    private TencentPolarisEndpointResolver tencentPolarisEndpointResolver;
+    private EndpointResolver tencentPolarisEndpointResolver;
 
     private void initCOSClient(URI uri, Configuration conf) throws IOException {
         COSCredentialProviderList cosCredentialProviderList =
@@ -192,17 +191,20 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
                     Class<?> l5EndpointResolverClass;
                     try {
-                        l5EndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentCloudL5EndpointResolverImpl");
-                        this.tencentL5EndpointResolver = (TencentCloudL5EndpointResolver) l5EndpointResolverClass.newInstance();
-                        this.tencentL5EndpointResolver.setModId(l5modId);
-                        this.tencentL5EndpointResolver.setCmdId(l5cmdId);
-                    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+                        l5EndpointResolverClass = Class.forName(conf.get(CosNConfigKeys.COSN_L5_RESOLVER_CLASS,
+                                CosNConfigKeys.DEFAULT_COSN_L5_RESOLVER_CLASS));
+                        Constructor<?> constructor = l5EndpointResolverClass.getConstructor(int.class, int.class, int.class);
+                        this.tencentL5EndpointResolver = (EndpointResolver) constructor.newInstance(l5modId, l5cmdId, this.l5UpdateMaxRetryTimes);
+                    } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException |
+                             InstantiationException | IllegalAccessException e) {
                         throw new IOException("The current version does not support L5 resolver.", e);
                     }
                     config.setEndpointResolver(tencentL5EndpointResolver);
                     // used by cos java sdk to handle
                     config.turnOnRefreshEndpointAddrSwitch();
-                    config.setHandlerAfterProcess(tencentL5EndpointResolver);
+                    if (this.tencentL5EndpointResolver instanceof HandlerAfterProcess) {
+                        config.setHandlerAfterProcess((HandlerAfterProcess) tencentL5EndpointResolver);
+                    }
                 }
             }
 
@@ -214,9 +216,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 String namespace = conf.get(CosNConfigKeys.COSN_POLARIS_NAMESPACE);
                 String service = conf.get(CosNConfigKeys.COSN_POLARIS_SERVICE);
                 try {
-                    Class<?> polarisEndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentPolarisEndpointResolverImpl");
-                    Constructor<?> constructor = polarisEndpointResolverClass.getConstructor(String.class, String.class);
-                    this.tencentPolarisEndpointResolver = (TencentPolarisEndpointResolver) constructor.newInstance(namespace, service);
+                    Class<?> polarisEndpointResolverClass = Class.forName(conf.get(CosNConfigKeys.COSN_POLARIS_RESOLVER_CLASS,
+                            CosNConfigKeys.DEFAULT_COSN_POLARIS_RESOLVER_CLASS));
+                    Constructor<?> constructor = polarisEndpointResolverClass.getConstructor(String.class, String.class, int.class);
+                    this.tencentPolarisEndpointResolver = (EndpointResolver) constructor.newInstance(namespace, service, this.l5UpdateMaxRetryTimes);
                 } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException |
                          InstantiationException | IllegalAccessException e) {
                     throw new IOException("The current version does not support Polaris resolver.", e);
@@ -224,27 +227,43 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
                 config.setEndpointResolver(this.tencentPolarisEndpointResolver);
                 config.turnOnRefreshEndpointAddrSwitch();
-                config.setHandlerAfterProcess(this.tencentPolarisEndpointResolver);
+                if (this.tencentPolarisEndpointResolver instanceof HandlerAfterProcess) {
+                    config.setHandlerAfterProcess((HandlerAfterProcess) this.tencentPolarisEndpointResolver);
+                }
             }
 
+            // 使用北极星 sidecar 初始化
             boolean usePolarisSidecar = conf.getBoolean(CosNConfigKeys.COSN_USE_POLARIS_SIDECAR_ENABLED,
                     CosNConfigKeys.DEFAULT_COSN_USE_POLARIS_SIDECAR_ENABLED);
             if( usePolarisSidecar ){
                 String namespace = conf.get(CosNConfigKeys.COSN_POLARIS_NAMESPACE);
                 String service = conf.get(CosNConfigKeys.COSN_POLARIS_SERVICE);
                 String address = conf.get(CosNConfigKeys.COSN_POLARIS_SIDECAR_ADDRESS);
-                TencentPolarisSidecarClient polarisSideCarClient = new TencentPolarisSidecarClient(address);
+                Class<?> polarisSideCarClientClass;
+                Object polarisSideCarClient;
                 try {
-                    Class<?> polarisEndpointResolverClass = Class.forName("org.apache.hadoop.fs.cosn.TencentPolarisSidecarEndpointResolverImpl");
-                    Constructor<?> constructor = polarisEndpointResolverClass.getConstructor(TencentPolarisSidecarClient.class, String.class, String.class);
-                    this.tencentPolarisEndpointResolver = (TencentPolarisEndpointResolver) constructor.newInstance(polarisSideCarClient, namespace, service);
+                    polarisSideCarClientClass = Class.forName(conf.get(CosNConfigKeys.COSN_POLARIS_SIDECAR_CLIENT_IMPL,
+                            CosNConfigKeys.DEFAULT_COSN_POLARIS_SIDECAR_CLIENT_IMPL));
+                    Constructor<?> constructor = polarisSideCarClientClass.getConstructor(String.class);
+                    polarisSideCarClient = constructor.newInstance(address);
+                } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException |
+                         InstantiationException | IllegalAccessException e) {
+                    throw new IOException("The current version does not support Polaris sidecar resolver.", e);
+                }
+                try {
+                    Class<?> polarisEndpointResolverClass = Class.forName(conf.get(CosNConfigKeys.COSN_POLARIS_SIDECAR_RESOLVER_CLASS,
+                            CosNConfigKeys.DEFAULT_COSN_POLARIS_SIDECAR_RESOLVER_CLASS));
+                    Constructor<?> constructor = polarisEndpointResolverClass.getConstructor(polarisSideCarClientClass, String.class, String.class, int.class);
+                    this.tencentPolarisEndpointResolver = (EndpointResolver) constructor.newInstance(polarisSideCarClient, namespace, service, this.l5UpdateMaxRetryTimes);
                 } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException |
                          InstantiationException | IllegalAccessException e) {
                     throw new IOException("The current version does not support Polaris sidecar resolver.", e);
                 }
                 config.setEndpointResolver(this.tencentPolarisEndpointResolver);
                 config.turnOnRefreshEndpointAddrSwitch();
-                config.setHandlerAfterProcess(this.tencentPolarisEndpointResolver);
+                if (this.tencentL5EndpointResolver instanceof HandlerAfterProcess) {
+                    config.setHandlerAfterProcess((HandlerAfterProcess) this.tencentPolarisEndpointResolver);
+                }
             }
         } else {
             config = new ClientConfig(new Region(""));
@@ -1888,7 +1907,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             if (useL5Id) {
                                 if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
                                     // L5上报，进行重试
-                                    tencentL5EndpointResolver.handle(-1, 0);
+                                    if (this.tencentL5EndpointResolver instanceof HandlerAfterProcess) {
+                                        ((HandlerAfterProcess) this.tencentL5EndpointResolver).handle(-1, 0);
+                                    }
                                     l5ErrorCodeRetryIndex = 1;
                                 } else {
                                     l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;
@@ -1898,7 +1919,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                             if (this.usePolaris) {
                                 if (l5ErrorCodeRetryIndex >= this.l5UpdateMaxRetryTimes) {
                                     // Polaris上报，进行重试
-                                    this.tencentPolarisEndpointResolver.handle(-1, 0);
+                                    if (this.tencentPolarisEndpointResolver instanceof HandlerAfterProcess) {
+                                        ((HandlerAfterProcess) this.tencentPolarisEndpointResolver).handle(-1, 0);
+                                    }
                                     l5ErrorCodeRetryIndex = 1;
                                 } else {
                                     l5ErrorCodeRetryIndex = l5ErrorCodeRetryIndex + 1;

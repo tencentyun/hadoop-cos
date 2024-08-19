@@ -60,22 +60,36 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_USE_HTTPS_KEY = "fs.cosn.useHttps";
     public static final boolean DEFAULT_USE_HTTPS = true;   // 现在 COS 强制使用 https 作为访问协议
 
-    // 这个腾讯内部 L5 负载均衡系统的配置，主要限于内部项目依赖使用，现在改用北极星了
+    // 这个腾讯内部 L5 负载均衡系统的配置，主要限于内部项目依赖使用，现在改用北极星了。
+    // 这些内部扩展（L5、北极星和北极星 SideCar）需要依赖 tencent-internal-extension 组件，这个只有腾讯内部仓库才有。坐标如下：
+    // <dependency>
+    //    <groupId>com.qcloud.cos</groupId>
+    //    <artifactId>tencent-internal-extension</artifactId>
+    //    <version>${version}</version>
+    //</dependency>
     @Deprecated
     public static final String COSN_L5_KEY = "fs.cosn.bucket.l5";
     public static final boolean DEFAULT_COSN_USE_L5_ENABLE = false;
     public static final String COSN_USE_L5_ENABLE = "fs.cosn.use.l5.enable";
+    // 默认这个不要更需要更改。只有运行时依赖的组件确实发生了变动再更改
+    public static final String COSN_L5_RESOLVER_CLASS = "fs.cosn.l5.resolver.class";
+    public static final String DEFAULT_COSN_L5_RESOLVER_CLASS = "com.qcloud.cos.internal.endpoint.resolver.TencentCloudL5EndpointResolver";
 
     public static final String COSN_USE_POLARIS_ENABLED = "fs.cosn.polaris.enabled";
     public static final boolean DEFAULT_COSN_USE_POLARIS_ENABLED = false;
+    public static final String COSN_POLARIS_RESOLVER_CLASS = "fs.cosn.polaris.resolver.class";
+    public static final String DEFAULT_COSN_POLARIS_RESOLVER_CLASS = "com.qcloud.cos.internal.endpoint.resolver.TencentPolarisEndpointResolver";
     public static final String COSN_POLARIS_NAMESPACE = "fs.cosn.polaris.namespace";
     public static final String COSN_POLARIS_SERVICE = "fs.cosn.polaris.service";
-
     public static final String COSN_L5_UPDATE_MAX_RETRIES_KEY = "fs.cosn.l5.update.maxRetries";
     public static final int DEFAULT_COSN_L5_UPDATE_MAX_RETRIES = 5;
 
     // 如果进程不能内嵌运行北极星，使用sidecar方式运行
     public static final String COSN_USE_POLARIS_SIDECAR_ENABLED = "fs.cosn.polaris.sidecar.enabled";
+    public static final String COSN_POLARIS_SIDECAR_CLIENT_IMPL = "fs.cosn.polaris.sidecar.client.impl";
+    public static final String DEFAULT_COSN_POLARIS_SIDECAR_CLIENT_IMPL = "com.qcloud.cos.internal.endpoint.resolver.TencentPolarisSidecarClient";
+    public static final String COSN_POLARIS_SIDECAR_RESOLVER_CLASS = "fs.cosn.polaris.sidecar.resolver.class";
+    public static final String DEFAULT_COSN_POLARIS_SIDECAR_RESOLVER_CLASS = "com.qcloud.cos.internal.endpoint.resolver.TencentPolarisSidecarEndpointResolver";
     public static final boolean DEFAULT_COSN_USE_POLARIS_SIDECAR_ENABLED = false;
     public static final String COSN_POLARIS_SIDECAR_ADDRESS = "fs.cosn.polaris.sidecar.address";
 
