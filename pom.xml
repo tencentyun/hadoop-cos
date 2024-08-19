@@ -170,6 +170,7 @@
                             <excludes>
                                 <exclude>org/apache/hadoop/fs/cosn/TencentCloudL5EndpointResolverImpl.java</exclude>
                                 <exclude>org/apache/hadoop/fs/cosn/TencentPolarisEndpointResolverImpl.java</exclude>
+                                <exclude>org/apache/hadoop/fs/cosn/TencentPolarisSidecarEndpointResolverImpl.java</exclude>
                             </excludes>
                         </configuration>
                     </plugin>
