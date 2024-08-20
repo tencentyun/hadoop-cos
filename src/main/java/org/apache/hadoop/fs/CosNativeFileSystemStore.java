@@ -364,6 +364,19 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
            config.setShortConnection();
         }
 
+        if (conf.getBoolean(CosNConfigKeys.COSN_CLIENT_USE_REQUEST_TIMEOUT,
+                CosNConfigKeys.DEFAULT_COSN_CLIENT_USE_REQUEST_TIMEOUT)) {
+            config.setRequestTimeOutEnable(true);
+            config.setRequestTimeout(
+                    conf.getInt(
+                            CosNConfigKeys.COSN_CLIENT_REQUEST_TIMEOUT,
+                            CosNConfigKeys.DEFAULT_COSN_CLIENT_REQUEST_TIMEOUT));
+            config.setTimeoutClientThreadSize(
+                    conf.getInt(
+                            CosNConfigKeys.COSN_CLIENT_REQUEST_TIMEOUT_THREAD_SIZE,
+                            CosNConfigKeys.DEFAULT_COSN_CLIENT_REQUEST_TIMEOUT_THREAD_SIZE));
+        }
+
         config.setMaxConnectionsCount(
                 conf.getInt(
                         CosNConfigKeys.MAX_CONNECTION_NUM,
