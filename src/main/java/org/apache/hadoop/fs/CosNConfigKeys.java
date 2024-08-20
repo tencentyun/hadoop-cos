@@ -186,6 +186,14 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final int DEFAULT_COSN_IDLE_CONNECTION_ALIVE = 60000;
 
+    // request time out enable then request timeout and client thread size config work
+    public static final String COSN_CLIENT_USE_REQUEST_TIMEOUT = "fs.cosn.client.use.request.timeout";
+    public static final boolean DEFAULT_COSN_CLIENT_USE_REQUEST_TIMEOUT = false;
+    public static final String COSN_CLIENT_REQUEST_TIMEOUT = "fs.cosn.client.request.timeout";
+    public static final int DEFAULT_COSN_CLIENT_REQUEST_TIMEOUT = 5 * 60 * 1000; //5min
+    public static final String COSN_CLIENT_REQUEST_TIMEOUT_THREAD_SIZE = "fs.cosn.client.request.timeout.thread.size";
+    public static final int DEFAULT_COSN_CLIENT_REQUEST_TIMEOUT_THREAD_SIZE = Runtime.getRuntime().availableProcessors() * 5;
+
     public static final String CUSTOMER_DOMAIN = "fs.cosn.customer.domain";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_ALGORITHM = "fs.cosn.server-side-encryption.algorithm";
     public static final String COSN_SERVER_SIDE_ENCRYPTION_KEY = "fs.cosn.server-side-encryption.key";
