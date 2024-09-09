@@ -177,7 +177,7 @@ public class CosNFSInputStream extends FSInputStream {
         this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue =
                 new ArrayDeque<>(this.maxReadPartNumber);
-        this.closed = new AtomicBoolean();
+        this.closed = new AtomicBoolean(false);
     }
 
     private void tryFreeBuffer(ReadBuffer readBuffer) {
