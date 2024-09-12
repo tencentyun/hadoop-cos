@@ -186,8 +186,15 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (useL5Id) {
                 String l5Id = conf.get(CosNConfigKeys.COSN_L5_KEY);
                 if (null != l5Id) {
-                    int l5modId = Integer.parseInt(l5Id.split(",")[0]);
-                    int l5cmdId = Integer.parseInt(l5Id.split(",")[1]);
+                    int l5modId;
+                    int l5cmdId;
+                    if (l5Id.contains(":")) {
+                        l5modId = Integer.parseInt(l5Id.split(":")[0]);
+                        l5cmdId = Integer.parseInt(l5Id.split(":")[1]);
+                    } else {
+                        l5modId = Integer.parseInt(l5Id.split(",")[0]);
+                        l5cmdId = Integer.parseInt(l5Id.split(",")[1]);
+                    }
 
                     Class<?> l5EndpointResolverClass;
                     try {
