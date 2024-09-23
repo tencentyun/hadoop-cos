@@ -22,8 +22,8 @@ import javax.annotation.Nullable;
  * <p>
  * url response should be like:
  * {
- * "TmpSecretId": "AKIDoQMxA6cW447p225cIt9NW8dhA1dwl5UvxxxxxxxxxUqRlEb5_",
- * "TmpSecretKey": "Q9z24VucjF4xQQN1PEsH3exxxxxxxxxgA=",
+ * "TmpSecretId": "AKIDxxxxxxxxxxxxxxxxxxxx",
+ * "TmpSecretKey": "xxxxxxxxxxexxxxxxxxxgA=",
  * "ExpiredTime": 1615590047,
  * "Expiration": "2021-03-12T23:00:47Z",
  * "Token": "xxxxxxxxxxx",
