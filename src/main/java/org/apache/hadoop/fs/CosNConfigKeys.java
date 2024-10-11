@@ -252,7 +252,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = "fs.cosn.posix.bucket.use_ofs_ranger.enabled";
     public static final boolean DEFAULT_COSN_POSIX_BUCKET_USE_OFS_RANGER_ENABLED = false;
 
-    // POSIX bucket does not support the SYMLINK interface by default.
+    // POSIX bucket does not support the SYMLINK interface by default. Only used for some internal projects, such as GooseFS / GooseFS Lite, etc.
     @Deprecated
     public static final String COSN_SUPPORT_SYMLINK_ENABLED = "fs.cosn.support_symlink.enabled";
     public static final boolean DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED = false;

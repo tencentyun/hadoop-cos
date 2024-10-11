@@ -621,6 +621,17 @@ public class CosNFileSystem extends FileSystem {
         }
 
         CosNResultInfo getObjectMetadataResultInfo = new CosNResultInfo();
+        // NOTICE 值得注意的是，如果是符号连接，但是又关闭了符号连接的支持，那么 getFileStatus 操作会返回 COS 上符号连接指向目的对象的元数据。
+        // 这一点尤为重要，因为 HCFS 语义规范要求的是 getFileStatus 返回的是符号连接本身的元数据。参考：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/filesystem/filesystem.html
+        if (this.supportsSymlinks()) {
+            // 先判断是否是符号链接
+            CosNSymlinkMetadata symlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(key, getObjectMetadataResultInfo);
+            if (symlinkMetadata != null) {
+                return newSymlink(symlinkMetadata, f);
+            }
+            // 不是符号链接，继续下面的判断
+        }
+
         FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo);
         if (meta != null) {
             if (meta.isFile()) {
@@ -751,8 +762,8 @@ public class CosNFileSystem extends FileSystem {
                             fileMetadata.getKey());
                 } else {
                     if (this.supportsSymlinks() && fileMetadata.getLength() < this.symbolicLinkSizeThreshold) {
-                        CosNSymlinkMetadata cosNSymlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(
-                                fileMetadata.getKey());
+                        CosNSymlinkMetadata cosNSymlinkMetadata =
+                                this.nativeStore.retrieveSymlinkMetadata(fileMetadata.getKey());
                         if (null != cosNSymlinkMetadata) {
                             // 这里 CGI 的 GetSymlink 接口返回的 contentLength 是0，但是 List 接口又返回的是正确的值，
                             // 因此这里还是取 List 接口返回的软连接大小
