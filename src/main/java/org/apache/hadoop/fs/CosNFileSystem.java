@@ -192,10 +192,10 @@ public class CosNFileSystem extends FileSystem {
                             try {
                                 executor.getQueue().put(r);
                             } catch (InterruptedException e) {
-                                LOG.error("put a io task into the download " +
+                                LOG.error("Put a io task into the download " +
                                         "thread pool occurs an exception.", e);
                                 throw new RejectedExecutionException(
-                                        "Putting the io task failed due to the interruption", e);
+                                        "Put the io task failed due to the interruption", e);
                             }
                         } else {
                             LOG.error("The bounded io thread pool has been shutdown.");
@@ -223,8 +223,10 @@ public class CosNFileSystem extends FileSystem {
                             try {
                                 executor.getQueue().put(r);
                             } catch (InterruptedException e) {
-                                LOG.error("put a copy task into the download " +
+                                LOG.error("Put a copy task into the download " +
                                         "thread pool occurs an exception.", e);
+                                throw new RejectedExecutionException(
+                                        "Put the copy task failed due to the interruption", e);
                             }
                         }
                     }
@@ -257,8 +259,9 @@ public class CosNFileSystem extends FileSystem {
                             try {
                                 executor.getQueue().put(r);
                             } catch (InterruptedException e) {
-                                LOG.error("put a delete task into the download " +
+                                LOG.error("Put a delete task into the download " +
                                         "thread pool occurs an exception.", e);
+                                throw new RejectedExecutionException("Put the delete task failed due to the interruption", e);
                             }
                         }
                     }
