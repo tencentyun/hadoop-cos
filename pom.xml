@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>8.3.11</version>
+    <version>8.3.12</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Cloud COS Support</name>
@@ -60,9 +60,9 @@
         <maven.compiler.target>1.7</maven.compiler.target>
         <hadoop.version>3.4.0</hadoop.version>
         <cos_api.version>5.6.228</cos_api.version>
+        <junit.version>4.13.2</junit.version>
         <google.guava.version>24.1.1-jre</google.guava.version>
         <commons_lang3.version>3.1</commons_lang3.version>
-        <junit.version>4.8</junit.version>
         <downloadSources>true</downloadSources>
     </properties>
 
@@ -121,22 +121,11 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- Unit tests dependencies -->
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>RELEASE</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <version>4.11.0</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <version>4.11.0</version>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
