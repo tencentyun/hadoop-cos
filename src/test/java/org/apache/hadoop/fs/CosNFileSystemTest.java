@@ -18,10 +18,11 @@ public class CosNFileSystemTest {
     private static Configuration configuration;
     private static FileSystem fs;
 
-    private final Path testDirPath = new Path("/test-dir");
-    private final Path testFilePath = new Path("/test-file");
-    private final Path testFileSymlinkPath = new Path("/test-symlink");
-    private final Path testDirSymlinkPath = new Path("/test-dir-symlink");
+    private static final Path unittestDirPath = new Path("/unittest-dir");
+    private final Path testDirPath = new Path(unittestDirPath,"test-dir");
+    private final Path testFilePath = new Path(unittestDirPath,"test-file");
+    private final Path testFileSymlinkPath = new Path(unittestDirPath,"test-symlink");
+    private final Path testDirSymlinkPath = new Path(unittestDirPath,"test-dir-symlink");
 
     @BeforeClass
     public static void beforeClass() throws IOException {
@@ -32,10 +33,17 @@ public class CosNFileSystemTest {
         // 有软连接相关单元测试，因此需要启用软连接支持。
         configuration.set("fs.cosn.support_symlink.enabled", "true");
         fs = FileSystem.get(configuration);
+
+        if (null != fs && !fs.exists(unittestDirPath)) {
+            fs.mkdirs(unittestDirPath);
+        }
     }
 
     @AfterClass
     public static void afterClass() throws IOException {
+        if (null != fs && fs.exists(unittestDirPath)) {
+            fs.delete(unittestDirPath, true);
+        }
         if (null != fs) {
             fs.close();
         }
@@ -91,6 +99,7 @@ public class CosNFileSystemTest {
         fs.createSymlink(testDirPath, testDirSymlinkPath, false);
         // 验证软连接是否存在
         assert fs.getFileLinkStatus(testDirSymlinkPath).isSymlink();
+        assert fs.getFileStatus(testDirSymlinkPath).isSymlink();
     }
 
     @Test
@@ -116,7 +125,7 @@ public class CosNFileSystemTest {
     public void getLinkTarget() throws IOException, URISyntaxException {
         // 这里需要保证 createSymlink 是打开的
         assert fs.supportsSymlinks();
-        // 创建一个指向文件的软连接
+        // 创建一个指x向文件的软连接
         fs.createSymlink(testFilePath, testFileSymlinkPath, false);
         // 验证软连接是否存在
         assertEquals(testFilePath, new Path(fs.getLinkTarget(testFileSymlinkPath).toUri().getPath()));
@@ -125,5 +134,17 @@ public class CosNFileSystemTest {
         fs.createSymlink(testDirPath, testDirSymlinkPath, false);
         // 验证软连接是否存在
         assertEquals(testDirPath,  new Path(fs.getLinkTarget(testDirSymlinkPath).toUri().getPath()));
+    }
+
+    @Test
+    public void getFileStatus() throws IOException {
+        assert fs.supportsSymlinks();
+        fs.createSymlink(testFilePath, testFileSymlinkPath, false);
+        assert fs.getFileStatus(testFileSymlinkPath).isSymlink();  // 预期返回的是软连接的FileStatus
+        // 关掉软连接支持
+        boolean supportSymlink = fs.getConf().getBoolean(CosNConfigKeys.COSN_SUPPORT_SYMLINK_ENABLED, CosNConfigKeys.DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED);
+        fs.getConf().setBoolean(CosNConfigKeys.COSN_SUPPORT_SYMLINK_ENABLED, false);
+        assert fs.getFileStatus(testFileSymlinkPath).isFile();  // 预期返回的是文件的FileStatus
+        fs.getConf().setBoolean(CosNConfigKeys.COSN_SUPPORT_SYMLINK_ENABLED, supportSymlink);
     }
 }

@@ -1494,6 +1494,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void createSymlink(String symLink, String targetKey) throws IOException {
         LOG.debug("Create a symlink [{}] for the target object key [{}].", symLink, targetKey);
+        if (targetKey.startsWith(CosNFileSystem.PATH_DELIMITER) && !targetKey.equals(CosNFileSystem.PATH_DELIMITER)) {
+            targetKey = targetKey.substring(1);
+        }
         try {
             PutSymlinkRequest putSymlinkRequest = new PutSymlinkRequest(this.bucketName, symLink, targetKey);
             PutSymlinkResult putSymlinkResult = (PutSymlinkResult) callCOSClientWithRetry(putSymlinkRequest);
