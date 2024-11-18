@@ -584,7 +584,7 @@ public class CosNFileSystem extends FileSystem {
             }
 
             priorLastKey = listing.getPriorLastKey();
-        } while (priorLastKey != null);
+        } while (priorLastKey != null && !Thread.currentThread().isInterrupted());
 
         deleteFileContext.lock();
         try {
@@ -1131,7 +1131,7 @@ public class CosNFileSystem extends FileSystem {
             }
 
             priorLastKey = objectList.getPriorLastKey();
-        } while (null != priorLastKey);
+        } while (null != priorLastKey && !Thread.currentThread().isInterrupted());
 
         copyFileContext.lock();
         try {
