@@ -563,11 +563,6 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
 
                         @Override
                         public PartETag call() throws Exception {
-                            Thread currentThread = Thread.currentThread();
-                            LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
-                                    this.getClass().getClassLoader(), currentThread.getContextClassLoader());
-                            currentThread.setContextClassLoader(this.getClass().getClassLoader());
-
                             try {
                                 LOG.debug("Start to upload the part async: {}", uploadPart);
                                 PartETag partETag = (nativeStore).uploadPart(
