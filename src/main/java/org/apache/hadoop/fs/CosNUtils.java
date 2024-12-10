@@ -16,8 +16,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.io.File;
 import java.io.FileInputStream;
@@ -328,5 +330,33 @@ public final class CosNUtils {
         } else {
             return new Path(key);
         }
+    }
+
+    public static boolean checkDirectoryRWPermissions(String directoryPath) {
+        java.nio.file.Path path = Paths.get(directoryPath);
+
+        // 检查目录是否存在
+        if (!java.nio.file.Files.exists(path)) {
+	        LOG.error("the directory {} is not exist", directoryPath);
+            return false;
+        }
+
+        // 检查是否是目录
+        if (!java.nio.file.Files.isDirectory(path)) {
+            LOG.error("the {} is not a directory", directoryPath);
+            return false;
+        }
+
+        // 检查读权限
+        boolean isReadable = java.nio.file.Files.isReadable(path);
+        // 检查写权限
+        boolean isWritable = java.nio.file.Files.isWritable(path);
+
+        return isReadable && isWritable;
+    }
+
+    public static String generateUUID() {
+        UUID uuid = UUID.randomUUID();
+        return uuid.toString();
     }
 }
