@@ -10,6 +10,7 @@ import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
 import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
+import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
 import org.apache.hadoop.fs.cosn.ReadBufferHolder;
 import org.apache.hadoop.fs.cosn.Unit;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -47,6 +48,8 @@ import java.util.concurrent.TimeUnit;
  */
 public class CosNFileSystem extends FileSystem {
     private static final Logger LOG = LoggerFactory.getLogger(CosNFileSystem.class);
+
+    private ThreadLocal<OperationCancellingStatusProvider> operationCancellingStatusProviderThreadLocal = new ThreadLocal<>();
 
     static final String SCHEME = "cosn";
     static final String PATH_DELIMITER = Path.SEPARATOR;
@@ -584,6 +587,13 @@ public class CosNFileSystem extends FileSystem {
             }
 
             priorLastKey = listing.getPriorLastKey();
+
+            if (this.operationCancellingStatusProviderThreadLocal.get() != null
+            && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
+                LOG.warn("The delete operation is cancelled. key: {}.", key);
+                throw new IOException("The delete operation is cancelled. key: " + key);
+            }
+
         } while (priorLastKey != null && !Thread.currentThread().isInterrupted());
 
         deleteFileContext.lock();
@@ -790,7 +800,13 @@ public class CosNFileSystem extends FileSystem {
                 status.add(directory);
             }
             priorLastKey = listing.getPriorLastKey();
-        } while (priorLastKey != null);
+
+            if (this.operationCancellingStatusProviderThreadLocal.get() != null
+            && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
+                LOG.warn("The list operation is cancelled. key: {}.", key);
+                throw new IOException("The list operation is cancelled. key: " + key);
+            }
+        } while (priorLastKey != null && !Thread.currentThread().isInterrupted());
 
         return status.toArray(new FileStatus[status.size()]);
     }
@@ -963,6 +979,7 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
+
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
             LOG.debug("Cannot rename the root directory of a filesystem.");
@@ -1131,6 +1148,13 @@ public class CosNFileSystem extends FileSystem {
             }
 
             priorLastKey = objectList.getPriorLastKey();
+            if (this.operationCancellingStatusProviderThreadLocal.get() != null
+                    && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
+                LOG.warn("The copy operation is cancelled. Stop copying the directory. srcKey: {}, dstKey: {}",
+                        srcKey, dstKey);
+                throw new IOException(String.format("The copy operation is cancelled. srcKey: %s, dstKey: %s",
+                        srcKey, dstKey));
+            }
         } while (null != priorLastKey && !Thread.currentThread().isInterrupted());
 
         copyFileContext.lock();
@@ -1654,5 +1678,14 @@ public class CosNFileSystem extends FileSystem {
 
     public Path keyToPath(String key) {
         return CosNUtils.keyToPath(key, PATH_DELIMITER);
+    }
+
+    public void setOperationCancellingStatusProvider(OperationCancellingStatusProvider operationCancellingStatusProvider) {
+        this.operationCancellingStatusProviderThreadLocal.set(operationCancellingStatusProvider);
+    }
+
+    // 如果设置了 OperationCancellingStatusProvider，需要记得调用这个方法做 remove 处理，防止上层线程池中内存泄漏的情况。
+    public void removeOperationCancelingStatusProvider() {
+        this.operationCancellingStatusProviderThreadLocal.remove();
     }
 }
