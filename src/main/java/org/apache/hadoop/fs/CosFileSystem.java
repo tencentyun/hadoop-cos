@@ -6,6 +6,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Constants;
+import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -715,6 +716,22 @@ public class CosFileSystem extends FileSystem {
                 // close range client later, inner native store
                 this.nativeStore.close();
             }
+        }
+    }
+
+    public void setOperationCancellingStatusProvider(OperationCancellingStatusProvider operationCancellingStatusProvider) {
+        if (this.actualImplFS instanceof CosNFileSystem) {
+            ((CosNFileSystem) this.actualImplFS).setOperationCancellingStatusProvider(operationCancellingStatusProvider);
+        } else {
+            throw new UnsupportedOperationException("Not supported currently");
+        }
+    }
+
+    public void removeOperationCancelingStatusProvider() {
+        if (this.actualImplFS instanceof CosNFileSystem) {
+            ((CosNFileSystem) this.actualImplFS).removeOperationCancelingStatusProvider();
+        } else {
+            throw new UnsupportedOperationException("Not supported currently");
         }
     }
 }
