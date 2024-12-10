@@ -2022,6 +2022,15 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 } else {
                     throw cse;
                 }
+            } catch (IllegalStateException e) {
+                String message = e.getMessage();
+                if (message.contains("Connection pool shut down")) {
+                    throw new IOException("call cos happen error which http connection pool has shutdown,"
+                            + "please check whether the file system is closed or the program has an OOM, , exception:"
+                            + " {}", e);
+                } else {
+                    throw new IOException(e);
+                }
             } catch (Exception e) {
                 throw new IOException(e);
             }
