@@ -20,12 +20,15 @@ public class CosNFileSystemTestBase extends CosNFileSystemTestWithTimeout {
 
 	@BeforeClass
 	public static void beforeClass() throws IOException {
-		// 初始化文件系统对象，因为 core-site.xml 是在 test 的 resource 下面，因此应该能够正确加载到。
+		String configFilePath = System.getProperty("config.file");
 		configuration = new Configuration();
+		// 初始化文件系统对象，因为 core-site.xml 是在 test 的 resource 下面，因此应该能够正确加载到。
+		if (configFilePath != null) {
+			// 使用 addResource 方法加载配置文件
+			configuration.addResource(new Path(configFilePath));
+		}
 		// 考虑到是针对 CosNFileSystem 测试，因此强制设置为 CosNFileSystem。
 		configuration.set("fs.cosn.impl", "org.apache.hadoop.fs.CosNFileSystem");
-		// 有软连接相关单元测试，因此需要启用软连接支持。
-		configuration.set("fs.cosn.support_symlink.enabled", "true");
 		fs = FileSystem.get(configuration);
 
 		if (null != fs && !fs.exists(unittestDirPath)) {

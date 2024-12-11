@@ -335,21 +335,21 @@ public final class CosNUtils {
     public static boolean checkDirectoryRWPermissions(String directoryPath) {
         java.nio.file.Path path = Paths.get(directoryPath);
 
-        // 检查目录是否存在
+        // check dir is existed
         if (!java.nio.file.Files.exists(path)) {
 	        LOG.error("the directory {} is not exist", directoryPath);
             return false;
         }
 
-        // 检查是否是目录
+        // check the input is a dir
         if (!java.nio.file.Files.isDirectory(path)) {
             LOG.error("the {} is not a directory", directoryPath);
             return false;
         }
 
-        // 检查读权限
+        // check read permission
         boolean isReadable = java.nio.file.Files.isReadable(path);
-        // 检查写权限
+        // check write permission
         boolean isWritable = java.nio.file.Files.isWritable(path);
 
         return isReadable && isWritable;
