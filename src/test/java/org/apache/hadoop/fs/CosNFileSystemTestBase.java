@@ -14,7 +14,7 @@ public class CosNFileSystemTestBase extends CosNFileSystemTestWithTimeout {
 	protected static Configuration configuration;
 	protected static FileSystem fs;
 
-	protected static final Path unittestDirPath = new Path("/unittest-dir");
+	protected static final Path unittestDirPath = new Path("/unittest-dir" + RandomStringUtils.randomAlphanumeric(8));
 	protected final Path testDirPath = new Path(unittestDirPath, "test-dir");
 	protected final Path testFilePath = new Path(unittestDirPath, "test-file");
 

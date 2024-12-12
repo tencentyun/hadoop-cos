@@ -19,7 +19,6 @@ import java.net.URI;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.io.File;
 import java.io.FileInputStream;
@@ -353,10 +352,5 @@ public final class CosNUtils {
         boolean isWritable = java.nio.file.Files.isWritable(path);
 
         return isReadable && isWritable;
-    }
-
-    public static String generateUUID() {
-        UUID uuid = UUID.randomUUID();
-        return uuid.toString();
     }
 }

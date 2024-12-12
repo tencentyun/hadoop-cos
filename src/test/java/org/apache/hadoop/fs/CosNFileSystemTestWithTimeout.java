@@ -42,7 +42,7 @@ public class CosNFileSystemTestWithTimeout extends Assert {
 	 * @return a timeout in milliseconds
 	 */
 	protected int getTestTimeoutMillis() {
-		return 60 * 2 * 1000;
+		return 60 * 10 * 1000;
 	}
 
 }

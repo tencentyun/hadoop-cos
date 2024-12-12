@@ -77,7 +77,6 @@ public class CosNFileSystem extends FileSystem {
     private boolean createOpCheckExistFile = true;
 
     private boolean directoryFirstEnabled;
-    private String uuid;
 
     // todo: flink or some other case must replace with inner structure.
     public CosNFileSystem() {
