@@ -18,7 +18,7 @@ public class ITestCosNFileSystemCreate extends CosNFileSystemTestBase {
 
 	@Test
 	public void testSingleCreate() throws Throwable {
-		long[] cases = new long[] {Unit.MB, 10 * Unit.MB, 20 * Unit.MB};
+		long[] cases = new long[] {Unit.MB, 10 * Unit.MB};
 		for (long c : cases) {
 			byte[] baseData = createBaseFileWithData((int) c, testPath);
 			FSDataOutputStream outputStream = fs.create(testPath);

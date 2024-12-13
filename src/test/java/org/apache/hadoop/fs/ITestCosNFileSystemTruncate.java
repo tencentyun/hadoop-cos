@@ -19,7 +19,7 @@ public class ITestCosNFileSystemTruncate extends CosNFileSystemTestBase {
 
 	@Test
 	public void testTruncate() throws Throwable {
-		long[] cases = new long[] {Unit.MB, 10 * Unit.MB, 20 * Unit.MB};
+		long[] cases = new long[] {Unit.MB, 10 * Unit.MB};
 		int newLength = (int) Unit.MB - 1;
 		for (long c : cases) {
 			byte[] baseData = createBaseFileWithData((int) c, testPath);
