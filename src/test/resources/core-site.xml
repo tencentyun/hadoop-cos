@@ -48,12 +48,7 @@
     </property>
 
     <property>
-        <name>fs.cosn.support_symlink.enabled</name>
-        <value>true</value>
-    </property>
-
-    <property>
-        <name>fs.cosn.posix_extension.enabled</name>
-        <value>false</value>
+        <name>fs.cosn.tmp.dir</name>
+        <value></value>
     </property>
 </configuration>
