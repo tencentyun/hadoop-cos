@@ -723,7 +723,9 @@ public class CosFileSystem extends FileSystem {
         if (this.actualImplFS instanceof CosNFileSystem) {
             ((CosNFileSystem) this.actualImplFS).setOperationCancellingStatusProvider(operationCancellingStatusProvider);
         } else {
-            throw new UnsupportedOperationException("Not supported currently");
+            throw new UnsupportedOperationException(
+                    String.format("Not supported currently for the filesystem '%s'.",
+                            this.actualImplFS.getClass().getName()));
         }
     }
 
@@ -731,7 +733,9 @@ public class CosFileSystem extends FileSystem {
         if (this.actualImplFS instanceof CosNFileSystem) {
             ((CosNFileSystem) this.actualImplFS).removeOperationCancelingStatusProvider();
         } else {
-            throw new UnsupportedOperationException("Not supported currently");
+            throw new UnsupportedOperationException(
+                    String.format("Not supported currently for the filesystem '%s'.",
+                            this.actualImplFS.getClass().getName()));
         }
     }
 }
