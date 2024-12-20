@@ -19,10 +19,10 @@ public class CosNFileSystemTest {
     private static FileSystem fs;
 
     private static final Path unittestDirPath = new Path("/unittest-dir");
-    private final Path testDirPath = new Path(unittestDirPath,"test-dir");
-    private final Path testFilePath = new Path(unittestDirPath,"test-file");
-    private final Path testFileSymlinkPath = new Path(unittestDirPath,"test-symlink");
-    private final Path testDirSymlinkPath = new Path(unittestDirPath,"test-dir-symlink");
+    private final Path testDirPath = new Path(unittestDirPath, "test-dir");
+    private final Path testFilePath = new Path(unittestDirPath, "test-file");
+    private final Path testFileSymlinkPath = new Path(unittestDirPath, "test-symlink");
+    private final Path testDirSymlinkPath = new Path(unittestDirPath, "test-dir-symlink");
 
     @BeforeClass
     public static void beforeClass() throws IOException {
@@ -55,7 +55,7 @@ public class CosNFileSystemTest {
             fs.mkdirs(testDirPath);
         }
         if (!fs.exists(testFilePath)) {
-            try(FSDataOutputStream fsDataOutputStream = fs.create(testFilePath)) {
+            try (FSDataOutputStream fsDataOutputStream = fs.create(testFilePath)) {
                 fsDataOutputStream.write("Hello, World!".getBytes());
                 fsDataOutputStream.write("\n".getBytes());
                 fsDataOutputStream.write("Hello, COS!".getBytes());
@@ -133,7 +133,7 @@ public class CosNFileSystemTest {
         // 创建一个指向目录的软连接
         fs.createSymlink(testDirPath, testDirSymlinkPath, false);
         // 验证软连接是否存在
-        assertEquals(testDirPath,  new Path(fs.getLinkTarget(testDirSymlinkPath).toUri().getPath()));
+        assertEquals(testDirPath, new Path(fs.getLinkTarget(testDirSymlinkPath).toUri().getPath()));
     }
 
     @Test
