@@ -1,6 +1,5 @@
 package org.apache.hadoop.fs;
 
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -9,12 +8,15 @@ import org.junit.BeforeClass;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Random;
+import java.security.SecureRandom;
 
 public class CosNFileSystemTestBase extends CosNFileSystemTestWithTimeout {
 	protected static Configuration configuration;
 	protected static FileSystem fs;
+	static Random random = new Random();
 
-	protected static final Path unittestDirPath = new Path("/unittest-dir" + RandomStringUtils.randomAlphanumeric(8));
+	protected static final Path unittestDirPath = new Path("/unittest-dir" + random.nextInt());
 	protected final Path testDirPath = new Path(unittestDirPath, "test-dir");
 	protected final Path testFilePath = new Path(unittestDirPath, "test-file");
 
@@ -87,7 +89,8 @@ public class CosNFileSystemTestBase extends CosNFileSystemTestWithTimeout {
 	 */
 	protected static byte[] getTestData(int size) {
 		byte[] testData = new byte[size];
-		System.arraycopy(RandomStringUtils.randomAlphabetic(size).getBytes(), 0, testData, 0, size);
+		SecureRandom secureRandom = new SecureRandom();
+		secureRandom.nextBytes(testData); // 生成随机字节
 		return testData;
 	}
 
