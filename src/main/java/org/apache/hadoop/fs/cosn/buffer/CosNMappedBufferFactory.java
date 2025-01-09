@@ -22,7 +22,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
     private final boolean deleteOnExit;
 
     public CosNMappedBufferFactory(String[] tmpDirList, boolean deleteOnExit) throws IOException {
-        for (String tmpDir: tmpDirList) {
+        for (String tmpDir : tmpDirList) {
             File createDir = CosNMappedBufferFactory.createDir(tmpDir);
             tmpDirs.add(createDir);
         }
@@ -62,7 +62,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
     @Override
     public CosNByteBuffer create(int size) {
         return this.create(Constants.BLOCK_TMP_FILE_PREFIX,
-            Constants.BLOCK_TMP_FILE_SUFFIX, size);
+                Constants.BLOCK_TMP_FILE_SUFFIX, size);
     }
 
     private final AtomicInteger currentIndex = new AtomicInteger();

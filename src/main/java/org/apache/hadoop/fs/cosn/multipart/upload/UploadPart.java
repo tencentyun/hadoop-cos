@@ -10,60 +10,60 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 
 public final class UploadPart {
-  private static final Logger LOG = LoggerFactory.getLogger(UploadPart.class);
-  private final int partNumber;
-  private final CosNByteBuffer cosNByteBuffer;
-  private final byte[] md5Hash;
-  private final boolean isLast;
+    private static final Logger LOG = LoggerFactory.getLogger(UploadPart.class);
+    private final int partNumber;
+    private final CosNByteBuffer cosNByteBuffer;
+    private final byte[] md5Hash;
+    private final boolean isLast;
 
-  public UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer) {
-    this(partNumber, cosNByteBuffer, false);
-  }
-
-  public UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer, boolean isLast) {
-    this.partNumber = partNumber;
-    this.cosNByteBuffer = cosNByteBuffer;
-    // 计算MD5
-    byte[] md5Hash = null;
-    try {
-      md5Hash = MD5Utils.calculate(cosNByteBuffer);
-    } catch (NoSuchAlgorithmException | IOException exception) {
-      LOG.warn("Failed to calculate the md5Hash for the part [{}].",
-          partNumber, exception);
+    public UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer) {
+        this(partNumber, cosNByteBuffer, false);
     }
-    this.md5Hash = md5Hash;
-    this.isLast = isLast;
-  }
 
-  public UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer, byte[] md5Hash, boolean isLast) {
-    this.partNumber = partNumber;
-    this.cosNByteBuffer = cosNByteBuffer;
-    this.md5Hash = md5Hash;
-    this.isLast = isLast;
-  }
+    public UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer, boolean isLast) {
+        this.partNumber = partNumber;
+        this.cosNByteBuffer = cosNByteBuffer;
+        // 计算MD5
+        byte[] md5Hash = null;
+        try {
+            md5Hash = MD5Utils.calculate(cosNByteBuffer);
+        } catch (NoSuchAlgorithmException | IOException exception) {
+            LOG.warn("Failed to calculate the md5Hash for the part [{}].",
+                    partNumber, exception);
+        }
+        this.md5Hash = md5Hash;
+        this.isLast = isLast;
+    }
 
-  public int getPartNumber() {
-    return this.partNumber;
-  }
+    public UploadPart(int partNumber, CosNByteBuffer cosNByteBuffer, byte[] md5Hash, boolean isLast) {
+        this.partNumber = partNumber;
+        this.cosNByteBuffer = cosNByteBuffer;
+        this.md5Hash = md5Hash;
+        this.isLast = isLast;
+    }
 
-  public CosNByteBuffer getCosNByteBuffer() {
-    return this.cosNByteBuffer;
-  }
+    public int getPartNumber() {
+        return this.partNumber;
+    }
 
-  public long getPartSize() {
-    return this.cosNByteBuffer.remaining();
-  }
+    public CosNByteBuffer getCosNByteBuffer() {
+        return this.cosNByteBuffer;
+    }
 
-  public byte[] getMd5Hash() {
-    return this.md5Hash;
-  }
+    public long getPartSize() {
+        return this.cosNByteBuffer.remaining();
+    }
 
-  public boolean isLast() {
-    return isLast;
-  }
+    public byte[] getMd5Hash() {
+        return this.md5Hash;
+    }
 
-  @Override
-  public String toString() {
-    return String.format("UploadPart{partNumber:%d, partSize: %d, md5Hash: %s, isLast: %b}", this.partNumber, this.cosNByteBuffer.flipRead().remaining(), (this.md5Hash != null ? Hex.encodeHexString(this.md5Hash) : "NULL"), this.isLast);
-  }
+    public boolean isLast() {
+        return isLast;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("UploadPart{partNumber:%d, partSize: %d, md5Hash: %s, isLast: %b}", this.partNumber, this.cosNByteBuffer.flipRead().remaining(), (this.md5Hash != null ? Hex.encodeHexString(this.md5Hash) : "NULL"), this.isLast);
+    }
 }

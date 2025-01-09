@@ -122,7 +122,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private boolean usePolaris = false;
     private EndpointResolver tencentPolarisEndpointResolver;
 
-    private void initCOSClient(URI uri, Configuration conf) throws IOException {
+    private void innerInitCOSClient(URI uri, Configuration conf) throws IOException {
         COSCredentialProviderList cosCredentialProviderList =
                 CosNUtils.createCosCredentialsProviderSet(uri, conf, this.rangerCredentialsClient);
 
@@ -368,7 +368,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         if (conf.getBoolean(CosNConfigKeys.COSN_USE_SHORT_CONNECTION,
                 CosNConfigKeys.DEFAULT_COSN_USE_SHORT_CONNECTION)) {
-           config.setShortConnection();
+            config.setShortConnection();
         }
 
         if (conf.getBoolean(CosNConfigKeys.COSN_CLIENT_USE_REQUEST_TIMEOUT,
@@ -449,6 +449,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             return;
         }
         this.cosClient = new COSClient(cosCredentialProviderList, config);
+    }
+
+    private void initCOSClient(URI uri, Configuration conf) throws IOException {
+        ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        LOG.debug("init cos client: {}, context ClassLoader: {}",
+                this.getClass().getClassLoader(), originalClassLoader);
+        try {
+            Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
+            innerInitCOSClient(uri, conf);
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalClassLoader);
+        }
     }
 
     @Override
@@ -1808,26 +1820,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     // posix bucket mkdir if the middle part exist will return the 500 error,
     // and the rename if the dst exist will return the 500 status too,
     // which make the related 5** retry useless. mo improve the resp info to filter.
-    private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {
+    private <X> Object innerCallWithRetry(X request) throws CosServiceException, IOException {
         String sdkMethod = "";
         int retryIndex = 1;
         int l5ErrorCodeRetryIndex = 1;
-        // 设置线程的context class loader
-        // 之前有客户通过spark-sql执行add jar命令, 当spark.eventLog.dir为cos, jar路径也在cos时, 会导致cos读取数据时，
-        // http库的日志加载，又会加载cos上的文件，以此形成了逻辑死循环
-        // 1 上层调用cos read
-        //2 cos插件通过Apache http库读取数据
-        //3 http库里面初始化日志对象时要读取日志配置，发现配置是在cos上
-        //4 调用cos read
-
-        // 分析后发现，日志库里面获取资源是通过context class loader, 而add jar会改变context class loader，将被add jar也加入classpath路径中
-        // 因此这里通过设置context class loader为app class loader。 避免被上层add jar等改变context class loader行为污染
-        // it seems like a temporary solution, why we need to care dependence class loader way?
-        Thread currentThread = Thread.currentThread();
-        LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
-                this.getClass().getClassLoader(), currentThread.getContextClassLoader());
-        currentThread.setContextClassLoader(this.getClass().getClassLoader());
-
         while (true) {
             try {
                 if (request instanceof PutObjectRequest) {
@@ -2034,6 +2030,29 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             } catch (Exception e) {
                 throw new IOException(e);
             }
+        }
+    }
+
+    private <X> Object callCOSClientWithRetry(X request) throws CosServiceException, IOException {
+        // 设置线程的context class loader
+        // 之前有客户通过spark-sql执行add jar命令, 当spark.eventLog.dir为cos, jar路径也在cos时, 会导致cos读取数据时，
+        // http库的日志加载，又会加载cos上的文件，以此形成了逻辑死循环
+        // 1 上层调用cos read
+        //2 cos插件通过Apache http库读取数据
+        //3 http库里面初始化日志对象时要读取日志配置，发现配置是在cos上
+        //4 调用cos read
+
+        // 分析后发现，日志库里面获取资源是通过context class loader, 而add jar会改变context class loader，将被add jar也加入classpath路径中
+        // 因此这里通过设置context class loader为app class loader。 避免被上层add jar等改变context class loader行为污染
+        // it seems like a temporary solution, why we need to care dependence class loader way?
+        ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        LOG.debug("flush task, current classLoader: {}, context ClassLoader: {}",
+                this.getClass().getClassLoader(), originalClassLoader);
+        try {
+            Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader());
+            return innerCallWithRetry(request);
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalClassLoader);
         }
     }
 

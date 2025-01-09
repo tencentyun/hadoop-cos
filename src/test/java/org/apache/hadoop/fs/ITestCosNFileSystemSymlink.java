@@ -78,7 +78,7 @@ public class ITestCosNFileSystemSymlink extends CosNFileSystemTestBase {
         // 创建一个指向目录的软连接
         fs.createSymlink(testDirPath, testDirSymlinkPath, false);
         // 验证软连接是否存在
-        assertEquals(testDirPath,  new Path(fs.getLinkTarget(testDirSymlinkPath).toUri().getPath()));
+        assertEquals(testDirPath, new Path(fs.getLinkTarget(testDirSymlinkPath).toUri().getPath()));
     }
 
     @Test
