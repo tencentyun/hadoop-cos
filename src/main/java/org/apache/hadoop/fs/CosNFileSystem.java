@@ -18,7 +18,6 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -187,7 +186,7 @@ public class CosNFileSystem extends FileSystem {
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
-                                                  ThreadPoolExecutor executor) {
+                            ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
@@ -218,7 +217,7 @@ public class CosNFileSystem extends FileSystem {
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
-                                                  ThreadPoolExecutor executor) {
+                            ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
@@ -254,7 +253,7 @@ public class CosNFileSystem extends FileSystem {
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
-                                                  ThreadPoolExecutor executor) {
+                            ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
@@ -1513,6 +1512,7 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public void close() throws IOException {
+        LOG.debug("Filesystem {} is closed", uri);
         try {
             // 先释放掉 IO 线程池以及相关的 IO 资源。
             try {
