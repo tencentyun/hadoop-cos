@@ -16,6 +16,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -328,5 +329,28 @@ public final class CosNUtils {
         } else {
             return new Path(key);
         }
+    }
+
+    public static boolean checkDirectoryRWPermissions(String directoryPath) {
+        java.nio.file.Path path = Paths.get(directoryPath);
+
+        // check dir is existed
+        if (!java.nio.file.Files.exists(path)) {
+	        LOG.error("the directory {} is not exist", directoryPath);
+            return false;
+        }
+
+        // check the input is a dir
+        if (!java.nio.file.Files.isDirectory(path)) {
+            LOG.error("the {} is not a directory", directoryPath);
+            return false;
+        }
+
+        // check read permission
+        boolean isReadable = java.nio.file.Files.isReadable(path);
+        // check write permission
+        boolean isWritable = java.nio.file.Files.isWritable(path);
+
+        return isReadable && isWritable;
     }
 }

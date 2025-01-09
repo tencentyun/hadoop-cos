@@ -23,8 +23,12 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
         String path = "META-INF/maven/com.qcloud.cos/hadoop-cos/pom.properties";
         Properties properties = new Properties();
         try (InputStream in = CosNConfigKeys.class.getClassLoader().getResourceAsStream(path)) {
-            properties.load(in);
-            version = properties.getProperty("version");
+            if (in == null) {
+                version = "unknown";
+            } else {
+                properties.load(in);
+                version = properties.getProperty("version");
+            }
         } catch (IOException e) {
             version = "unknown";
         }
