@@ -1,5 +1,6 @@
 package org.apache.hadoop.fs.cosn.buffer;
 
+import org.apache.hadoop.fs.CosNUtils;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,12 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
         } else {
             LOG.debug("buffer dir: {} already exists.",
                     file.getAbsolutePath());
+            // Check whether you have read and write permissions for the directory during initialization
+            if (!CosNUtils.checkDirectoryRWPermissions(tmpDir)) {
+                String exceptionMsg = String.format("The tmp dir does not have read or write permissions." +
+                        "dir: %s", tmpDir);
+                throw new IllegalArgumentException(exceptionMsg);
+            }
         }
 
         return file;
