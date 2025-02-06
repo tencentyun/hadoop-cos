@@ -122,12 +122,6 @@ public final class BufferPool {
         } else if (this.bufferType == CosNBufferType.MAPPED_DISK) {
             String tmpDir = conf.get(CosNConfigKeys.COSN_TMP_DIR,
                     CosNConfigKeys.DEFAULT_TMP_DIR);
-            // Check whether you have read and write permissions for the directory during initialization
-            if (!CosNUtils.checkDirectoryRWPermissions(tmpDir)) {
-                String exceptionMsg = String.format("The tmp dir does not have read or write permissions." +
-                        "dir: %s", tmpDir);
-                throw new IllegalArgumentException(exceptionMsg);
-            }
             boolean deleteOnExit = conf.getBoolean(CosNConfigKeys.COSN_MAPDISK_DELETEONEXIT_ENABLED,
                     CosNConfigKeys.DEFAULT_COSN_MAPDISK_DELETEONEXIT_ENABLED);
             String[] tmpDirList = tmpDir.split(",");
