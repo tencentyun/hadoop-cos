@@ -628,6 +628,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                     future.cancel(true);
                 }
                 (nativeStore).abortMultipartUpload(cosKey, this.uploadId);
+                this.aborted = true;
                 String exceptionMsg = String.format("multipart upload with id: %s" +
                         " to %s.", this.uploadId, cosKey);
                 throw new IOException(exceptionMsg);
