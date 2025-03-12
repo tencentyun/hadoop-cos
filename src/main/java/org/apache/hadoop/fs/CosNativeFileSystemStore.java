@@ -511,7 +511,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
-    private void storeFileWithRetry(String key, InputStream inputStream,
+    private PutObjectResult storeFileWithRetry(String key, InputStream inputStream,
                                     byte[] md5Hash, long length)
             throws IOException {
         try {
@@ -538,6 +538,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             PutObjectResult putObjectResult =
                     (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
             LOG.debug("Store the file successfully. cos key: {}, ETag: {}.", key, putObjectResult.getETag());
+            return putObjectResult;
         } catch (CosServiceException cse) {
             // 避免并发上传的问题
             int statusCode = cse.getStatusCode();
@@ -558,6 +559,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                     String.format("Store the file failed, cos key: %s, exception: %s.", key, e);
             handleException(new Exception(errMsg), key);
         }
+        return null;
     }
 
     @Override
@@ -576,25 +578,25 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
 
     @Override
-    public void storeFile(String key, File file, byte[] md5Hash) throws IOException {
+    public PutObjectResult storeFile(String key, File file, byte[] md5Hash) throws IOException {
         if (null != md5Hash) {
             LOG.debug("Store the file, local path: {}, length: {}, md5hash: {}.",
                     file.getCanonicalPath(), file.length(),
                     Hex.encodeHexString(md5Hash));
         }
-        storeFileWithRetry(key,
+        return storeFileWithRetry(key,
                 new ResettableFileInputStream(file), md5Hash, file.length());
     }
 
     @Override
-    public void storeFile(String key, InputStream inputStream,
+    public PutObjectResult storeFile(String key, InputStream inputStream,
                           byte[] md5Hash, long contentLength) throws IOException {
         if (null != md5Hash) {
             LOG.debug("Store the file to the cos key: {}, input stream md5 hash: {}, content length: {}.", key,
                     Hex.encodeHexString(md5Hash),
                     contentLength);
         }
-        storeFileWithRetry(key, inputStream, md5Hash, contentLength);
+        return storeFileWithRetry(key, inputStream, md5Hash, contentLength);
     }
 
     // for cos, storeEmptyFile means create a directory

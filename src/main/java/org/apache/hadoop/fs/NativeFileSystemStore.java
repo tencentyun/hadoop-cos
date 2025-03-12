@@ -4,6 +4,7 @@ import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.cos.model.PartETag;
 import com.qcloud.cos.model.PartListing;
+import com.qcloud.cos.model.PutObjectResult;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -31,9 +32,9 @@ public interface NativeFileSystemStore {
 
     HeadBucketResult headBucket(String bucketName) throws IOException;
 
-    void storeFile(String key, File file, byte[] md5Hash) throws IOException;
+    PutObjectResult storeFile(String key, File file, byte[] md5Hash) throws IOException;
 
-    void storeFile(String key, InputStream inputStream, byte[] md5Hash,
+    PutObjectResult storeFile(String key, InputStream inputStream, byte[] md5Hash,
                    long contentLength) throws IOException;
 
     void storeEmptyFile(String key) throws IOException;
