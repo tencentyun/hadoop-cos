@@ -813,8 +813,9 @@ public class CosNFileSystem extends FileSystem {
     private FileStatus newFile(FileMetadata meta, Path path) {
         return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
                 meta.getLastModified(), 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
-                meta.getVersionId());
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()),
+                meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
+                meta.getVersionId(), meta.getStorageClass());
     }
 
     private FileStatus newDirectory(Path path) {
@@ -835,8 +836,9 @@ public class CosNFileSystem extends FileSystem {
         }
         return new CosNFileStatus(0, true, 1, 0,
                 meta.getLastModified(), 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()), meta.getETag(), meta.getCrc64ecm(),
-                meta.getVersionId());
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()),
+                meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
+                meta.getVersionId(), meta.getStorageClass());
     }
 
     /**
@@ -957,10 +959,10 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
-        FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
+        CosNFileStatus fileStatus = (CosNFileStatus) getFileStatus(f); // will throw if the file doesn't
         if (fileStatus.isSymlink()) {
             f = this.getLinkTarget(f);
-            fileStatus = getFileStatus(f);
+            fileStatus = (CosNFileStatus) getFileStatus(f);
         }
 
         // exist
@@ -972,7 +974,7 @@ public class CosNFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         return new FSDataInputStream(new CosNFSBufferedFSInputStream(
                 new CosNFSInputStream(this.getConf(), nativeStore, statistics, key,
-                        fileStatus.getLen(), this.boundedIOThreadPool),
+                        fileStatus, this.boundedIOThreadPool),
                 bufferSize));
     }
 
@@ -1489,7 +1491,7 @@ public class CosNFileSystem extends FileSystem {
      * Links in the path leading up to the final path component are resolved transparently.
      *
      * @param f
-     * @return
+     * @return the target path of the symbolic link
      * @throws IOException
      */
     @Override

@@ -287,4 +287,9 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // 这里主要是为了给客户排查他们是否主动关闭 Client。
     public static final String COSN_CLIENT_SHUTDOWN_STACK_TRACE_LOG = "fs.cosn.client.shutdown.stack.trace.log";
     public static final boolean DEFAULT_COSN_CLIENT_SHUTDOWN_STACK_TRACE_LOG = false;
+
+    // 配合的 COS AZ 加速器相关的选项
+    // 是否强制开启 AZ 加速器的强一致访问
+    public static final String COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED = "fs.cosn.az.accelerator.consistency.enabled";
+    public static final boolean DEFAULT_COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED = false;
 }

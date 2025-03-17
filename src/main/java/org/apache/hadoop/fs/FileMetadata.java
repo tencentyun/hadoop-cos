@@ -24,6 +24,13 @@ public class FileMetadata {
     private final String storageClass;
     private final Map<String, byte[]> userAttributes;
 
+    static FileMetadata fromCosNFileStatus(CosNFileStatus fileStatus) {
+        String key = CosNUtils.pathToKey(fileStatus.getPath());
+        return new FileMetadata(key, fileStatus.getLen(), fileStatus.getModificationTime(),
+                fileStatus.isFile(), fileStatus.getETag(), fileStatus.getCrc64ecma(), fileStatus.getCrc32cm(),
+                fileStatus.getVersionId(), fileStatus.getStorageClass(), null);
+    }
+
     public FileMetadata(String key, long length, long lastModified) {
         this(key, length, lastModified, true);
     }
@@ -103,9 +110,18 @@ public class FileMetadata {
 
     @Override
     public String toString() {
-        return "FileMetadata[" + key + ", " + length + ", " + lastModified +
-                ", file?" + isFile
-                + "]";
+        return "FileMetadata{" +
+                "key='" + key + '\'' +
+                ", length=" + length +
+                ", lastModified=" + lastModified +
+                ", isFile=" + isFile +
+                ", ETag='" + ETag + '\'' +
+                ", crc64ecm='" + crc64ecm + '\'' +
+                ", crc32cm='" + crc32cm + '\'' +
+                ", versionId='" + versionId + '\'' +
+                ", storageClass='" + storageClass + '\'' +
+                ", userAttributes=" + userAttributes +
+                '}';
     }
 
     public boolean isFile() {

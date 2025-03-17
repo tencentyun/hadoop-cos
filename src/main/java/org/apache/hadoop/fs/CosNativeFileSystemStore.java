@@ -492,11 +492,16 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 try {
                     this.storageClass = StorageClass.fromValue(storageClass);
                 } catch (IllegalArgumentException e) {
+                    // 使用 StringBuilder 来构造字符串
+                    StringBuilder supportedClasses = new StringBuilder();
+                    for (StorageClass sc : StorageClass.values()) {
+                        if (supportedClasses.length() > 0) {
+                            supportedClasses.append(", ");
+                        }
+                        supportedClasses.append(sc.name());
+                    }
                     String exceptionMessage = String.format("The specified storage class [%s] is invalid. " +
-                                    "The supported storage classes are: %s, %s, %s, %s and %s.", storageClass,
-                            StorageClass.Standard, StorageClass.Standard_IA,
-                            StorageClass.Maz_Standard, StorageClass.Maz_Standard_IA,
-                            StorageClass.Archive);
+                                    "The supported storage classes are: %s.", storageClass, supportedClasses);
 
                     throw new IllegalArgumentException(exceptionMessage);
                 }
@@ -700,8 +705,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 if (null == partETag) {
                     handleException(new Exception(errMsg), key);
                 }
-                LOG.warn("Upload the file [{}] uploadId [{}], part [{}] concurrently." +
-                        key, uploadId, partNum);
+                LOG.warn("Upload the file [{}] uploadId [{}], part [{}] concurrently.", key, uploadId, partNum);
                 return partETag;
             } else {
                 handleException(new Exception(errMsg), key);
@@ -1153,22 +1157,54 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      */
     @Override
     public InputStream retrieve(String key) throws IOException {
-        LOG.debug("Retrieve the key: {}.", key);
+        return retrieve(key, null);
+    }
+
+    @Override
+    public InputStream retrieve(String key, FileMetadata fileMetadata) throws IOException {
+        LOG.debug("Retrieve the key: {}, file metadata: {}.", key, fileMetadata);
         GetObjectRequest getObjectRequest =
                 new GetObjectRequest(this.bucketName, key);
         if (this.trafficLimit >= 0) {
             getObjectRequest.setTrafficLimit(this.trafficLimit);
         }
+        if (fileMetadata != null && fileMetadata.getETag() != null) {
+            getObjectRequest.setMatchingETagConstraints(Collections.singletonList(fileMetadata.getETag()));
+        }
         this.setEncryptionMetadata(getObjectRequest, new ObjectMetadata());
 
-        try {
-            COSObject cosObject =
-                    (COSObject) callCOSClientWithRetry(getObjectRequest);
-            return cosObject.getObjectContent();
-        } catch (Exception e) {
-            String errMsg = String.format("Retrieving the cos key [%s] occurs an exception: %s", key, e);
-            handleException(new Exception(errMsg), key);
-        }
+        boolean retryNoCache;
+        do {
+            retryNoCache = false;
+            try {
+                COSObject cosObject =
+                        (COSObject) this.callCOSClientWithRetry(getObjectRequest);
+                return cosObject.getObjectContent();
+            } catch (CosServiceException e) {
+                if (e.getStatusCode() == 412 &&  fileMetadata != null && fileMetadata.getETag() != null) {
+                    // ETag mismatch，继续重试，尝试使用no-cache重试。
+                    LOG.warn("ETag mismatch, retry to retrieve the key: {}, object etag: {}",
+                            key, fileMetadata.getETag());
+                    getObjectRequest.putCustomRequestHeader("Cache-Control", "no-cache");
+                    getObjectRequest.setMatchingETagConstraints(new ArrayList<String>());
+                    retryNoCache = true;
+                    continue;
+                }
+                if (e.getErrorCode().compareToIgnoreCase("InvalidObjectState") == 0) {
+                    // 可能是归档数据，应该抛出新的异常
+                    throw new AccessDeniedException(key, null, e.getMessage());
+                }
+                String errMsg =
+                        String.format("Retrieving the key %s occurs an exception: %s.",
+                                key, e);
+                handleException(new Exception(errMsg), key);
+
+            } catch (CosClientException e) {
+                String errMsg =
+                        String.format("Retrieving key %s occurs an exception: %s.", key, e);
+                handleException(new Exception(errMsg), key);
+            }
+        } while (retryNoCache);
 
         return null; // never will get here
     }
@@ -1182,65 +1218,64 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public InputStream retrieve(String key, long byteRangeStart) throws IOException {
-        try {
-            LOG.debug("Retrieve the cos key: {}, byte range start: {}.", key, byteRangeStart);
-            long fileSize = getFileLength(key);
-            long byteRangeEnd = fileSize - 1;
-            GetObjectRequest getObjectRequest =
-                    new GetObjectRequest(this.bucketName, key);
-            if (this.trafficLimit >= 0) {
-                getObjectRequest.setTrafficLimit(this.trafficLimit);
-            }
-            this.setEncryptionMetadata(getObjectRequest, new ObjectMetadata());
-
-            if (byteRangeEnd >= byteRangeStart) {
-                getObjectRequest.setRange(byteRangeStart, fileSize - 1);
-            }
-            COSObject cosObject =
-                    (COSObject) callCOSClientWithRetry(getObjectRequest);
-            return cosObject.getObjectContent();
-        } catch (Exception e) {
-            String errMsg =
-                    String.format("Retrieving key [%s] with byteRangeStart [%d] " +
-                                    "occurs an exception: %s.",
-                            key, byteRangeStart, e);
-            handleException(new Exception(errMsg), key);
-            return null; // never will get here
-        }
+        FileMetadata fileMetadata = this.retrieveMetadata(key);
+        return retrieveBlock(key, fileMetadata, byteRangeStart, fileMetadata.getLength());
     }
 
     @Override
     public InputStream retrieveBlock(String key, long byteRangeStart,
                                      long byteRangeEnd) throws IOException {
-        LOG.debug("Retrieve the cos key: {}, byte range start: {}, byte range end: {}.", key, byteRangeStart,
-                byteRangeEnd);
-        try {
-            GetObjectRequest request = new GetObjectRequest(this.bucketName,
-                    key);
-            request.setRange(byteRangeStart, byteRangeEnd);
-            if (this.trafficLimit >= 0) {
-                request.setTrafficLimit(this.trafficLimit);
-            }
-            this.setEncryptionMetadata(request, new ObjectMetadata());
-            COSObject cosObject =
-                    (COSObject) this.callCOSClientWithRetry(request);
-            return cosObject.getObjectContent();
-        } catch (CosServiceException e) {
-            if (e.getErrorCode().compareToIgnoreCase("InvalidObjectState") == 0) {
-                // 可能是归档数据，应该抛出新的异常
-                throw new AccessDeniedException(key, null, e.getMessage());
-            }
-            String errMsg =
-                    String.format("Retrieving the key %s with the byteRangeStart [%d] " +
-                                    "occurs an exception: %s.",
-                            key, byteRangeStart, e);
-            handleException(new Exception(errMsg), key);
-        } catch (CosClientException e) {
-            String errMsg =
-                    String.format("Retrieving key %s with the byteRangeStart [%d] and the byteRangeEnd [%d] " +
-                            "occurs an exception: %s.", key, byteRangeStart, byteRangeEnd, e);
-            handleException(new Exception(errMsg), key);
+        return retrieveBlock(key, null, byteRangeStart, byteRangeEnd);
+    }
+
+    @Override
+    public InputStream retrieveBlock(String key, FileMetadata fileMetadata, long byteRangeStart, long byteRangeEnd) throws IOException {
+        LOG.debug("Retrieve the cos key: {}, file metadata: {}, byte range start: {}, byte range end: {}.",
+                key, fileMetadata, byteRangeStart,byteRangeEnd);
+        GetObjectRequest request = new GetObjectRequest(this.bucketName, key);
+        request.setRange(byteRangeStart, byteRangeEnd);
+        if (this.trafficLimit >= 0) {
+            request.setTrafficLimit(this.trafficLimit);
         }
+        if (fileMetadata != null && fileMetadata.getETag() != null) {
+            request.setMatchingETagConstraints(Collections.singletonList(fileMetadata.getETag()));
+        }
+        this.setEncryptionMetadata(request, new ObjectMetadata());
+
+        boolean retryNoCache;
+        do {
+            retryNoCache = false;
+            try {
+                COSObject cosObject =
+                        (COSObject) this.callCOSClientWithRetry(request);
+                return cosObject.getObjectContent();
+            } catch (CosServiceException e) {
+                if (e.getStatusCode() == 412 &&  fileMetadata != null && fileMetadata.getETag() != null) {
+                    // ETag mismatch，继续重试，尝试使用no-cache重试。
+                    LOG.warn("ETag mismatch, retry to retrieve the key: {}, object etag: {}, byte range start: {}, byte range end: {}.",
+                            key, fileMetadata.getETag(), byteRangeStart, byteRangeEnd);
+                    request.putCustomRequestHeader("Cache-Control", "no-cache");
+                    request.setMatchingETagConstraints(new ArrayList<String>());
+                    retryNoCache = true;
+                    continue;
+                }
+                if (e.getErrorCode().compareToIgnoreCase("InvalidObjectState") == 0) {
+                    // 可能是归档数据，应该抛出新的异常
+                    throw new AccessDeniedException(key, null, e.getMessage());
+                }
+                String errMsg =
+                        String.format("Retrieving the key %s with the byteRangeStart [%d] " +
+                                        "occurs an exception: %s.",
+                                key, byteRangeStart, e);
+                handleException(new Exception(errMsg), key);
+
+            } catch (CosClientException e) {
+                String errMsg =
+                        String.format("Retrieving key %s with the byteRangeStart [%d] and the byteRangeEnd [%d] " +
+                                "occurs an exception: %s.", key, byteRangeStart, byteRangeEnd, e);
+                handleException(new Exception(errMsg), key);
+            }
+        } while (retryNoCache);
 
         return null;
     }
