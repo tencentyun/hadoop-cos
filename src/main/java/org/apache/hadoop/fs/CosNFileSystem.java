@@ -13,12 +13,15 @@ import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
 import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
 import org.apache.hadoop.fs.cosn.ReadBufferHolder;
 import org.apache.hadoop.fs.cosn.Unit;
+import org.apache.hadoop.fs.cosn.common.Pair;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -739,7 +742,7 @@ public class CosNFileSystem extends FileSystem {
             listMaxLength = CosNFileSystem.POSIX_BUCKET_LIST_LIMIT;
         }
 
-        if (key.length() > 0) {
+        if (!key.isEmpty()) {
             FileStatus fileStatus = this.getFileStatus(f);
             if (fileStatus.isFile() || fileStatus.isSymlink()) {
                 return new FileStatus[]{fileStatus};
@@ -810,12 +813,14 @@ public class CosNFileSystem extends FileSystem {
         return status.toArray(new FileStatus[status.size()]);
     }
 
+
+
     private FileStatus newFile(FileMetadata meta, Path path) {
         return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
                 meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()),
                 meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
-                meta.getVersionId(), meta.getStorageClass());
+                meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
     }
 
     private FileStatus newDirectory(Path path) {
@@ -838,7 +843,7 @@ public class CosNFileSystem extends FileSystem {
                 meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()),
                 meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
-                meta.getVersionId(), meta.getStorageClass());
+                meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
     }
 
     /**
@@ -980,103 +985,133 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean rename(Path src, Path dst) throws IOException {
-
+        Preconditions.checkNotNull(src);
+        Preconditions.checkNotNull(dst);
         // Renaming the root directory is not allowed
         if (src.isRoot()) {
             LOG.debug("Cannot rename the root directory of a filesystem.");
             return false;
         }
 
-        // check the source path whether exists or not, if not return false.
-        FileStatus srcFileStatus;
-        try {
-            srcFileStatus = this.getFileStatus(src);
-        } catch (FileNotFoundException e) {
-            LOG.debug("The source path [{}] is not exist.", src);
+        // the preconditions for the rename operation.
+        // reference: https://hadoop.apache.org/docs/r3.3.0/hadoop-project-dist/hadoop-common/filesystem/filesystem.html#rename
+        Pair<CosNFileStatus, CosNFileStatus> renameFileStatusPair = renameInitiate(src, dst);
+
+        // the postconditions for the rename operation.
+        // reference: https://hadoop.apache.org/docs/r3.3.0/hadoop-project-dist/hadoop-common/filesystem/filesystem.html#rename
+        if (src.equals(dst)) {
+            if (renameFileStatusPair.getFirst() != null) {
+                if (renameFileStatusPair.getFirst().isDirectory()) {
+                    //Renaming a directory onto itself is no-op; return value is not specified.
+                    //In POSIX the result is False; in HDFS the result is True.
+                    return true;
+                }
+                if (renameFileStatusPair.getFirst().isFile()) {
+                    // Renaming a file to itself is a no-op; the result is True.
+                    return true;
+                }
+                // For symlink types, the Hadoop file system specification does not provide clear instructions,
+                // I tested the soft connection in the POSIX file system, and the same behavior is also true.
+                return true;
+            }
             return false;
         }
 
-        // Source path and destination path are not allowed to be the same
-        if (src.equals(dst)) {
-            LOG.debug("The source path and the dest path refer to the same file or " +
-                    "directory: {}", dst);
-            throw new IOException("the source path and dest path refer to the " +
-                    "same file or directory");
-        }
-
-        // It is not allowed to rename a parent directory to its subdirectory
-        Path dstParentPath;
-        dstParentPath = dst.getParent();
-        while (null != dstParentPath && !src.equals(dstParentPath)) {
-            dstParentPath = dstParentPath.getParent();
-        }
-        if (null != dstParentPath) {
-            LOG.debug("It is not allowed to rename a parent directory:{} to " +
-                    "its subdirectory:{}.", src, dst);
-            throw new PathIOException(String.format(
-                    "It is not allowed to rename a parent directory:%s to its" +
-                            " subdirectory:%s",
-                    src, dst));
-        }
-
-        FileStatus dstFileStatus = null;
-        try {
-            dstFileStatus = this.getFileStatus(dst);
-
-            // The destination path exists and is a file,
-            // and the rename operation is not allowed.
-            //
-            if (dstFileStatus.isFile()) {
-                LOG.debug("File: {} already exists.", dstFileStatus.getPath());
-                return false;
-            } else {
-                // The destination path is an existing directory,
-                // and it is checked whether there is a file or directory
-                // with the same name as the source path under the
-                // destination path
-                dst = new Path(dst, src.getName());
-                FileStatus[] statuses;
-                try {
-                    statuses = this.listStatus(dst);
-                } catch (FileNotFoundException e) {
-                    statuses = null;
-                }
-                if (null != statuses && statuses.length > 0) {
-                    LOG.debug("Cannot rename {} to {}, the destination directory is non-empty.",
-                            src, dst);
-                    return false;
-                }
-            }
-        } catch (FileNotFoundException e) {
-            // destination path not exists
-            Path tempDstParentPath = dst.getParent();
-            FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
-            if (!dstParentStatus.isDirectory()) {
-                throw new IOException(String.format(
-                        "Cannot rename %s to %s, %s is a file", src, dst, dst.getParent()
-                ));
-            }
-            // The default root directory is definitely there.
-        }
-
         if (!isPosixBucket) {
-            return internalCopyAndDelete(src, dst, srcFileStatus.isDirectory(),
-                srcFileStatus.isSymlink());
+            return internalCopyAndDelete(
+                    src, renameFileStatusPair.getFirst(),
+                    dst, renameFileStatusPair.getSecond());
         } else {
             return internalRename(src, dst);
         }
     }
 
-    private boolean internalCopyAndDelete(Path srcPath, Path dstPath,
-                                          boolean isDir, boolean isSymlink) throws IOException {
-        boolean result = false;
-        if (isDir) {
-            result = this.copyDirectory(srcPath, dstPath);
-        } else {
-            if (isSymlink) {
-                result = this.copySymlink(srcPath, dstPath);
+    private Pair<CosNFileStatus, CosNFileStatus> renameInitiate(Path srcPath, Path dstPath)
+            throws PathIOException, IOException {
+        // Preconditions
+        Preconditions.checkNotNull(srcPath);
+        Preconditions.checkNotNull(dstPath);
+        Preconditions.checkArgument(srcPath.isAbsolute());
+        Preconditions.checkArgument(dstPath.isAbsolute());
+
+        Pair<CosNFileStatus, CosNFileStatus> renameFileStatusPair = new Pair<>();
+
+        // Hadoop FileSystem Specification: if not exists(FS, src) : raise FileNotFoundException
+        CosNFileStatus srcFileStatus = null;
+        try {
+            srcFileStatus = (CosNFileStatus) this.getFileStatus(srcPath);
+        } catch (FileNotFoundException e) {
+            LOG.error("The source path [{}] is not exist.", srcPath);
+            throw e;
+        }
+        renameFileStatusPair.setFirst(srcFileStatus);
+
+        // Hadoop FileSystem Specification: if isDescendant(FS, src, dest) : raise IOException
+        Path dstParentPath = dstPath.getParent();
+        while (null != dstParentPath && !srcPath.equals(dstParentPath)) {
+            dstParentPath = dstParentPath.getParent();
+        }
+        if (null != dstParentPath) {
+            LOG.error("It is not allowed to rename a parent directory:{} to its subdirectory:{}.", srcPath, dstPath);
+            PathIOException pathIOException = new PathIOException(srcPath.toString(),
+                    "It is not allowed to rename a parent directory to its subdirectory");
+            pathIOException.setOperation("rename");
+            pathIOException.setTargetPath(dstPath.toString());
+            throw pathIOException;
+        }
+
+        // Hadoop FileSystem Specification: isRoot(FS, dest) or exists(FS, parent(dest))
+        CosNFileStatus dstFileStatus = null;
+        try {
+            dstFileStatus = (CosNFileStatus) this.getFileStatus(dstPath);
+            if (dstFileStatus.isFile()) {
+                throw new FileAlreadyExistsException(dstPath.toString());
             } else {
-                result = this.copyFile(srcPath, dstPath);
+                // The destination path is an existing directory,
+                Path tempDstPath = new Path(dstPath, srcPath.getName());
+                try {
+//                    FileStatus tempDstFileStatus = this.getFileStatus(tempDstPath);
+//                    if (tempDstFileStatus.isDirectory()) {
+//                        throw new FileAlreadyExistsException(tempDstPath.toString());
+//                    }
+                    FileStatus[] fileStatuses = this.listStatus(tempDstPath);
+                    if (null != fileStatuses && fileStatuses.length > 0) {
+                        throw new FileAlreadyExistsException(tempDstPath.toString());
+                    }
+                } catch (FileNotFoundException ignore) {
+                    // OK, expects Not Found.
+                }
+            }
+            renameFileStatusPair.setSecond(dstFileStatus);
+        } catch (FileNotFoundException e) {
+            // Hadoop FileSystem Specification: if isFile(FS, parent(dest)) : raise IOException
+            Path tempDstParentPath = dstPath.getParent();
+            FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
+            if (!dstParentStatus.isDirectory()) {
+                PathIOException pathIOException = new PathIOException(tempDstParentPath.toString(),
+                        String.format("Can not rename into a file [%s]", tempDstParentPath));
+                pathIOException.setTargetPath(dstPath.toString());
+                throw pathIOException;
+            }
+        }
+
+        return renameFileStatusPair;
+    }
+
+    private boolean internalCopyAndDelete(Path srcPath, CosNFileStatus srcFileStatus,
+                                          Path destPath, CosNFileStatus destFileStatus) throws IOException {
+        Preconditions.checkNotNull(srcPath);
+        Preconditions.checkNotNull(srcFileStatus);
+        boolean result;
+        if (srcFileStatus.isDirectory()) {
+            result = this.copyDirectory(
+                    srcPath, srcFileStatus,
+                    destPath, destFileStatus);
+        } else {
+            if (srcFileStatus.isSymlink()) {
+                result = this.copySymlink(srcPath, srcFileStatus, destPath, destFileStatus);
+            } else {
+                result = this.copyFile(srcPath, srcFileStatus, destPath, destFileStatus);
             }
         }
 
@@ -1093,39 +1128,43 @@ public class CosNFileSystem extends FileSystem {
         return true;
     }
 
-    private boolean copyFile(Path srcPath, Path dstPath) throws IOException {
+    private boolean copyFile(Path srcPath, CosNFileStatus srcFileStatus,
+                             Path dstPath, @Nullable CosNFileStatus destFileStatus) throws IOException {
         String srcKey = pathToKey(srcPath);
         String dstKey = pathToKey(dstPath);
-        this.nativeStore.copy(srcKey, dstKey);
+        this.nativeStore.copy(srcKey, FileMetadata.fromCosNFileStatus(srcFileStatus), dstKey);
         return true;
     }
 
-    private boolean copySymlink(Path srcSymlink, Path dstSymlink) throws IOException {
+    private boolean copySymlink(Path srcSymlink, CosNFileStatus srcFileStatus,
+                                Path dstSymlink, @Nullable CosNFileStatus destFileStatus) throws IOException {
         Path targetFilePath = this.getLinkTarget(srcSymlink);
         this.createSymlink(targetFilePath, dstSymlink, false);
         return true;
     }
 
-    private boolean copyDirectory(Path srcPath, Path dstPath) throws IOException {
+    private boolean copyDirectory(Path srcPath, CosNFileStatus srcFileStatus,
+                                  Path destPath, @Nullable CosNFileStatus destFileStatus) throws IOException {
         String srcKey = pathToKey(srcPath);
         if (!srcKey.endsWith(PATH_DELIMITER)) {
             srcKey += PATH_DELIMITER;
         }
-        String dstKey = pathToKey(dstPath);
-        if (!dstKey.endsWith(PATH_DELIMITER)) {
-            dstKey += PATH_DELIMITER;
+        String destKey = pathToKey(destPath);
+        if (!destKey.endsWith(PATH_DELIMITER)) {
+            destKey += PATH_DELIMITER;
         }
 
-        if (dstKey.startsWith(srcKey)) {
-            throw new IOException("can not copy a directory to a subdirectory" +
-                    " of self");
+        if (destKey.startsWith(srcKey)) {
+            throw new IOException("can not copy a directory to a subdirectory of self");
         }
         // 这个方法是普通桶调用，普通桶严格区分文件对象和目录对象，这里srcKey是带后缀的，如果使用retrieveMetadata
         // 可能会吞掉目录对象不存在的问题。导致后面的copy srcKey时，报404错误。
-        if (this.nativeStore.queryObjectMetadata(srcKey) == null) {
+        if (srcFileStatus.getETag() == null) {
+            // 这里其实无论是否存在对应的 srcKey 空对象，都 put 一个进去，也是对的。
+            // srcFileStatus.getETag() == null 只是为了在确定存在一个目录对象而非前缀的时候，就不需要在 PUT 一次了。
             this.nativeStore.storeEmptyFile(srcKey);
         } else {
-            this.nativeStore.copy(srcKey, dstKey);
+            this.nativeStore.copy(srcKey, FileMetadata.fromCosNFileStatus(srcFileStatus), destKey);
         }
 
         CosNCopyFileContext copyFileContext = new CosNCopyFileContext();
@@ -1135,11 +1174,11 @@ public class CosNFileSystem extends FileSystem {
         do {
             CosNPartialListing objectList = this.nativeStore.list(srcKey,
                     BUCKET_LIST_LIMIT, priorLastKey, true);
-            for (FileMetadata file : objectList.getFiles()) {
-                checkPermission(new Path(file.getKey()), RangerAccessType.DELETE);
+            for (FileMetadata fileMetadata : objectList.getFiles()) {
+                checkPermission(new Path(fileMetadata.getKey()), RangerAccessType.DELETE);
                 this.boundedCopyThreadPool.execute(new CosNCopyFileTask(
                         this.nativeStore,
-                        file.getKey(), dstKey.concat(file.getKey().substring(srcKey.length())),
+                        fileMetadata.getKey(), fileMetadata, destKey.concat(fileMetadata.getKey().substring(srcKey.length())),
                         copyFileContext));
                 copiesToFinishes++;
             }
@@ -1152,9 +1191,9 @@ public class CosNFileSystem extends FileSystem {
             if (this.operationCancellingStatusProviderThreadLocal.get() != null
                     && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
                 LOG.warn("The copy operation is cancelled. Stop copying the directory. srcKey: {}, dstKey: {}",
-                        srcKey, dstKey);
+                        srcKey, destKey);
                 throw new IOException(String.format("The copy operation is cancelled. srcKey: %s, dstKey: %s",
-                        srcKey, dstKey));
+                        srcKey, destKey));
             }
         } while (null != priorLastKey && !Thread.currentThread().isInterrupted());
 

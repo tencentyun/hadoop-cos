@@ -120,6 +120,8 @@ public interface NativeFileSystemStore {
 
     void copy(String srcKey, String dstKey) throws IOException;
 
+    void copy(String srcKey, FileMetadata srcFileMetadata, String dstKey) throws IOException;
+
     void rename(String srcKey, String dstKey) throws IOException;
 
     void createSymlink(String symLink, String targetKey) throws IOException;
