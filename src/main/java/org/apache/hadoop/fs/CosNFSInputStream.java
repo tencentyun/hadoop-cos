@@ -122,13 +122,14 @@ public class CosNFSInputStream extends FSInputStream {
     private long position;
     private long nextPos;
     private long lastByteStart;
-    private long fileSize;
+    private final CosNFileStatus fileStatus;
     private long partRemaining;
     private long bufferStart;
     private long bufferEnd;
     private final long preReadPartSize;
     private final int maxReadPartNumber;
     private ReadBuffer currentReadBuffer;
+    private final boolean isCOSAZAcceleratorConsistencyEnabled;
     private final AtomicBoolean closed;
     private final int socketErrMaxRetryTimes;
 
@@ -144,7 +145,7 @@ public class CosNFSInputStream extends FSInputStream {
      * @param store native file system
      * @param statistics statis
      * @param key cos key
-     * @param fileSize file size
+     * @param fileStatus file status
      * @param readAheadExecutorService thread executor
      */
     public CosNFSInputStream(
@@ -152,14 +153,14 @@ public class CosNFSInputStream extends FSInputStream {
             NativeFileSystemStore store,
             FileSystem.Statistics statistics,
             String key,
-            long fileSize,
+            CosNFileStatus fileStatus,
             ExecutorService readAheadExecutorService) {
         super();
         this.conf = conf;
         this.store = store;
         this.statistics = statistics;
         this.key = key;
-        this.fileSize = fileSize;
+        this.fileStatus = fileStatus;
         this.position = 0;
         this.nextPos = 0;
         this.lastByteStart = -1;
@@ -177,6 +178,9 @@ public class CosNFSInputStream extends FSInputStream {
         this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue =
                 new ArrayDeque<>(this.maxReadPartNumber);
+        this.isCOSAZAcceleratorConsistencyEnabled = conf.getBoolean(
+                CosNConfigKeys.COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED);
         this.closed = new AtomicBoolean(false);
     }
 
@@ -204,7 +208,7 @@ public class CosNFSInputStream extends FSInputStream {
     private synchronized void reopen(long pos) throws IOException {
         if (pos < 0) {
             throw new EOFException(FSExceptionMessages.NEGATIVE_SEEK);
-        } else if (pos > this.fileSize) {
+        } else if (pos > this.fileStatus.getLen()) {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
         }
 
@@ -253,14 +257,14 @@ public class CosNFSInputStream extends FSInputStream {
 
         int maxLen = this.maxReadPartNumber - currentBufferQueueSize;
         for (int i = 0; i < maxLen && i < (currentBufferQueueSize + 1) * 2; i++) {
-            if (this.lastByteStart + this.preReadPartSize * (i + 1) > this.fileSize) {
+            if (this.lastByteStart + this.preReadPartSize * (i + 1) > this.fileStatus.getLen()) {
                 break;
             }
 
             long byteStart = this.lastByteStart + this.preReadPartSize * (i + 1);
             long byteEnd = byteStart + this.preReadPartSize - 1;
-            if (byteEnd >= this.fileSize) {
-                byteEnd = this.fileSize - 1;
+            if (byteEnd >= this.fileStatus.getLen()) {
+                byteEnd = this.fileStatus.getLen() - 1;
             }
 
             ReadBuffer readBuffer = new ReadBuffer(byteStart, byteEnd);
@@ -268,8 +272,8 @@ public class CosNFSInputStream extends FSInputStream {
                 readBuffer.setStatus(ReadBuffer.SUCCESS);
             } else {
                 this.readAheadExecutorService.execute(
-                        new CosNFileReadTask(this.conf, this.key, this.store,
-                                readBuffer, this.socketErrMaxRetryTimes, closed));
+                        new CosNFileReadTask(this.conf, this.key, this.fileStatus, this.store,
+                                readBuffer, this.socketErrMaxRetryTimes, this.isCOSAZAcceleratorConsistencyEnabled, closed));
             }
 
             this.readBufferQueue.add(readBuffer);
@@ -321,7 +325,7 @@ public class CosNFSInputStream extends FSInputStream {
         if (pos < 0) {
             throw new EOFException(FSExceptionMessages.NEGATIVE_SEEK);
         }
-        if (pos > this.fileSize) {
+        if (pos > this.fileStatus.getLen()) {
             throw new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
         }
 
@@ -363,7 +367,7 @@ public class CosNFSInputStream extends FSInputStream {
     public int read() throws IOException {
         this.checkOpened();
 
-        if (this.partRemaining <= 0 && this.position < this.fileSize) {
+        if (this.partRemaining <= 0 && this.position < this.fileStatus.getLen()) {
             this.reopen(this.position);
         }
 
@@ -397,7 +401,7 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         int bytesRead = 0;
-        while (position < fileSize && bytesRead < len) {
+        while (position < this.fileStatus.getLen() && bytesRead < len) {
             if (partRemaining <= 0) {
                 reopen(position);
             }
@@ -434,7 +438,7 @@ public class CosNFSInputStream extends FSInputStream {
     public int available() throws IOException {
         this.checkOpened();
 
-        long remaining = this.fileSize - this.position;
+        long remaining = this.fileStatus.getLen() - this.position;
         if(remaining > Integer.MAX_VALUE) {
             return Integer.MAX_VALUE;
         }

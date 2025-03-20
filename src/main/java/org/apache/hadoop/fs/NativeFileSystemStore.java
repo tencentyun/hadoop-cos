@@ -3,12 +3,10 @@ package org.apache.hadoop.fs;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.HeadBucketResult;
 import com.qcloud.cos.model.PartETag;
-import com.qcloud.cos.model.PartListing;
 import com.qcloud.cos.model.PutObjectResult;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
-import com.qcloud.cos.COSClient;
 import org.apache.hadoop.fs.cosn.CosNPartListing;
 
 import java.io.File;
@@ -86,11 +84,17 @@ public interface NativeFileSystemStore {
 
     InputStream retrieve(String key) throws IOException;
 
+    InputStream retrieve(String key, FileMetadata fileMetadata) throws IOException;
+
+    @Deprecated
     InputStream retrieve(String key, long byteRangeStart) throws IOException;
 
     InputStream retrieveBlock(String key, long byteRangeStart,
                               long byteRangeEnd) throws IOException;
 
+    InputStream retrieveBlock(String key, FileMetadata fileMetadata, long byteRangeStart, long byteRangeEnd) throws IOException;
+
+    @Deprecated
     boolean retrieveBlock(String key, long byteRangeStart, long blockSize,
                           String localBlockPath) throws IOException;
 

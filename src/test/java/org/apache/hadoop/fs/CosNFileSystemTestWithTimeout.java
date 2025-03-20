@@ -7,6 +7,8 @@ import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.junit.rules.Timeout;
 
+import java.util.concurrent.TimeUnit;
+
 public class CosNFileSystemTestWithTimeout extends Assert {
 	/**
 	 * The name of the current method.
@@ -18,7 +20,7 @@ public class CosNFileSystemTestWithTimeout extends Assert {
 	 * This is driven by the value returned by {@link #getTestTimeoutMillis()}.
 	 */
 	@Rule
-	public Timeout testTimeout = new Timeout(getTestTimeoutMillis());
+	public Timeout testTimeout = new Timeout(getTestTimeoutMillis(), TimeUnit.MILLISECONDS);
 
 	/**
 	 * Name the junit thread for the class. This will overridden
