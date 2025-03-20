@@ -1499,9 +1499,16 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     @Override
     public void copy(String srcKey, String dstKey) throws IOException {
+        copy(srcKey, null , dstKey);
+    }
+
+    @Override
+    public void copy(String srcKey, FileMetadata srcFileMetadata, String dstKey) throws IOException {
         try {
-            FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
-            ObjectMetadata objectMetadata = getClientSideEncryptionHeader(sourceFileMetadata);
+            if (srcFileMetadata == null || srcFileMetadata.getUserAttributes() == null) {
+                srcFileMetadata = this.retrieveMetadata(srcKey);
+            }
+            ObjectMetadata objectMetadata = getClientSideEncryptionHeader(srcFileMetadata);
             if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
@@ -1509,8 +1516,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName, dstKey);
             // 如果 sourceFileMetadata 为 null，则有可能这个文件是个软链接，但是也兼容copy
-            if (null != sourceFileMetadata && null != sourceFileMetadata.getStorageClass()) {
-                copyObjectRequest.setStorageClass(sourceFileMetadata.getStorageClass());
+            if (null != srcFileMetadata.getStorageClass()) {
+                copyObjectRequest.setStorageClass(srcFileMetadata.getStorageClass());
             }
             copyObjectRequest.setNewObjectMetadata(objectMetadata);
             this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
