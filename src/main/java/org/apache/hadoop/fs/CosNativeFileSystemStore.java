@@ -516,6 +516,21 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
+    @Override
+    public HeadBucketResult headBucket(String bucketName) throws IOException {
+        HeadBucketRequest headBucketRequest = new HeadBucketRequest(bucketName);
+        try {
+            HeadBucketResult result = (HeadBucketResult) callCOSClientWithRetry(headBucketRequest);
+            return result;
+        } catch (Exception e) {
+            String errMsg = String.format("head bucket [%s] occurs an exception: %s.",
+                    bucketName, e);
+            LOG.error(errMsg, e);
+            handleException(new Exception(errMsg), bucketName);
+        }
+        return null; // never will get here
+    }
+
     private PutObjectResult storeFileWithRetry(String key, InputStream inputStream,
                                     byte[] md5Hash, long length)
             throws IOException {
@@ -530,8 +545,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
 
             PutObjectRequest putObjectRequest =
-                    new PutObjectRequest(bucketName, key, inputStream,
-                            objectMetadata);
+                    new PutObjectRequest(bucketName, key, inputStream, objectMetadata);
             if (null != this.storageClass) {
                 putObjectRequest.setStorageClass(this.storageClass);
             }
@@ -565,21 +579,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             handleException(new Exception(errMsg), key);
         }
         return null;
-    }
-
-    @Override
-    public HeadBucketResult headBucket(String bucketName) throws IOException {
-        HeadBucketRequest headBucketRequest = new HeadBucketRequest(bucketName);
-        try {
-            HeadBucketResult result = (HeadBucketResult) callCOSClientWithRetry(headBucketRequest);
-            return result;
-        } catch (Exception e) {
-            String errMsg = String.format("head bucket [%s] occurs an exception: %s.",
-                    bucketName, e);
-            LOG.error(errMsg, e);
-            handleException(new Exception(errMsg), bucketName);
-        }
-        return null; // never will get here
     }
 
     @Override
@@ -621,6 +620,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         if (null != this.storageClass) {
             putObjectRequest.setStorageClass(this.storageClass);
         }
+        // 这个头部非常重要，防止覆盖到同名的对象
+        putObjectRequest.putCustomRequestHeader("x-cos-forbid-overwrite", "true");
+
         try {
             PutObjectResult putObjectResult =
                     (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
@@ -875,8 +877,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         return queryObjectMetadata(key, null);
     }
 
-    private FileMetadata queryObjectMetadata(String key,
-                                             CosNResultInfo info) throws IOException {
+    public FileMetadata queryObjectMetadata(String key,
+                                            CosNResultInfo info) throws IOException {
         LOG.debug("Query Object metadata. cos key: {}.", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
@@ -1515,7 +1517,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
             CopyObjectRequest copyObjectRequest =
                     new CopyObjectRequest(bucketName, srcKey, bucketName, dstKey);
-            // 如果 sourceFileMetadata 为 null，则有可能这个文件是个软链接，但是也兼容copy
+            // 如果 sourceFileMetadata 为 null，则有可能这个文件是个软链接，但是也兼容 copy
             if (null != srcFileMetadata.getStorageClass()) {
                 copyObjectRequest.setStorageClass(srcFileMetadata.getStorageClass());
             }
@@ -1541,9 +1543,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public void rename(String srcKey, String dstKey) throws IOException {
         if (!isPosixBucket) {
-            normalBucketRename(srcKey, dstKey);
+            objectRename(srcKey, dstKey);
         } else {
-            posixBucketRename(srcKey, dstKey);
+            posixFileRename(srcKey, dstKey);
         }
     }
 
@@ -1588,7 +1590,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         return null;
     }
 
-    public void normalBucketRename(String srcKey, String dstKey) throws IOException {
+    public void objectRename(String srcKey, String dstKey) throws IOException {
         LOG.debug("Rename normal bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
         try {
             FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
@@ -1617,7 +1619,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
-    public void posixBucketRename(String srcKey, String dstKey) throws IOException {
+    public void posixFileRename(String srcKey, String dstKey) throws IOException {
         LOG.debug("Rename posix bucket key, the source cos key [{}] to the dest cos key [{}].", srcKey, dstKey);
         try {
             RenameRequest renameRequest = new RenameRequest(bucketName, srcKey, dstKey);

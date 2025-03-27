@@ -68,6 +68,8 @@ public interface NativeFileSystemStore {
 
     FileMetadata queryObjectMetadata(String key) throws IOException;
 
+    FileMetadata queryObjectMetadata(String key, CosNResultInfo info) throws IOException;
+
     CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink) throws IOException;
 
     CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink, CosNResultInfo info) throws IOException;
