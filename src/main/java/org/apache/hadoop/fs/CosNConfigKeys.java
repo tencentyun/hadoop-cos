@@ -266,6 +266,10 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final String COSN_FILESTATUS_LIST_OP_ENABLED = "fs.cosn.filestatus.list.op.enabled";
     public static final boolean DEFAULT_FILESTATUS_LIST_OP_ENABLED = true;
 
+    // 自动修复目录对象
+    public static final String COSN_REPAIR_DIR_OBJECT_ENABLED = "fs.cosn.repair.dir.object.enabled";
+    public static final boolean DEFAULT_REPAIR_DIR_OBJECT_ENABLED = false;
+
     public static final String COSN_FILESTATUS_LIST_RECURSIVE_ENABLED = "fs.cosn.filestatus.list.recursive.enabled";
     public static final boolean DEFAULT_FILESTATUS_LIST_RECURSIVE_ENABLED = false;
 

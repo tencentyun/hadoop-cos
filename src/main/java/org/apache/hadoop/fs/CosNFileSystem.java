@@ -9,6 +9,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
+import org.apache.hadoop.fs.cosn.FileStatusProbeEnum;
 import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
 import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
 import org.apache.hadoop.fs.cosn.ReadBufferHolder;
@@ -207,8 +208,7 @@ public class CosNFileSystem extends FileSystem {
                             throw new RejectedExecutionException("The bounded io thread pool has been shutdown");
                         }
                     }
-                }
-        );
+                });
 
         // copy 线程池初始化
         int copyThreadPoolSize = this.getConf().getInt(
@@ -462,11 +462,12 @@ public class CosNFileSystem extends FileSystem {
         if (createOpCheckExistFile) {
             // preconditions
             try {
-                FileStatus targetFileStatus = this.getFileStatus(f);
+                FileStatus targetFileStatus = this.getFileStatus(f,
+                        overwrite ? FileStatusProbeEnum.LIST_ONLY : FileStatusProbeEnum.ALL);
                 if (targetFileStatus.isSymlink()) {
                     f = this.getLinkTarget(f);
                     // call the getFileStatus for the latest path again.
-                    targetFileStatus = getFileStatus(f);
+                    targetFileStatus = this.getFileStatus(f, FileStatusProbeEnum.ALL);
                 }
                 if (targetFileStatus.isFile() && !overwrite) {
                     throw new FileAlreadyExistsException("File already exists: " + f);
@@ -499,18 +500,6 @@ public class CosNFileSystem extends FileSystem {
         }
     }
 
-    private boolean rejectRootDirectoryDelete(boolean isEmptyDir, boolean recursive)
-            throws PathIOException {
-        if (isEmptyDir) {
-            return true;
-        }
-        if (recursive) {
-            return false;
-        } else {
-            throw new PathIOException(this.bucket, "Can not delete root path");
-        }
-    }
-
     @Override
     public boolean delete(Path f, boolean recursive) throws IOException {
         FileStatus status;
@@ -525,8 +514,7 @@ public class CosNFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         if (key.compareToIgnoreCase("/") == 0) {
             FileStatus[] fileStatuses = listStatus(f);
-            return this.rejectRootDirectoryDelete(fileStatuses.length == 0,
-                    recursive);
+            return this.rejectRootDirectoryDelete(fileStatuses.length == 0, recursive);
         }
 
         if (status.isDirectory()) {
@@ -553,6 +541,18 @@ public class CosNFileSystem extends FileSystem {
             createParentDirectoryIfNecessary(f);
         }
         return true;
+    }
+
+    private boolean rejectRootDirectoryDelete(boolean isEmptyDir, boolean recursive)
+            throws PathIOException {
+        if (isEmptyDir) {
+            return true;
+        }
+        if (recursive) {
+            return false;
+        } else {
+            throw new PathIOException(this.bucket, "Can not delete root path");
+        }
     }
 
     private void internalRecursiveDelete(String key, int listMaxLength) throws IOException {
@@ -627,7 +627,15 @@ public class CosNFileSystem extends FileSystem {
     }
 
     public FileStatus getFileStatus(Path f) throws IOException {
+        if (!this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_OP_ENABLED,
+                CosNConfigKeys.DEFAULT_FILESTATUS_LIST_OP_ENABLED)) {
+            return getFileStatus(f, FileStatusProbeEnum.FILE_DIRECTORY);
+        }
+        // 默认是所有情况都要执行一遍。
+        return getFileStatus(f, FileStatusProbeEnum.ALL);
+    }
 
+    private FileStatus getFileStatus(Path f, Set<FileStatusProbeEnum> probes) throws IOException {
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
 
@@ -637,7 +645,8 @@ public class CosNFileSystem extends FileSystem {
 
         CosNResultInfo getObjectMetadataResultInfo = new CosNResultInfo();
         // NOTICE 值得注意的是，如果是符号连接，但是又关闭了符号连接的支持，那么 getFileStatus 操作会返回 COS 上符号连接指向目的对象的元数据。
-        // 这一点尤为重要，因为 HCFS 语义规范要求的是 getFileStatus 返回的是符号连接本身的元数据。参考：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/filesystem/filesystem.html
+        // 这一点尤为重要，因为 HCFS 语义规范要求的是 getFileStatus 返回的是符号连接本身的元数据。
+        // 参考：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/filesystem/filesystem.html
         if (this.supportsSymlinks()) {
             // 先判断是否是符号链接
             CosNSymlinkMetadata symlinkMetadata = this.nativeStore.retrieveSymlinkMetadata(key, getObjectMetadataResultInfo);
@@ -647,14 +656,27 @@ public class CosNFileSystem extends FileSystem {
             // 不是符号链接，继续下面的判断
         }
 
-        FileMetadata meta = this.nativeStore.retrieveMetadata(key, getObjectMetadataResultInfo);
-        if (meta != null) {
-            if (meta.isFile()) {
-                LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
-                return getFileStatusHelper(meta, absolutePath, key, getObjectMetadataResultInfo.getRequestID());
-            } else {
-                LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
-                return newDirectory(meta, absolutePath);
+        if (probes.contains(FileStatusProbeEnum.HEAD)) {
+            FileMetadata meta = this.nativeStore.queryObjectMetadata(key, getObjectMetadataResultInfo);
+            if (meta != null) {
+                if (meta.isFile()) {
+                    LOG.debug("Retrieve the cos key [{}] to find that it is a file.", key);
+                    return getFileStatusHelper(meta, absolutePath, key, getObjectMetadataResultInfo.getRequestID());
+                } else {
+                    LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
+                    return newDirectory(meta, absolutePath);
+                }
+            }
+        }
+
+        if (probes.contains(FileStatusProbeEnum.DIR_MARKER)) {
+            if (!key.endsWith(CosNFileSystem.PATH_DELIMITER)) {
+                key += CosNFileSystem.PATH_DELIMITER;
+                FileMetadata meta = this.nativeStore.queryObjectMetadata(key, getObjectMetadataResultInfo);
+                if (meta != null) {
+                    LOG.debug("Retrieve the cos key [{}] to find that it is a directory.", key);
+                    return newDirectory(meta, absolutePath);
+                }
             }
         }
 
@@ -662,10 +684,23 @@ public class CosNFileSystem extends FileSystem {
             throw new FileNotFoundException("No such file or directory in posix bucket'" + absolutePath + "'");
         }
 
-        // 对于普通桶，可能存在一些以key为前缀的对象，这种情况下key也可以视为目录。
-        FileStatus res = getFileStatusByList(key, absolutePath, getObjectMetadataResultInfo.getRequestID());
-        if (res != null) {
-            return res;
+        if (probes.contains(FileStatusProbeEnum.LIST)) {
+            // 对于普通桶，可能存在一些以 key 为前缀的对象，这种情况下 key 也可以视为目录。
+            FileStatus res = getFileStatusByList(key, absolutePath, getObjectMetadataResultInfo.getRequestID());
+            if (res != null) {
+                if (this.getConf().getBoolean(CosNConfigKeys.COSN_REPAIR_DIR_OBJECT_ENABLED,
+                        CosNConfigKeys.DEFAULT_REPAIR_DIR_OBJECT_ENABLED)) {
+                    // 如果开启了目录对象修复功能，那么在 list 接口找到目录对象的情况下，会自动修复目录对象
+                    LOG.debug("The directory object [{}] is found by list interface, try to repair it.", key);
+                    try {
+                        this.nativeStore.storeEmptyFile(key);
+                    } catch (IOException e) {
+                        // 自动修复失败，不应该抛出任何异常。
+                        LOG.debug("The directory object [{}] can not be repaired.", key, e);
+                    }
+                }
+                return res;
+            }
         }
 
         throw new FileNotFoundException("No such file or directory '" + absolutePath + "'");
@@ -679,7 +714,6 @@ public class CosNFileSystem extends FileSystem {
     private FileStatus getFileStatusHelper(FileMetadata meta, Path absolutePath, String key,
         String headRequestId) throws IOException {
         if (directoryFirstEnabled && meta.getLength() == 0) {
-
             if (!key.endsWith(PATH_DELIMITER)) {
                 key += PATH_DELIMITER;
             }
@@ -701,34 +735,29 @@ public class CosNFileSystem extends FileSystem {
      * @return null 如果目录不存在
      */
     private FileStatus getFileStatusByList(String key, Path absolutePath, String headRequestId) throws IOException {
-        if (this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_OP_ENABLED,
-            CosNConfigKeys.DEFAULT_FILESTATUS_LIST_OP_ENABLED)) {
-            if (!key.endsWith(PATH_DELIMITER)) {
-                key += PATH_DELIMITER;
-            }
-
-            int maxKeys = this.getConf().getInt(
+        if (!key.endsWith(PATH_DELIMITER)) {
+            key += PATH_DELIMITER;
+        }
+        int maxKeys = this.getConf().getInt(
                 CosNConfigKeys.FILESTATUS_LIST_MAX_KEYS,
                 CosNConfigKeys.DEFAULT_FILESTATUS_LIST_MAX_KEYS);
 
-            LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
-            CosNResultInfo listObjectsResultInfo = new CosNResultInfo();
-            CosNPartialListing listing = this.nativeStore.list(key, maxKeys, null,
-                    this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_RECURSIVE_ENABLED, CosNConfigKeys.DEFAULT_FILESTATUS_LIST_RECURSIVE_ENABLED),
-                    listObjectsResultInfo);
-            if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
-                LOG.debug("List the cos key [{}] to find that it is a directory.", key);
-                return newDirectory(absolutePath);
-            }
-
-            if (listObjectsResultInfo.isKeySameToPrefix()) {
-                LOG.info("List the cos key [{}] same to prefix, head-id:[{}], " +
-                        "list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]", key, headRequestId,
-                    listObjectsResultInfo.getRequestID(), listObjectsResultInfo.isKeySameToPrefix(),
-                    Thread.currentThread().getId(), Thread.currentThread().getName());
-            }
-            LOG.debug("Can not find the cos key [{}] on COS.", key);
+        LOG.debug("List the cos key [{}] to judge whether it is a directory or not. max keys [{}]", key, maxKeys);
+        CosNResultInfo listObjectsResultInfo = new CosNResultInfo();
+        CosNPartialListing listing = this.nativeStore.list(key, maxKeys, null,
+                this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_RECURSIVE_ENABLED,
+                        CosNConfigKeys.DEFAULT_FILESTATUS_LIST_RECURSIVE_ENABLED), listObjectsResultInfo);
+        if (listing.getFiles().length > 0 || listing.getCommonPrefixes().length > 0) {
+            LOG.debug("List the cos key [{}] to find that it is a directory.", key);
+            return newDirectory(absolutePath);
         }
+
+        if (listObjectsResultInfo.isKeySameToPrefix()) {
+            LOG.info("List the cos key [{}] same to prefix, head-id:[{}], list-id:[{}], list-type:[{}], thread-id:[{}], thread-name:[{}]",
+                    key, headRequestId, listObjectsResultInfo.getRequestID(), listObjectsResultInfo.isKeySameToPrefix(),
+                    Thread.currentThread().getId(), Thread.currentThread().getName());
+        }
+        LOG.debug("Can not find the cos key [{}] on COS.", key);
         return null;
     }
 
@@ -813,8 +842,6 @@ public class CosNFileSystem extends FileSystem {
         return status.toArray(new FileStatus[status.size()]);
     }
 
-
-
     private FileStatus newFile(FileMetadata meta, Path path) {
         return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
                 meta.getLastModified(), 0, null, this.owner, this.group,
@@ -823,16 +850,16 @@ public class CosNFileSystem extends FileSystem {
                 meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
     }
 
-    private FileStatus newDirectory(Path path) {
-        return new CosNFileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
-                path.makeQualified(this.getUri(), this.getWorkingDirectory()));
-    }
-
     private FileStatus newSymlink(CosNSymlinkMetadata metadata, Path path) {
         FileStatus symlinkStatus = newFile(metadata, path);
         Path targetPath = keyToPath(metadata.getTarget());
         symlinkStatus.setSymlink(makeAbsolute(targetPath).makeQualified(this.getUri(), this.getWorkingDirectory()));
         return symlinkStatus;
+    }
+
+    private FileStatus newDirectory(Path path) {
+        return new CosNFileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
+                path.makeQualified(this.getUri(), this.getWorkingDirectory()));
     }
 
     private FileStatus newDirectory(FileMetadata meta, Path path) {
@@ -1011,7 +1038,7 @@ public class CosNFileSystem extends FileSystem {
                     return true;
                 }
                 // For symlink types, the Hadoop file system specification does not provide clear instructions,
-                // I tested the soft connection in the POSIX file system, and the same behavior is also true.
+                // I tested the symlink in the POSIX file system, and the same behavior is also true.
                 return true;
             }
             return false;
@@ -1070,13 +1097,9 @@ public class CosNFileSystem extends FileSystem {
                 // The destination path is an existing directory,
                 Path tempDstPath = new Path(dstPath, srcPath.getName());
                 try {
-//                    FileStatus tempDstFileStatus = this.getFileStatus(tempDstPath);
-//                    if (tempDstFileStatus.isDirectory()) {
-//                        throw new FileAlreadyExistsException(tempDstPath.toString());
-//                    }
-                    FileStatus[] fileStatuses = this.listStatus(tempDstPath);
-                    if (null != fileStatuses && fileStatuses.length > 0) {
-                        throw new FileAlreadyExistsException(tempDstPath.toString());
+                    FileStatus fileStatus = this.getFileStatus(tempDstPath, FileStatusProbeEnum.LIST_ONLY);
+                    if (fileStatus != null) {
+                        throw new FileAlreadyExistsException(dstPath.toString());
                     }
                 } catch (FileNotFoundException ignore) {
                     // OK, expects Not Found.
