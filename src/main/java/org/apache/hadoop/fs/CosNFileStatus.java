@@ -3,6 +3,7 @@ package org.apache.hadoop.fs;
 import org.apache.hadoop.fs.permission.FsPermission;
 
 import javax.annotation.Nullable;
+import java.util.Map;
 
 public class CosNFileStatus extends FileStatus {
     private final String ETag;
@@ -10,6 +11,7 @@ public class CosNFileStatus extends FileStatus {
     private final String crc32cm;
     private final String storageClass;
     private final String versionId;
+    private final Map<String, byte[]> userAttributes;
 
     public CosNFileStatus(long length, boolean isdir, int block_replication, long blocksize, long modification_time,
                           long access_time, FsPermission permission, String owner, String group, Path path) {
@@ -21,12 +23,12 @@ public class CosNFileStatus extends FileStatus {
                           long access_time, FsPermission permission, String owner, String group, Path path,
                           String ETag) {
         this(length, isdir, block_replication, blocksize, modification_time, access_time, permission, owner, group,
-                path, ETag, null, null, null, null);
+                path, ETag, null, null, null, null, null);
     }
 
     public CosNFileStatus(long length, boolean isdir, int block_replication, long blocksize, long modification_time,
                           long access_time, FsPermission permission, String owner, String group, Path path,
-                          String ETag, String crc64ecma, String crc32cm, String versionId, String storageClass) {
+                          String ETag, String crc64ecma, String crc32cm, String versionId, String storageClass, Map<String, byte[]> userAttributes) {
         super(length, isdir, block_replication, blocksize, modification_time, access_time, permission, owner, group,
                 path);
         this.ETag = ETag;
@@ -34,6 +36,7 @@ public class CosNFileStatus extends FileStatus {
         this.crc32cm = crc32cm;
         this.storageClass = storageClass;
         this.versionId = versionId;
+        this.userAttributes = userAttributes;
     }
 
     public String getETag() {
@@ -59,4 +62,8 @@ public class CosNFileStatus extends FileStatus {
         return versionId;
     }
 
+    @Nullable
+    public Map<String, byte[]> getUserAttributes() {
+        return userAttributes;
+    }
 }

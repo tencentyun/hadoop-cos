@@ -25,10 +25,13 @@ public class FileMetadata {
     private final Map<String, byte[]> userAttributes;
 
     static FileMetadata fromCosNFileStatus(CosNFileStatus fileStatus) {
+        if (null == fileStatus) {
+            return null;
+        }
         String key = CosNUtils.pathToKey(fileStatus.getPath());
         return new FileMetadata(key, fileStatus.getLen(), fileStatus.getModificationTime(),
                 fileStatus.isFile(), fileStatus.getETag(), fileStatus.getCrc64ecma(), fileStatus.getCrc32cm(),
-                fileStatus.getVersionId(), fileStatus.getStorageClass(), null);
+                fileStatus.getVersionId(), fileStatus.getStorageClass(), fileStatus.getUserAttributes());
     }
 
     public FileMetadata(String key, long length, long lastModified) {

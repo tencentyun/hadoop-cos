@@ -68,6 +68,8 @@ public interface NativeFileSystemStore {
 
     FileMetadata queryObjectMetadata(String key) throws IOException;
 
+    FileMetadata queryObjectMetadata(String key, CosNResultInfo info) throws IOException;
+
     CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink) throws IOException;
 
     CosNSymlinkMetadata retrieveSymlinkMetadata(String symlink, CosNResultInfo info) throws IOException;
@@ -119,6 +121,8 @@ public interface NativeFileSystemStore {
     void deleteRecursive(String key) throws IOException;
 
     void copy(String srcKey, String dstKey) throws IOException;
+
+    void copy(String srcKey, FileMetadata srcFileMetadata, String dstKey) throws IOException;
 
     void rename(String srcKey, String dstKey) throws IOException;
 
