@@ -339,6 +339,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             userAgent = String.format("%s on %s", userAgent, emrVersion);
         }
         config.setUserAgent(userAgent);
+        config.setThrow412Directly(true);
 
         this.maxRetryTimes = conf.getInt(
                 CosNConfigKeys.COSN_MAX_RETRIES_KEY,
