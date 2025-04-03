@@ -849,8 +849,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             return (CompleteMultipartUploadResult) this.callCOSClientWithRetry(completeMultipartUploadRequest);
         } catch (CosServiceException cse) {
             // when first calling with 503 access time out, next retry will 409.
+            // Usually, 404 occurs on the network packet loss.
             int statusCode = cse.getStatusCode();
-            if (statusCode == 409) {
+            if (statusCode == 409 || statusCode == 404) {
                 // check file whether exist
                 FileMetadata fileMetadata = this.queryObjectMetadata(key);
                 if (null == fileMetadata) {
