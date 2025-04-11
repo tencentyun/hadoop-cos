@@ -5,6 +5,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.qcloud.chdfs.permission.RangerAccessType;
 import com.qcloud.cos.utils.StringUtils;
 import org.apache.hadoop.HadoopIllegalArgumentException;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
@@ -991,16 +992,21 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FSDataInputStream open(Path f, int bufferSize) throws IOException {
-        CosNFileStatus fileStatus = (CosNFileStatus) getFileStatus(f); // will throw if the file doesn't
+        FileStatus fileStatus = getFileStatus(f); // will throw if the file doesn't
         if (fileStatus.isSymlink()) {
             f = this.getLinkTarget(f);
-            fileStatus = (CosNFileStatus) getFileStatus(f);
+            fileStatus = getFileStatus(f);
         }
 
         // exist
         if (fileStatus.isDirectory()) {
             throw new FileNotFoundException("'" + f + "' is a directory");
         }
+        return this.open(f, bufferSize, fileStatus);
+    }
+
+    @InterfaceAudience.Private
+    public FSDataInputStream open(Path f, int bufferSize, FileStatus fileStatus) throws IOException {
         LOG.debug("Opening '" + f + "' for reading");
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);

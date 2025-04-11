@@ -20,11 +20,9 @@ public class CosNFileReadTask implements Runnable {
 
     private final Configuration conf;
     private final String key;
-    private final CosNFileStatus fileStatus;
     private final NativeFileSystemStore store;
     private final CosNFSInputStream.ReadBuffer readBuffer;
     private final int socketErrMaxRetryTimes;
-    private final boolean isAZAcceleratorConsistencyEnabled;
     private final AtomicBoolean closed;
 
     /**
@@ -35,18 +33,15 @@ public class CosNFileReadTask implements Runnable {
      * @param readBuffer read buffer
      */
     public CosNFileReadTask(Configuration conf, String key,
-                            CosNFileStatus fileStatus,
                             NativeFileSystemStore store,
                             CosNFSInputStream.ReadBuffer readBuffer,
                             int socketErrMaxRetryTimes,
-                            boolean isAZAcceleratorConsistencyEnabled, AtomicBoolean closed) {
+                            AtomicBoolean closed) {
         this.conf = conf;
         this.key = key;
-        this.fileStatus = fileStatus;
         this.store = store;
         this.readBuffer = readBuffer;
         this.socketErrMaxRetryTimes = socketErrMaxRetryTimes;
-        this.isAZAcceleratorConsistencyEnabled = isAZAcceleratorConsistencyEnabled;
         this.closed = closed;
     }
 
@@ -133,14 +128,8 @@ public class CosNFileReadTask implements Runnable {
         checkStreamClosed();
         Objects.requireNonNull(dataBuf);
         InputStream inputStream;
-        if (this.isAZAcceleratorConsistencyEnabled) {
-            inputStream = this.store.retrieveBlock(
-                    this.key, FileMetadata.fromCosNFileStatus(this.fileStatus),
-                    this.readBuffer.getStart(), this.readBuffer.getEnd());
-        } else {
-            inputStream = this.store.retrieveBlock(
+        inputStream = this.store.retrieveBlock(
                     this.key, this.readBuffer.getStart(), this.readBuffer.getEnd());
-        }
         IOUtils.readFully(
             inputStream, dataBuf, 0,
             dataBuf.length);

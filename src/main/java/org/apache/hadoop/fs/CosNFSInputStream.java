@@ -122,14 +122,13 @@ public class CosNFSInputStream extends FSInputStream {
     private long position;
     private long nextPos;
     private long lastByteStart;
-    private final CosNFileStatus fileStatus;
+    private final FileStatus fileStatus;
     private long partRemaining;
     private long bufferStart;
     private long bufferEnd;
     private final long preReadPartSize;
     private final int maxReadPartNumber;
     private ReadBuffer currentReadBuffer;
-    private final boolean isCOSAZAcceleratorConsistencyEnabled;
     private final AtomicBoolean closed;
     private final int socketErrMaxRetryTimes;
 
@@ -153,7 +152,7 @@ public class CosNFSInputStream extends FSInputStream {
             NativeFileSystemStore store,
             FileSystem.Statistics statistics,
             String key,
-            CosNFileStatus fileStatus,
+            FileStatus fileStatus,
             ExecutorService readAheadExecutorService) {
         super();
         this.conf = conf;
@@ -178,9 +177,6 @@ public class CosNFSInputStream extends FSInputStream {
         this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue =
                 new ArrayDeque<>(this.maxReadPartNumber);
-        this.isCOSAZAcceleratorConsistencyEnabled = conf.getBoolean(
-                CosNConfigKeys.COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED,
-                CosNConfigKeys.DEFAULT_COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED);
         this.closed = new AtomicBoolean(false);
     }
 
@@ -272,8 +268,8 @@ public class CosNFSInputStream extends FSInputStream {
                 readBuffer.setStatus(ReadBuffer.SUCCESS);
             } else {
                 this.readAheadExecutorService.execute(
-                        new CosNFileReadTask(this.conf, this.key, this.fileStatus, this.store,
-                                readBuffer, this.socketErrMaxRetryTimes, this.isCOSAZAcceleratorConsistencyEnabled, closed));
+                        new CosNFileReadTask(this.conf, this.key, this.store,
+                                readBuffer, this.socketErrMaxRetryTimes, closed));
             }
 
             this.readBufferQueue.add(readBuffer);

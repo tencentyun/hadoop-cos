@@ -121,6 +121,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private boolean usePolaris = false;
     private EndpointResolver tencentPolarisEndpointResolver;
+    private boolean isAZConsistencyEnabled = false;
 
     private void innerInitCOSClient(URI uri, Configuration conf) throws IOException {
         COSCredentialProviderList cosCredentialProviderList =
@@ -345,6 +346,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.COSN_MAX_RETRIES_KEY,
                 CosNConfigKeys.DEFAULT_MAX_RETRIES);
 
+        this.isAZConsistencyEnabled = conf.getBoolean(CosNConfigKeys.COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED);
 
         //用于客户端加密
         this.partSize = conf.getLong(
@@ -1229,7 +1232,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public InputStream retrieveBlock(String key, long byteRangeStart,
                                      long byteRangeEnd) throws IOException {
-        return retrieveBlock(key, null, byteRangeStart, byteRangeEnd);
+        return retrieveBlock(key, this.isAZConsistencyEnabled ? this.retrieveMetadata(key) : null, byteRangeStart, byteRangeEnd);
     }
 
     @Override

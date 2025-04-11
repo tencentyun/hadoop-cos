@@ -147,7 +147,8 @@ public class CosFileSystem extends FileSystem {
                                 posixBucketFSImpl));
             }
         } else { // normal cos hadoop file system implements
-            this.actualImplFS = getActualFileSystemByClassName("org.apache.hadoop.fs.CosNFileSystem");
+            this.actualImplFS = getActualFileSystemByClassName(conf.get(CosNConfigKeys.COSN_BUCKET_FS_IMPL,
+                    CosNConfigKeys.DEFAULT_COSN_BUCKET_FS_IMPL));
             this.nativeStore.setPosixBucket(false);
             ((CosNFileSystem) this.actualImplFS).withStore(this.nativeStore).withBucket(bucket)
                     .withPosixBucket(this.isPosixFSStore).withRangerCredentialsClient(rangerCredentialsClient);

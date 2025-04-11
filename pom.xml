@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>8.3.20</version>
+    <version>${hadoop.version}-8.3.21</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Cloud COS Support</name>
@@ -56,9 +56,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.7</maven.compiler.source>
-        <maven.compiler.target>1.7</maven.compiler.target>
-        <hadoop.version>3.4.0</hadoop.version>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <hadoop.version>3.3.0</hadoop.version>
         <cos_api.version>5.6.244.3</cos_api.version>
         <junit.version>4.13.2</junit.version>
         <google.guava.version>24.1.1-jre</google.guava.version>
@@ -166,6 +166,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.1</version>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

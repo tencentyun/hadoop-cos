@@ -296,4 +296,8 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     // 是否强制开启 AZ 加速器的强一致访问
     public static final String COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED = "fs.cosn.az.accelerator.consistency.enabled";
     public static final boolean DEFAULT_COSN_AZ_ACCELERATOR_CONSISTENCY_ENABLED = false;
+
+    // 普通桶的实现类
+    public static final String COSN_BUCKET_FS_IMPL = "fs.cosn.bucket.fs.impl";
+    public static final String DEFAULT_COSN_BUCKET_FS_IMPL = "org.apache.hadoop.fs.CosNFileSystem";
 }
