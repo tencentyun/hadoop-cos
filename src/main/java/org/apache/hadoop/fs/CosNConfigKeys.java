@@ -299,5 +299,5 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     // 普通桶的实现类
     public static final String COSN_BUCKET_FS_IMPL = "fs.cosn.bucket.fs.impl";
-    public static final String DEFAULT_COSN_BUCKET_FS_IMPL = "org.apache.hadoop.fs.CosNFileSystem";
+    public static final String DEFAULT_COSN_BUCKET_FS_IMPL = Constants.COSN_BUCKET_FS_COSN_IMPL;
 }

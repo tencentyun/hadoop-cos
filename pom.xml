@@ -66,6 +66,36 @@
         <downloadSources>true</downloadSources>
     </properties>
 
+    <!-- NOTE： 如果是 hadoop-common 版本高于 3.3.0 的时候，必须手动激活这个配置 -->
+    <!-- GooseFS 服务依赖下面的编译配置！ -->
+    <profiles>
+        <profile>
+            <id>hadoop-3-3</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <!-- 当 hadoop 的版本高于 3.3.0 以后，自动激活 CosNFileSystemExt 的加入编译 -->
+                <property>
+                    <name>hadoop.version</name>
+                    <value>[3.3.0,)</value>
+                </property>
+            </activation>
+
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <!-- 覆盖掉默认排除规则 -->
+                        <configuration>
+                            <excludes combine.self="override">
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
     <dependencies>
         <dependency>
             <groupId>com.qcloud</groupId>
@@ -169,6 +199,9 @@
                 <configuration>
                     <source>8</source>
                     <target>8</target>
+                    <excludes>
+                        <exclude>**/CosNFileSystemExt.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>

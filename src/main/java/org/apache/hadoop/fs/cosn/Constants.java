@@ -33,6 +33,7 @@ public final class Constants {
     public static final String COSN_OFS_CONFIG_PREFIX = "fs.ofs.";
     public static final String COSN_CONFIG_TRANSFER_PREFIX = "fs.cosn.trsf.";
 
+    public static final String COSN_BUCKET_FS_COSN_IMPL = "org.apache.hadoop.fs.CosNFileSystem";
     public static final String COSN_POSIX_BUCKET_FS_COSN_IMPL = "org.apache.hadoop.fs.CosNFileSystem";
     public static final String COSN_POSIX_BUCKET_FS_CHDFS_IMPL="com.qcloud.chdfs.fs.CHDFSHadoopFileSystemAdapter";
 
