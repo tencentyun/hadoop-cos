@@ -295,6 +295,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 CosNConfigKeys.COSN_CLIENT_SOCKET_TIMEOUTSEC,
                 CosNConfigKeys.DEFAULT_CLIENT_SOCKET_TIMEOUTSEC);
         config.setSocketTimeout(socketTimeoutSec * 1000);
+        config.setUseConnectionMonitor(true); // Idle线程单例化
 
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
