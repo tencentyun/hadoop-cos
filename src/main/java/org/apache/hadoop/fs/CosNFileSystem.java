@@ -306,7 +306,7 @@ public class CosNFileSystem extends FileSystem {
         Progressable progress) throws IOException {
         if (this.isPosixBucket) {
             throw new UnsupportedOperationException(
-                "The posix bucket does not support append operation through S3 gateway");
+                    "The posix bucket does not support append operation through S3 gateway");
         }
 
         // 如果配置中开启客户端加密，则不支持
@@ -317,7 +317,7 @@ public class CosNFileSystem extends FileSystem {
 
         // 如果原文件使用了客户端加密，则不支持
         try {
-            if(this.getXAttr(f, CSE_ALGORITHM_USER_METADATA) != null) {
+            if (this.getXAttr(f, CSE_ALGORITHM_USER_METADATA) != null) {
                 throw new UnsupportedOperationException("Not supported currently because the file is encrypted by client side");
             }
         } catch (IOException e) {
@@ -406,7 +406,7 @@ public class CosNFileSystem extends FileSystem {
 
         // 如果原文件使用了客户端加密，则不支持
         try {
-            if(this.getXAttr(f, CSE_ALGORITHM_USER_METADATA) != null) {
+            if (this.getXAttr(f, CSE_ALGORITHM_USER_METADATA) != null) {
                 throw new UnsupportedOperationException("Not supported currently because the file is encrypted by client side");
             }
         } catch (IOException e) {
@@ -1026,23 +1026,72 @@ public class CosNFileSystem extends FileSystem {
             return false;
         }
 
-        // the preconditions for the rename operation.
-        // reference: https://hadoop.apache.org/docs/r3.3.0/hadoop-project-dist/hadoop-common/filesystem/filesystem.html#rename
-        Pair<CosNFileStatus, CosNFileStatus> renameFileStatusPair = renameInitiate(src, dst);
+        // Hadoop FileSystem Specification: if not exists(FS, src) : raise FileNotFoundException
+        CosNFileStatus srcFileStatus = null;
+        try {
+            srcFileStatus = (CosNFileStatus) this.getFileStatus(src);
+        } catch (FileNotFoundException e) {
+            LOG.error("The source path [{}] is not exist.", src);
+            throw e;
+        }
+
+        // Hadoop FileSystem Specification: if isDescendant(FS, src, dest) : raise IOException
+        Path dstParentPath = dst.getParent();
+        while (null != dstParentPath && !src.equals(dstParentPath)) {
+            dstParentPath = dstParentPath.getParent();
+        }
+        if (null != dstParentPath) {
+            LOG.error("It is not allowed to rename a parent directory:{} to its subdirectory:{}.", src, dst);
+            PathIOException pathIOException = new PathIOException(src.toString(),
+                    "It is not allowed to rename a parent directory to its subdirectory");
+            pathIOException.setOperation("rename");
+            pathIOException.setTargetPath(dst.toString());
+            throw pathIOException;
+        }
+
+        // Hadoop FileSystem Specification: isRoot(FS, dest) or exists(FS, parent(dest))
+        CosNFileStatus dstFileStatus = null;
+        try {
+            dstFileStatus = (CosNFileStatus) this.getFileStatus(dst);
+            if (dstFileStatus.isFile()) {
+                throw new FileAlreadyExistsException(dst.toString());
+            } else {
+                // The destination path is an existing directory,
+                dst = new Path(dst, src.getName());
+                try {
+                    dstFileStatus = (CosNFileStatus) this.getFileStatus(dst, FileStatusProbeEnum.LIST_ONLY);
+                    if (dstFileStatus != null) {
+                        throw new FileAlreadyExistsException(dst.toString());
+                    }
+                } catch (FileNotFoundException ignore) {
+                    // OK, expects Not Found.
+                }
+            }
+        } catch (FileNotFoundException e) {
+            // Hadoop FileSystem Specification: if isFile(FS, parent(dest)) : raise IOException
+            Path tempDstParentPath = dst.getParent();
+            FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
+            if (!dstParentStatus.isDirectory()) {
+                PathIOException pathIOException = new PathIOException(tempDstParentPath.toString(),
+                        String.format("Can not rename into a file [%s]", tempDstParentPath));
+                pathIOException.setTargetPath(dst.toString());
+                throw pathIOException;
+            }
+        }
 
         // the postconditions for the rename operation.
         // reference: https://hadoop.apache.org/docs/r3.3.0/hadoop-project-dist/hadoop-common/filesystem/filesystem.html#rename
         if (src.equals(dst)) {
-            if (renameFileStatusPair.getFirst() != null) {
-                if (renameFileStatusPair.getFirst().isDirectory()) {
-                    //Renaming a directory onto itself is no-op; return value is not specified.
-                    //In POSIX the result is False; in HDFS the result is True.
-                    return true;
-                }
-                if (renameFileStatusPair.getFirst().isFile()) {
-                    // Renaming a file to itself is a no-op; the result is True.
-                    return true;
-                }
+            if (srcFileStatus.isDirectory()) {
+                //Renaming a directory onto itself is no-op; return value is not specified.
+                //In POSIX the result is False; in HDFS the result is True.
+                return true;
+            }
+            if (srcFileStatus.isFile()) {
+                // Renaming a file to itself is a no-op; the result is True.
+                return true;
+            }
+            if (srcFileStatus.isSymlink()) {
                 // For symlink types, the Hadoop file system specification does not provide clear instructions,
                 // I tested the symlink in the POSIX file system, and the same behavior is also true.
                 return true;
@@ -1052,79 +1101,11 @@ public class CosNFileSystem extends FileSystem {
 
         if (!isPosixBucket) {
             return internalCopyAndDelete(
-                    src, renameFileStatusPair.getFirst(),
-                    dst, renameFileStatusPair.getSecond());
+                    src, srcFileStatus,
+                    dst, dstFileStatus);
         } else {
             return internalRename(src, dst);
         }
-    }
-
-    private Pair<CosNFileStatus, CosNFileStatus> renameInitiate(Path srcPath, Path dstPath)
-            throws PathIOException, IOException {
-        // Preconditions
-        Preconditions.checkNotNull(srcPath);
-        Preconditions.checkNotNull(dstPath);
-        Preconditions.checkArgument(srcPath.isAbsolute());
-        Preconditions.checkArgument(dstPath.isAbsolute());
-
-        Pair<CosNFileStatus, CosNFileStatus> renameFileStatusPair = new Pair<>();
-
-        // Hadoop FileSystem Specification: if not exists(FS, src) : raise FileNotFoundException
-        CosNFileStatus srcFileStatus = null;
-        try {
-            srcFileStatus = (CosNFileStatus) this.getFileStatus(srcPath);
-        } catch (FileNotFoundException e) {
-            LOG.error("The source path [{}] is not exist.", srcPath);
-            throw e;
-        }
-        renameFileStatusPair.setFirst(srcFileStatus);
-
-        // Hadoop FileSystem Specification: if isDescendant(FS, src, dest) : raise IOException
-        Path dstParentPath = dstPath.getParent();
-        while (null != dstParentPath && !srcPath.equals(dstParentPath)) {
-            dstParentPath = dstParentPath.getParent();
-        }
-        if (null != dstParentPath) {
-            LOG.error("It is not allowed to rename a parent directory:{} to its subdirectory:{}.", srcPath, dstPath);
-            PathIOException pathIOException = new PathIOException(srcPath.toString(),
-                    "It is not allowed to rename a parent directory to its subdirectory");
-            pathIOException.setOperation("rename");
-            pathIOException.setTargetPath(dstPath.toString());
-            throw pathIOException;
-        }
-
-        // Hadoop FileSystem Specification: isRoot(FS, dest) or exists(FS, parent(dest))
-        CosNFileStatus dstFileStatus = null;
-        try {
-            dstFileStatus = (CosNFileStatus) this.getFileStatus(dstPath);
-            if (dstFileStatus.isFile()) {
-                throw new FileAlreadyExistsException(dstPath.toString());
-            } else {
-                // The destination path is an existing directory,
-                Path tempDstPath = new Path(dstPath, srcPath.getName());
-                try {
-                    FileStatus fileStatus = this.getFileStatus(tempDstPath, FileStatusProbeEnum.LIST_ONLY);
-                    if (fileStatus != null) {
-                        throw new FileAlreadyExistsException(dstPath.toString());
-                    }
-                } catch (FileNotFoundException ignore) {
-                    // OK, expects Not Found.
-                }
-            }
-            renameFileStatusPair.setSecond(dstFileStatus);
-        } catch (FileNotFoundException e) {
-            // Hadoop FileSystem Specification: if isFile(FS, parent(dest)) : raise IOException
-            Path tempDstParentPath = dstPath.getParent();
-            FileStatus dstParentStatus = this.getFileStatus(tempDstParentPath);
-            if (!dstParentStatus.isDirectory()) {
-                PathIOException pathIOException = new PathIOException(tempDstParentPath.toString(),
-                        String.format("Can not rename into a file [%s]", tempDstParentPath));
-                pathIOException.setTargetPath(dstPath.toString());
-                throw pathIOException;
-            }
-        }
-
-        return renameFileStatusPair;
     }
 
     private boolean internalCopyAndDelete(Path srcPath, CosNFileStatus srcFileStatus,

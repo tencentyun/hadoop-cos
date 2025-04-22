@@ -32,7 +32,13 @@ public class ITestCosNFileSystemRename extends CosNFileSystemTestBase {
 		createBaseFileWithData(10, src);
 		Path dest = new Path(testPath, "dest");
 		createBaseFileWithData(10, dest);
-		assertRenameOutcome(fs, src, dest, false);
+		boolean exceptionThrown = false;
+		try {
+			assertRenameOutcome(fs, src, dest, false);
+		} catch (FileAlreadyExistsException e) {
+			exceptionThrown = true;
+		}
+		assertTrue("Expected FileAlreadyExistsException to be thrown", exceptionThrown);
 	}
 
 	@Test
