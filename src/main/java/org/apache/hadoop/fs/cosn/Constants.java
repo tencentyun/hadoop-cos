@@ -10,6 +10,9 @@ public final class Constants {
     // Suffix for local cache file name
     public static final String BLOCK_TMP_FILE_SUFFIX = "_local_block_cache";
 
+    public static final String PAGE_TEMP_FILE_PREFIX = "cos_";
+    public static final String PAGE_TEMP_FILE_SUFFIX = "_local_page_cache";
+
     // Crc32c server response header key
     public static final String CRC32C_RESP_HEADER = "x-cos-hash-crc32c";
     // Crc32c agent request header key

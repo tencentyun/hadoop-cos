@@ -24,46 +24,10 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
 
     public CosNMappedBufferFactory(String[] tmpDirList, boolean deleteOnExit) throws IOException {
         for (String tmpDir : tmpDirList) {
-            File createDir = CosNMappedBufferFactory.createDir(tmpDir);
+            File createDir = CosNUtils.createTempDir(tmpDir);
             tmpDirs.add(createDir);
         }
         this.deleteOnExit = deleteOnExit;
-    }
-
-    private static File createDir(String tmpDir) throws IOException {
-        File file = new File(tmpDir);
-        if (!file.exists()) {
-            LOG.debug("Buffer dir: [{}] does not exist. Create it first.",
-                    file);
-            if (file.mkdirs()) {
-                if (!file.setWritable(true, false) || !file.setReadable(true, false)
-                        || !file.setExecutable(true, false)) {
-                    LOG.warn("Set the buffer dir: [{}]'s permission [writable,"
-                            + "readable, executable] failed.", file);
-                }
-                LOG.debug("Buffer dir: [{}] is created successfully.",
-                        file.getAbsolutePath());
-            } else {
-                // Once again, check if it has been created successfully.
-                // Prevent problems created by multiple processes at the same
-                // time.
-                if (!file.exists()) {
-                    throw new IOException("buffer dir:" + file.getAbsolutePath()
-                            + " is created unsuccessfully");
-                }
-            }
-        } else {
-            LOG.debug("buffer dir: {} already exists.",
-                    file.getAbsolutePath());
-            // Check whether you have read and write permissions for the directory during initialization
-            if (!CosNUtils.checkDirectoryRWPermissions(tmpDir)) {
-                String exceptionMsg = String.format("The tmp dir does not have read or write permissions." +
-                        "dir: %s", tmpDir);
-                throw new IllegalArgumentException(exceptionMsg);
-            }
-        }
-
-        return file;
     }
 
     @Override
@@ -89,7 +53,7 @@ public class CosNMappedBufferFactory implements CosNBufferFactory {
             LOG.warn("The tmp dir does not exist.");
             // try to create the tmp directory.
             try {
-                CosNMappedBufferFactory.createDir(tmpDir.getAbsolutePath());
+                CosNUtils.createTempDir(tmpDir.getAbsolutePath());
             } catch (IOException e) {
                 LOG.error("Try to create the tmp dir [{}] failed.", tmpDir.getAbsolutePath(), e);
                 return null;

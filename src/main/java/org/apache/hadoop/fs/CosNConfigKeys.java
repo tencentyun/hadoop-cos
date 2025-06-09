@@ -7,6 +7,7 @@ import org.apache.hadoop.fs.cosn.Unit;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Paths;
 import java.util.Properties;
 
 /**
@@ -162,7 +163,7 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
     public static final long DEFAULT_THREAD_KEEP_ALIVE_TIME = 60L;
 
     public static final String READ_AHEAD_BLOCK_SIZE_KEY = "fs.cosn.read.ahead.block.size";
-    public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = 1 * Unit.MB;
+    public static final long DEFAULT_READ_AHEAD_BLOCK_SIZE = Unit.MB;
     public static final String READ_AHEAD_QUEUE_SIZE = "fs.cosn.read.ahead.queue.size";
     public static final int DEFAULT_READ_AHEAD_QUEUE_SIZE = 6;
     // used to control getFileStatus list to judge dir whether exist.
@@ -283,6 +284,17 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_READ_BUFFER_POOL_CAPACITY = "fs.cosn.read.buffer.pool.capacity";
     public static final long DEFAULT_READ_BUFFER_POOL_CAPACITY = -1;
+
+    // An experimental feature: Page Cache. By default, it is disabled, and the max size is 1GB.
+    public static final String COSN_READ_PAGE_CACHE_ENABLED = "fs.cosn.read.page.cache.enabled";
+    public static final String COSN_READ_PAGE_CACHE_DIR = "fs.cosn.read.page.cache.dir";
+    public static final String DEFAULT_READ_PAGE_CACHE_DIR = Paths.get(DEFAULT_TMP_DIR, "page_cache").toString();
+    public static final String COSN_READ_PAGE_CACHE_RANGE_CACHE_IMPL = "fs.cosn.read.page.cache.range.cache.impl";
+    public static final String DEFAULT_READ_PAGE_CACHE_RANGE_CACHE_IMPL = "org.apache.hadoop.fs.cosn.cache.LRURangeCache";
+    public static final String COSN_READ_PAGE_CACHE_FILE_NUM = "fs.cosn.read.page.cache.file.num";
+    public static final int DEFAULT_READ_PAGE_CACHE_FILE_NUM = 10;
+    public static final String COSN_READ_FRAGMENT_CACHE_EACH_FILE_FRAGMENT_NUM = "fs.cosn.read.page.cache.number";
+    public static final int DEFAULT_READ_FRAGMENT_CACHE_EACH_FILE_FRAGMENT_NUM = 200;
 
     public static final String COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = "fs.cosn.read.buffer.allocate.timeout.seconds";
     public static final long DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = 5;
