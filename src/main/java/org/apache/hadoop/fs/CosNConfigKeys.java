@@ -7,6 +7,7 @@ import org.apache.hadoop.fs.cosn.Unit;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Paths;
 import java.util.Properties;
 
 /**
@@ -283,6 +284,21 @@ public class CosNConfigKeys extends CommonConfigurationKeys {
 
     public static final String COSN_READ_BUFFER_POOL_CAPACITY = "fs.cosn.read.buffer.pool.capacity";
     public static final long DEFAULT_READ_BUFFER_POOL_CAPACITY = -1;
+
+    // An experimental feature: Fragment Cache. By default, it is disabled, and the max size is 1GB.
+    public static final String COSN_READ_FRAGMENT_CACHE_ENABLED = "fs.cosn.read.fragment.cache.enabled";
+    public static final String COSN_READ_FRAGMENT_CACHE_DIR = "fs.cosn.read.fragment.cache.dir";
+    public static final String DEFAULT_READ_FRAGMENT_CACHE_DIR = Paths.get(DEFAULT_TMP_DIR, "fragment_cache").toString();
+    public static final String COSN_READ_FRAGMENT_CACHE_IMPL = "fs.cosn.read.fragment.cache.impl";
+    public static final String DEFAULT_READ_FRAGMENT_CACHE_IMPL = "org.apache.hadoop.fs.cosn.cache.LocalFragmentCache";
+    public static final String COSN_FRAGMENT_CACHE_THREAD_POOL = "fs.cosn.fragment.cache.thread.pool";
+    public static final int DEFAULT_FRAGMENT_CACHE_THREAD_POOL = 1;
+    public static final String COSN_READ_FRAGMENT_CACHE_THREAD_POOL_MAX_SIZE = "fs.cosn.read.fragment.cache.thread.pool.max.size";
+    public static final int DEFAULT_FRAGMENT_CACHE_THREAD_POOL_MAX_SIZE = 10;
+    public static final String COSN_READ_FRAGMENT_CACHE_FILE_NUM = "fs.cosn.read.fragment.cache.file.num";
+    public static final int DEFAULT_READ_FRAGMENT_CACHE_FILE_NUM = 10;
+    public static final String COSN_READ_FRAGMENT_CACHE_EACH_FILE_FRAGMENT_NUM = "fs.cosn.read.fragment.cache.each.file.fragment.num";
+    public static final int DEFAULT_READ_FRAGMENT_CACHE_EACH_FILE_FRAGMENT_NUM = 100;
 
     public static final String COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = "fs.cosn.read.buffer.allocate.timeout.seconds";
     public static final long DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS = 5;

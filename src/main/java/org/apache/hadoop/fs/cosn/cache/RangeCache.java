@@ -1,0 +1,112 @@
+package org.apache.hadoop.fs.cosn.cache;
+
+import java.io.Serializable;
+import java.util.Map;
+import java.util.Objects;
+
+public interface RangeCache<K extends Comparable<K>, V> {
+    final class Entry<K> implements Serializable {
+        private static final long serialVersionUID = 5916455377642165613L;
+
+        public enum RangeType {
+            CLOSED_OPEN, OPEN_CLOSED, OPEN_OPEN, CLOSED_CLOSED
+        }
+
+        public static <K extends Comparable<K>> Entry<K> closed(K lowerEndpoint, K upperEndpoint) {
+            return new Entry<>(lowerEndpoint, upperEndpoint, RangeType.CLOSED_CLOSED);
+        }
+
+        public static <K extends Comparable<K>> Entry<K> closedOpen(K lowerEndpoint, K upperEndpoint) {
+            return new Entry<>(lowerEndpoint, upperEndpoint, RangeType.CLOSED_OPEN);
+        }
+
+        public static <K extends Comparable<K>> Entry<K> openClosed(K lowerEndpoint, K upperEndpoint) {
+            return new Entry<>(lowerEndpoint, upperEndpoint, RangeType.OPEN_CLOSED);
+        }
+
+        public static <K extends Comparable<K>> Entry<K> open(K lowerEndpoint, K upperEndpoint) {
+            return new Entry<>(lowerEndpoint, upperEndpoint, RangeType.OPEN_OPEN);
+        }
+
+        private final K lowerEndpoint;
+        private final K upperEndpoint;
+        private final RangeType rangeType;
+
+        private Entry(K lowerEndpoint, K upperEndpoint, RangeType rangeType) {
+            this.lowerEndpoint = lowerEndpoint;
+            this.upperEndpoint = upperEndpoint;
+            this.rangeType = rangeType;
+        }
+
+        public K getLowerEndpoint() {
+            return lowerEndpoint;
+        }
+
+        public K getUpperEndpoint() {
+            return upperEndpoint;
+        }
+
+        public RangeType getRangeType() {
+            return rangeType;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof Entry)) return false;
+            Entry<?> entry = (Entry<?>) o;
+            return Objects.equals(lowerEndpoint, entry.lowerEndpoint) && Objects.equals(upperEndpoint, entry.upperEndpoint) && rangeType == entry.rangeType;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(lowerEndpoint, upperEndpoint, rangeType);
+        }
+    }
+
+    class RemovalNotification<RANGE_KEY, V> implements Map.Entry<RANGE_KEY, V>, Serializable {
+        private static final long serialVersionUID = 2457865473217506034L;
+
+        private final RANGE_KEY rangeKey;
+        private final V value;
+
+        RemovalNotification(RANGE_KEY rangeKey, V value) {
+            this.rangeKey = rangeKey;
+            this.value = value;
+        }
+
+        @Override
+        public RANGE_KEY getKey() {
+            return this.rangeKey;
+        }
+
+        @Override
+        public V getValue() {
+            return this.value;
+        }
+
+        @Override
+        public V setValue(V value) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    interface RemovalListener<RANGE_KEY, V> {
+        void onRemoval(RemovalNotification<RANGE_KEY, V> notification);
+    }
+
+    void put(Entry<K> entry, V value);
+
+    V get(K key);
+
+    boolean contains(K key);
+
+    void remove(K entry);
+
+    int size();
+
+    boolean isEmpty();
+
+    void clear();
+
+    boolean containsOverlaps(Entry<K> entry);
+}
