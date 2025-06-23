@@ -4,6 +4,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.MemoryAllocator;
 import org.apache.hadoop.fs.cosn.CosNOutOfMemoryException;
 import org.apache.hadoop.fs.cosn.ReadBufferHolder;
+import org.apache.hadoop.fs.cosn.cache.PageCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +22,8 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.annotation.Nullable;
+
+import static org.apache.hadoop.fs.CosNConfigKeys.DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS;
 
 
 public class CosNFSInputStream extends FSInputStream {
@@ -115,6 +118,13 @@ public class CosNFSInputStream extends FSInputStream {
         }
     }
 
+    private enum ReopenLocation {
+        PRE_READ_QUEUE,
+        PREVIOUS_BUFFER,
+        LOCAL_CACHE,
+        NONE
+    }
+
     private FileSystem.Statistics statistics;
     private final Configuration conf;
     private final NativeFileSystemStore store;
@@ -137,6 +147,10 @@ public class CosNFSInputStream extends FSInputStream {
     // 设置一个 Previous buffer 用于暂存淘汰出来的队头元素，用以优化小范围随机读的性能
     private ReadBuffer previousReadBuffer;
 
+    private final PageCache pageCache;
+
+    private ReopenLocation reopenLocation = ReopenLocation.NONE;
+
     /**
      * Input Stream
      *
@@ -153,7 +167,7 @@ public class CosNFSInputStream extends FSInputStream {
             FileSystem.Statistics statistics,
             String key,
             FileStatus fileStatus,
-            ExecutorService readAheadExecutorService) {
+            ExecutorService readAheadExecutorService, PageCache pageCache) {
         super();
         this.conf = conf;
         this.store = store;
@@ -177,6 +191,7 @@ public class CosNFSInputStream extends FSInputStream {
         this.readAheadExecutorService = readAheadExecutorService;
         this.readBufferQueue =
                 new ArrayDeque<>(this.maxReadPartNumber);
+        this.pageCache = pageCache;
         this.closed = new AtomicBoolean(false);
     }
 
@@ -185,6 +200,13 @@ public class CosNFSInputStream extends FSInputStream {
                 && readBuffer != previousReadBuffer
                 && readBuffer != currentReadBuffer
                 && (readBufferQueue.isEmpty() || readBufferQueue.peek() != readBuffer)) {
+            if (null != this.pageCache && readBuffer.getBuffer() != null) {
+                try {
+                    this.pageCache.put(new PageCache.Page(this.fileStatus.getPath().toString(), readBuffer.getStart(), readBuffer.getBuffer()));
+                } catch (IOException e) {
+                    LOG.warn("Failed to add page to the page cache", e);
+                }
+            }
             readBuffer.free();
         }
     }
@@ -219,7 +241,10 @@ public class CosNFSInputStream extends FSInputStream {
             // 发生了随机读，针对于小范围的回溯随机读，则直接看一下是否命中了前一次刚刚被淘汰出去的队头读缓存
             // 如果不是，那么随机读只可能是发生了超出前一块范围的回溯随机读，或者是在预读队列范围或者是超出预读队列范围。
             // 如果是在预读队列范围内，那么依赖在预读队列中查找直接定位到要读的块，如果是超出预读队列范围，那么队列会被排空，然后重新定位到要读的块和位置
-            if (null != this.previousReadBuffer && pos >= this.previousReadBuffer.getStart() && pos <= this.previousReadBuffer.getEnd()) {
+            if (this.reopenLocation == ReopenLocation.PREVIOUS_BUFFER
+                    && null != this.previousReadBuffer
+                    && pos >= this.previousReadBuffer.getStart()
+                    && pos <= this.previousReadBuffer.getEnd()) {
                 setCurrentReadBuffer(previousReadBuffer);
                 this.bufferStart = this.previousReadBuffer.getStart();
                 this.bufferEnd = this.previousReadBuffer.getEnd();
@@ -227,6 +252,31 @@ public class CosNFSInputStream extends FSInputStream {
                 this.partRemaining = (this.bufferEnd - this.bufferStart + 1) - (pos - this.bufferStart);
                 this.nextPos = !this.readBufferQueue.isEmpty() ? this.readBufferQueue.getFirst().getStart() : pos + this.preReadPartSize;
                 return;
+            }
+
+            // 查一下是否在 local cache 中
+            if (this.reopenLocation == ReopenLocation.LOCAL_CACHE
+                    && null != this.pageCache) {
+                PageCache.Page page = this.pageCache.get(this.fileStatus.getPath().toString(), pos);
+                if (page != null) {
+                    ReadBuffer readBuffer = new ReadBuffer(page.getOffsetInFile(), page.getOffsetInFile() + page.getContent().length - 1);
+                    try {
+                        readBuffer.allocate(conf.getLong(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS,
+                                DEFAULT_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS), TimeUnit.SECONDS);
+                        System.arraycopy(page.getContent(), 0, readBuffer.getBuffer(), 0, page.getContent().length);
+                        readBuffer.setStatus(ReadBuffer.SUCCESS);
+                        setCurrentReadBuffer(readBuffer);
+                        this.bufferStart = readBuffer.getStart();
+                        this.bufferEnd = readBuffer.getEnd();
+                        this.position = pos;
+                        this.partRemaining = (this.bufferEnd - this.bufferStart + 1) - (pos - this.bufferStart);
+                        this.nextPos = !this.readBufferQueue.isEmpty() ? this.readBufferQueue.getFirst().getStart() : pos + this.preReadPartSize;
+                        return;
+                    } catch (Exception e) {
+                        LOG.error("allocate read buffer failed.", e);
+                        // continue to reopen
+                    }
+                }
             }
         }
         // 在预读队列里面定位到要读的块
@@ -338,14 +388,22 @@ public class CosNFSInputStream extends FSInputStream {
             // 在上一次刚刚被淘汰的预读块中
             this.position = pos;
             this.partRemaining = -1;    // 触发 reopen
+            this.reopenLocation = ReopenLocation.PREVIOUS_BUFFER;
         } else if (!this.readBufferQueue.isEmpty() && pos >= this.readBufferQueue.getFirst().getStart() && pos <= this.readBufferQueue.getLast().getEnd()) {
             // 在预读队列中
             this.position = pos;
             this.partRemaining = -1;    // 触发 reopen
+            this.reopenLocation = ReopenLocation.PRE_READ_QUEUE;
+        } else if (null != this.pageCache && this.pageCache.contains(this.fileStatus.getPath().toString(), pos)) {
+            // 命中分片缓存
+            this.position = pos;
+            this.partRemaining = -1;    // 触发 reopen
+            this.reopenLocation = ReopenLocation.LOCAL_CACHE;
         } else {
-            // 既不在预读队列中，也不在上一次刚刚被淘汰的预读块中，那么直接定位到要读的块和位置
+            // 既不在预读队列中，也不在上一次刚刚被淘汰的预读块和本地缓存中，那么直接定位到要读的块和位置
             this.position = pos;
             this.partRemaining = -1;
+            this.reopenLocation = ReopenLocation.NONE;
         }
     }
 
@@ -441,6 +499,7 @@ public class CosNFSInputStream extends FSInputStream {
 
         return (int) remaining;
     }
+
     @Override
     public void close() throws IOException {
         if (this.closed.get()) {
@@ -453,6 +512,9 @@ public class CosNFSInputStream extends FSInputStream {
         }
         setCurrentReadBuffer(null);
         setPreviousReadBuffer(null);
+        if (null != this.pageCache) {
+            this.pageCache.remove(this.fileStatus.getPath().toString());
+        }
     }
 
     private void checkOpened() throws IOException {

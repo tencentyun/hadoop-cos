@@ -15,6 +15,8 @@ import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
 import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
 import org.apache.hadoop.fs.cosn.ReadBufferHolder;
 import org.apache.hadoop.fs.cosn.Unit;
+import org.apache.hadoop.fs.cosn.cache.LocalPageCache;
+import org.apache.hadoop.fs.cosn.cache.PageCache;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -75,6 +77,8 @@ public class CosNFileSystem extends FileSystem {
     private ExecutorService boundedDeleteThreadPool;
 
     private RangerCredentialsClient rangerCredentialsClient;
+
+    private PageCache localPageCache = null;
 
     static final String CSE_ALGORITHM_USER_METADATA = "client-side-encryption-cek-alg";
     private int symbolicLinkSizeThreshold;
@@ -149,9 +153,14 @@ public class CosNFileSystem extends FileSystem {
 
         BufferPool.getInstance().initialize(this.getConf());
         if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
-            CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
             // 只有在开启 POSIX 扩展语义支持的时候才会初始化
             LocalRandomAccessMappedBufferPool.getInstance().initialize(this.getConf());
+        }
+
+        if (this.getConf().getBoolean(CosNConfigKeys.COSN_READ_PAGE_CACHE_ENABLED, false)) {
+            this.localPageCache = LocalPageCache.getInstance();
+            this.localPageCache.initialize(this.getConf());
         }
 
         // initialize the thread pool
@@ -193,7 +202,7 @@ public class CosNFileSystem extends FileSystem {
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
-                            ThreadPoolExecutor executor) {
+                                                  ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
@@ -223,7 +232,7 @@ public class CosNFileSystem extends FileSystem {
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
-                            ThreadPoolExecutor executor) {
+                                                  ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
@@ -259,7 +268,7 @@ public class CosNFileSystem extends FileSystem {
                 new RejectedExecutionHandler() {
                     @Override
                     public void rejectedExecution(Runnable r,
-                            ThreadPoolExecutor executor) {
+                                                  ThreadPoolExecutor executor) {
                         if (!executor.isShutdown()) {
                             try {
                                 executor.getQueue().put(r);
@@ -274,15 +283,15 @@ public class CosNFileSystem extends FileSystem {
 
         this.symbolicLinkSizeThreshold = this.getConf().getInt(
                 CosNConfigKeys.COSN_SYMBOLIC_SIZE_THRESHOLD, CosNConfigKeys.DEFAULT_COSN_SYMBOLIC_SIZE_THRESHOLD);
-        this.directoryFirstEnabled =  this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_DIR_FIRST_ENABLED,
-            CosNConfigKeys.DEFAULT_FILESTATUS_DIR_FIRST_ENABLED);
+        this.directoryFirstEnabled = this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_DIR_FIRST_ENABLED,
+                CosNConfigKeys.DEFAULT_FILESTATUS_DIR_FIRST_ENABLED);
         ReadBufferHolder.initialize(this.getConf().getLong(CosNConfigKeys.COSN_READ_BUFFER_POOL_CAPACITY,
-            CosNConfigKeys.DEFAULT_READ_BUFFER_POOL_CAPACITY));
+                CosNConfigKeys.DEFAULT_READ_BUFFER_POOL_CAPACITY));
         if (this.getConf().getInt(CosNConfigKeys.COSN_READ_BUFFER_ALLOCATE_TIMEOUT_SECONDS, 5) < 0) {
             throw new IllegalArgumentException("fs.cosn.read.buffer.allocate.timeout.seconds cannot be negative.");
         }
         this.createOpCheckExistFile = this.getConf().getBoolean(CosNConfigKeys.COSN_CREATE_FILE_EXIST_OP_ENABLED,
-            CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
+                CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
     }
 
     @Override
@@ -302,7 +311,7 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public FSDataOutputStream append(Path f, int bufferSize,
-        Progressable progress) throws IOException {
+                                     Progressable progress) throws IOException {
         if (this.isPosixBucket) {
             throw new UnsupportedOperationException(
                     "The posix bucket does not support append operation through S3 gateway");
@@ -336,56 +345,56 @@ public class CosNFileSystem extends FileSystem {
         Path absolutePath = makeAbsolute(f);
         String cosKey = pathToKey(absolutePath);
         if (this.getConf().getBoolean(CosNConfigKeys.COSN_POSIX_EXTENSION_ENABLED,
-            CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
+                CosNConfigKeys.DEFAULT_COSN_POSIX_EXTENSION_ENABLED)) {
             // 这里使用类的动态加载和创建机制是为了在默认场景下（即不支持随机写的场景），可以不依赖 ofs-sdk-definition 这个 jar 包。
             Class<?> seekableOutputStreamClass;
             Object seekableOutputStream;
             try {
                 seekableOutputStreamClass = Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream");
                 Constructor<?> constructor = seekableOutputStreamClass.getConstructor(Configuration.class, NativeFileSystemStore.class,
-                    String.class, ExecutorService.class, ExecutorService.class);
+                        String.class, ExecutorService.class, ExecutorService.class);
                 seekableOutputStream = constructor.newInstance(this.getConf(), this.nativeStore, cosKey, this.boundedIOThreadPool, this.boundedCopyThreadPool);
             } catch (ClassNotFoundException e) {
                 throw new IOException("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream can not be found. " +
-                    "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);
+                        "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);
             } catch (InvocationTargetException e) {
                 throw new IOException(e);
             } catch (NoSuchMethodException e) {
                 throw new IOException("Failed to find the constructor of the " +
-                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
+                        "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
             } catch (InstantiationException e) {
                 throw new IOException("Failed to create the object of the " +
-                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
+                        "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
             } catch (IllegalAccessException e) {
                 throw new IOException("Failed to access the constructor of the " +
-                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
+                        "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream", e);
             }
 
             try {
                 Class<?> seekableFSDataOutputStreamClass = Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream");
                 Constructor<?> constructor = seekableFSDataOutputStreamClass.getConstructor(
-                    Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream"),
-                    FileSystem.Statistics.class);
+                        Class.forName("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream$SeekableOutputStream"),
+                        FileSystem.Statistics.class);
                 return (FSDataOutputStream) constructor.newInstance(seekableOutputStream, statistics);
             } catch (ClassNotFoundException e) {
                 throw new IOException("org.apache.hadoop.fs.CosNSeekableFSDataOutputStream can not be found. " +
-                    "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);
+                        "please make sure that ofs-sdk-definition.jar is placed in the classpath.", e);
             } catch (NoSuchMethodException e) {
                 throw new IOException("Failed to find the constructor of the " +
-                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
+                        "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
             } catch (InvocationTargetException e) {
                 throw new IOException(e);
             } catch (InstantiationException e) {
                 throw new IOException("Failed to create the object of the " +
-                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
+                        "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
             } catch (IllegalAccessException e) {
                 throw new IOException("Failed to access the constructor of the " +
-                    "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
+                        "org.apache.hadoop.fs.CosNSeekableFSDataOutputStream", e);
             }
         } else {
             return new FSDataOutputStream(new CosNExtendedFSDataOutputStream(
-                this.getConf(), this.nativeStore, cosKey, this.boundedCopyThreadPool, this.boundedCopyThreadPool,true),
-                statistics, fileStatus.getLen());
+                    this.getConf(), this.nativeStore, cosKey, this.boundedCopyThreadPool, this.boundedCopyThreadPool, true),
+                    statistics, fileStatus.getLen());
         }
     }
 
@@ -394,7 +403,7 @@ public class CosNFileSystem extends FileSystem {
         // 默认可以支持 truncate
         if (this.isPosixBucket) {
             throw new UnsupportedOperationException(
-                "The posix bucket does not support the truncate operation through S3 gateway.");
+                    "The posix bucket does not support the truncate operation through S3 gateway.");
         }
 
         // 如果配置中开启客户端加密，则不支持
@@ -476,19 +485,19 @@ public class CosNFileSystem extends FileSystem {
                     throw new FileAlreadyExistsException("Directory already exists: " + f);
                 }
             } catch (FileNotFoundException ignore) {
-            // NOTE: 这里之前认为可能会出现从 COS 的 SDK 或者 API 上传了一个 / 结尾的有内容对象
-            // 那么再在这个文件前缀下面成功创建新的对象而不报错的话，其实是不符合文件系统语义规范的。
-            // 同时，也是为了保证一个完整的目录结构，但是确实会带来元数据查询请求的明显放大。
-            // 不过这里，因为一般不会出现 / 结尾的内容对象，即使出现也不会覆盖丢失（因为这里相当于它的一个commonPrefix，原始对象还在COS里面）
-            // 所以决定去掉这个检查，来改善优化性能。
-            // validatePath(f)
+                // NOTE: 这里之前认为可能会出现从 COS 的 SDK 或者 API 上传了一个 / 结尾的有内容对象
+                // 那么再在这个文件前缀下面成功创建新的对象而不报错的话，其实是不符合文件系统语义规范的。
+                // 同时，也是为了保证一个完整的目录结构，但是确实会带来元数据查询请求的明显放大。
+                // 不过这里，因为一般不会出现 / 结尾的内容对象，即使出现也不会覆盖丢失（因为这里相当于它的一个commonPrefix，原始对象还在COS里面）
+                // 所以决定去掉这个检查，来改善优化性能。
+                // validatePath(f)
             }
         }
 
         Path absolutePath = makeAbsolute(f);
         String key = pathToKey(absolutePath);
         if (this.getConf().getBoolean(CosNConfigKeys.COSN_FLUSH_ENABLED,
-            CosNConfigKeys.DEFAULT_COSN_FLUSH_ENABLED)) {
+                CosNConfigKeys.DEFAULT_COSN_FLUSH_ENABLED)) {
             // Need to support the synchronous flush.
             return new FSDataOutputStream(
                     new CosNExtendedFSDataOutputStream(this.getConf(), nativeStore, key,
@@ -591,7 +600,7 @@ public class CosNFileSystem extends FileSystem {
             priorLastKey = listing.getPriorLastKey();
 
             if (this.operationCancellingStatusProviderThreadLocal.get() != null
-            && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
+                    && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
                 LOG.warn("The delete operation is cancelled. key: {}.", key);
                 throw new IOException("The delete operation is cancelled. key: " + key);
             }
@@ -712,7 +721,7 @@ public class CosNFileSystem extends FileSystem {
      * 否则返回文件。
      */
     private FileStatus getFileStatusHelper(FileMetadata meta, Path absolutePath, String key,
-        String headRequestId) throws IOException {
+                                           String headRequestId) throws IOException {
         if (directoryFirstEnabled && meta.getLength() == 0) {
             if (!key.endsWith(PATH_DELIMITER)) {
                 key += PATH_DELIMITER;
@@ -732,6 +741,7 @@ public class CosNFileSystem extends FileSystem {
 
     /**
      * 使用list接口查询目录
+     *
      * @return null 如果目录不存在
      */
     private FileStatus getFileStatusByList(String key, Path absolutePath, String headRequestId) throws IOException {
@@ -833,7 +843,7 @@ public class CosNFileSystem extends FileSystem {
             priorLastKey = listing.getPriorLastKey();
 
             if (this.operationCancellingStatusProviderThreadLocal.get() != null
-            && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
+                    && this.operationCancellingStatusProviderThreadLocal.get().isCancelled()) {
                 LOG.warn("The list operation is cancelled. key: {}.", key);
                 throw new IOException("The list operation is cancelled. key: " + key);
             }
@@ -1011,7 +1021,7 @@ public class CosNFileSystem extends FileSystem {
         String key = pathToKey(absolutePath);
         return new FSDataInputStream(new CosNFSBufferedFSInputStream(
                 new CosNFSInputStream(this.getConf(), nativeStore, statistics, key,
-                        fileStatus, this.boundedIOThreadPool),
+                        fileStatus, this.boundedIOThreadPool, this.localPageCache),
                 bufferSize));
     }
 
@@ -1461,22 +1471,22 @@ public class CosNFileSystem extends FileSystem {
         }
 
         try {
-          FileStatus parentStatus = this.getFileStatus(link.getParent());
-          if (!parentStatus.isDirectory()) {
-            throw new ParentNotDirectoryException(
-                String.format("The parent path of the symlink [%s] is not a directory.", link));
-          }
-        } catch (FileNotFoundException parentDirNotFoundException) {
-          if (createParent) {
-            LOG.debug("The parent directory of the symlink [{}] does not exist, " +
-                "creating it.", link.getParent());
-            if (!this.mkdirs(link.getParent())) {
-              throw new IOException(String.format(
-                  "Failed to create the parent directory of the symlink [%s].", link));
+            FileStatus parentStatus = this.getFileStatus(link.getParent());
+            if (!parentStatus.isDirectory()) {
+                throw new ParentNotDirectoryException(
+                        String.format("The parent path of the symlink [%s] is not a directory.", link));
             }
-          } else {
-            throw parentDirNotFoundException;
-          }
+        } catch (FileNotFoundException parentDirNotFoundException) {
+            if (createParent) {
+                LOG.debug("The parent directory of the symlink [{}] does not exist, " +
+                        "creating it.", link.getParent());
+                if (!this.mkdirs(link.getParent())) {
+                    throw new IOException(String.format(
+                            "Failed to create the parent directory of the symlink [%s].", link));
+                }
+            } else {
+                throw parentDirNotFoundException;
+            }
         }
 
         try {
@@ -1529,9 +1539,9 @@ public class CosNFileSystem extends FileSystem {
 
     @Override
     public boolean supportsSymlinks() {
-      return this.getConf().getBoolean(
-          CosNConfigKeys.COSN_SUPPORT_SYMLINK_ENABLED,
-          CosNConfigKeys.DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED);
+        return this.getConf().getBoolean(
+                CosNConfigKeys.COSN_SUPPORT_SYMLINK_ENABLED,
+                CosNConfigKeys.DEFAULT_COSN_SUPPORT_SYMLINK_ENABLED);
     }
 
     /**
@@ -1599,6 +1609,9 @@ public class CosNFileSystem extends FileSystem {
                 LOG.error("boundedIOThreadPool shutdown interrupted.", e);
             }
             BufferPool.getInstance().close();
+            if (null != this.localPageCache) {
+                this.localPageCache.close();
+            }
             super.close();
         } finally {
             // copy 和 delete 因为涉及到元数据操作，因此最后再释放

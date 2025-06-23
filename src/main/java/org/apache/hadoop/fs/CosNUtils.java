@@ -331,6 +331,46 @@ public final class CosNUtils {
         }
     }
 
+    /**
+     * Create a temporary directory for buffer files.
+     *
+     * @param tmpDir
+     * @return
+     * @throws IOException
+     */
+    public static File createTempDir(String tmpDir) throws IOException {
+        File file = new File(tmpDir);
+        if (!file.exists()) {
+            LOG.debug("Temp directory: [{}] does not exist. Create it first.",
+                    file);
+            if (file.mkdirs()) {
+                if (!file.setWritable(true, false) || !file.setReadable(true, false)
+                        || !file.setExecutable(true, false)) {
+                    LOG.warn("Set the buffer dir: [{}]'s permission [writable,"
+                            + "readable, executable] failed.", file);
+                }
+                LOG.debug("Temp directory: [{}] is created successfully.",
+                        file.getAbsolutePath());
+            } else {
+                // If the directory cannot be created, throw an IOException.
+                // Prevent problems created by multiple processes at the same
+                // time.
+                if (!file.exists()) {
+                    throw new IOException("Temp directory:" + file.getAbsolutePath() + " is created unsuccessfully");
+                }
+            }
+        } else {
+            LOG.debug("Temp directory: {} already exists.", file.getAbsolutePath());
+            // Check if the tmp dir has read and write permissions.
+            if (!CosNUtils.checkDirectoryRWPermissions(tmpDir)) {
+                String exceptionMsg = String.format("The tmp dir does not have read or write permissions." + "dir: %s", tmpDir);
+                throw new IllegalArgumentException(exceptionMsg);
+            }
+        }
+
+        return file;
+    }
+
     public static boolean checkDirectoryRWPermissions(String directoryPath) {
         java.nio.file.Path path = Paths.get(directoryPath);
 
@@ -346,5 +386,28 @@ public final class CosNUtils {
         boolean isWritable = java.nio.file.Files.isWritable(path);
 
         return isReadable && isWritable;
+    }
+
+    /**
+     * Clear the temporary directory.
+     * This method will delete all files and directories under the specified temporary directory.
+     *
+     * @param tmpDir
+     */
+    public static void clearTempDir(String tmpDir) {
+        File file = new File(tmpDir);
+        if (file.exists() && file.isDirectory()) {
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    if (f.isFile()) {
+                        f.delete();
+                    } else if (f.isDirectory()) {
+                        clearTempDir(f.getAbsolutePath());
+                        f.delete();
+                    }
+                }
+            }
+        }
     }
 }

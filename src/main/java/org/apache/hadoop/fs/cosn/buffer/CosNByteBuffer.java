@@ -44,6 +44,15 @@ public abstract class CosNByteBuffer implements Closeable {
         return this;
     }
 
+    public CosNByteBuffer putInt(int value) throws IOException {
+        if (this.byteBuffer.remaining() < Integer.BYTES) {
+            throw new IOException("There is no remaining in the buffer for an int.");
+        }
+        this.byteBuffer.putInt(value);
+        this.nextWritePosition = this.byteBuffer.position();
+        return this;
+    }
+
     public byte get() {
         return this.byteBuffer.get();
     }
@@ -51,6 +60,14 @@ public abstract class CosNByteBuffer implements Closeable {
     public CosNByteBuffer get(byte[] dst, int offset, int length) {
         this.byteBuffer.get(dst, offset, length);
         return this;
+    }
+
+    public int getInt() {
+        return this.byteBuffer.getInt();
+    }
+
+    public int getInt(int index) {
+        return this.byteBuffer.getInt(index);
     }
 
     public int capacity() {
