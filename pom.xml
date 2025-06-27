@@ -58,7 +58,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <hadoop.version>3.3.0</hadoop.version>
+        <hadoop.version>3.4.1</hadoop.version>
         <cos_api.version>5.6.244.4</cos_api.version>
         <junit.version>4.13.2</junit.version>
         <google.guava.version>24.1.1-jre</google.guava.version>
