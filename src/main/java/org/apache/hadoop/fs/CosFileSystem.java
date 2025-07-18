@@ -223,9 +223,19 @@ public class CosFileSystem extends FileSystem {
 
     @Override
     public FileStatus getFileStatus(Path f) throws IOException {
-        LOG.debug("Get file status: {}.", f);
+        return getFileStatus(f, false);
+    }
+
+    /**
+     * @param mustExist, 如果为true，代表默认LIST-1必然非空，用于优化默认getFileStatus性能。
+     */
+    public FileStatus getFileStatus(Path f, boolean mustExist) throws IOException {
+        LOG.debug("Get file status: {}, mustExist: {}.", f, mustExist);
         checkInitialized();
         // keep same not change ranger permission here
+        if (this.actualImplFS instanceof  CosNFileSystem) {
+            return ((CosNFileSystem) this.actualImplFS).getFileStatus(f, mustExist);
+        }
         return this.actualImplFS.getFileStatus(f);
     }
 

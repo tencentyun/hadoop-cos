@@ -636,9 +636,17 @@ public class CosNFileSystem extends FileSystem {
     }
 
     public FileStatus getFileStatus(Path f) throws IOException {
+        return getFileStatus(f, false);
+    }
+
+    public FileStatus getFileStatus(Path f, boolean mustExist) throws IOException {
         if (!this.getConf().getBoolean(CosNConfigKeys.COSN_FILESTATUS_LIST_OP_ENABLED,
                 CosNConfigKeys.DEFAULT_FILESTATUS_LIST_OP_ENABLED)) {
             return getFileStatus(f, FileStatusProbeEnum.FILE_DIRECTORY);
+        }
+        if (mustExist) {
+            // use DUMMY_LIST to optimize LIST
+            return getFileStatus(f, FileStatusProbeEnum.ALL_AND_DUMMY_LIST);
         }
         // 默认是所有情况都要执行一遍。
         return getFileStatus(f, FileStatusProbeEnum.ALL);
@@ -693,9 +701,14 @@ public class CosNFileSystem extends FileSystem {
             throw new FileNotFoundException("No such file or directory in posix bucket'" + absolutePath + "'");
         }
 
-        if (probes.contains(FileStatusProbeEnum.LIST)) {
+        if (probes.contains(FileStatusProbeEnum.LIST) || probes.contains(FileStatusProbeEnum.DUMMY_LIST)) {
             // 对于普通桶，可能存在一些以 key 为前缀的对象，这种情况下 key 也可以视为目录。
-            FileStatus res = getFileStatusByList(key, absolutePath, getObjectMetadataResultInfo.getRequestID());
+            FileStatus res;
+            if (probes.contains(FileStatusProbeEnum.DUMMY_LIST)) {
+                res = newDirectory(absolutePath);
+            } else {
+                res = getFileStatusByList(key, absolutePath, getObjectMetadataResultInfo.getRequestID());
+            }
             if (res != null) {
                 if (this.getConf().getBoolean(CosNConfigKeys.COSN_REPAIR_DIR_OBJECT_ENABLED,
                         CosNConfigKeys.DEFAULT_REPAIR_DIR_OBJECT_ENABLED)) {
