@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -64,7 +65,7 @@ public class CosNFileReadTask implements Runnable {
                 try {
                     this.retrieveBlock();
                     needRetry = false;
-                } catch (SocketException socketException) {
+                } catch (SocketException | SocketTimeoutException socketException) {
                     // if we get stream success, but exceptions occurs when read cos input stream
                     String errMsg = String.format("retrieve block sdk socket failed, " +
                                     "retryIndex: [%d / %d], key: %s, range: [%d , %d], exception: %s",
