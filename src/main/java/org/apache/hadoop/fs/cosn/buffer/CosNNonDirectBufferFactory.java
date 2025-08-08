@@ -13,7 +13,7 @@ public class CosNNonDirectBufferFactory implements CosNBufferFactory {
     @Override
     public CosNByteBuffer create(int size) {
         ByteBuffer byteBuffer = ByteBuffer.allocate(size);
-        return new CosNNonDirectBuffer(byteBuffer);
+        return (new CosNNonDirectBuffer(byteBuffer)).clear();
     }
 
     @Override

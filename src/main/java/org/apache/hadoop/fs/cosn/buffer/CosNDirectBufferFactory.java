@@ -16,7 +16,7 @@ public class CosNDirectBufferFactory implements CosNBufferFactory {
     @Override
     public CosNByteBuffer create(int size) {
         ByteBuffer byteBuffer = this.directBufferPool.getBuffer(size);
-        return new CosNDirectBuffer(byteBuffer);
+        return (new CosNDirectBuffer(byteBuffer)).clear();
     }
 
     @Override

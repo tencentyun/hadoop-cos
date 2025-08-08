@@ -50,7 +50,7 @@ public class CosNRandomAccessMappedBufferFactory implements CosNBufferFactory {
         RandomAccessFile randomAccessFile = new RandomAccessFile(tmpFile, "rw");
         randomAccessFile.setLength(size);
         MappedByteBuffer buf = randomAccessFile.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, size);
-        return (null != buf) ? new CosNRandomAccessMappedBuffer(buf, randomAccessFile, tmpFile) : null;
+        return (null != buf) ? (CosNRandomAccessMappedBuffer) (new CosNRandomAccessMappedBuffer(buf, randomAccessFile, tmpFile)).clear() : null;
     }
 
     @Override
