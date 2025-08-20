@@ -121,7 +121,7 @@
         <dependency>
             <groupId>com.qcloud</groupId>
             <artifactId>chdfs_hadoop_plugin_network</artifactId>
-            <version>3.5</version>
+            <version>3.6</version>
             <scope>compile</scope>
         </dependency>
 
