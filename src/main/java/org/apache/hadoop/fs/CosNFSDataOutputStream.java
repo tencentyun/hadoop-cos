@@ -431,11 +431,15 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         byte[] digestHash = this.currentPartMessageDigest == null ? null : this.currentPartMessageDigest.digest();
         UploadPart uploadPart = new UploadPart(this.currentPartNumber, this.currentPartBuffer,
                 digestHash, isLastPart);
-        if(!clientEncryptionEnabled) {
+        if (!clientEncryptionEnabled) {
             this.multipartUpload.uploadPartAsync(uploadPart);
-        }
-        else {
+        } else {
             this.multipartUpload.uploadPartSync(uploadPart);
+        }
+        // 如果不是最后一块，上传完以后，就需要归还释放
+        if (!isLastPart) {
+            BufferPool.getInstance().returnBuffer(uploadPart.getCosNByteBuffer());
+            this.currentPartBuffer = null;
         }
     }
 
@@ -473,7 +477,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         }
 
         protected MultipartUpload(String cosKey, String uploadId) throws IOException {
-            this(cosKey, uploadId, null,null, 0, 0, 0, 0);
+            this(cosKey, uploadId, null, null, 0, 0, 0, 0);
         }
 
         protected MultipartUpload(String cosKey, String uploadId, Map<Integer, ListenableFuture<PartETag>> partETagFutures,
@@ -492,7 +496,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             }
 
             if (null == partETags) {
-                this.partETags =  new LinkedList<>();
+                this.partETags = new LinkedList<>();
             } else {
                 this.partETags = partETags;
             }
@@ -563,22 +567,16 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
 
                         @Override
                         public PartETag call() throws Exception {
-                            try {
-                                LOG.debug("Start to upload the part async: {}", uploadPart);
-                                PartETag partETag = (nativeStore).uploadPart(
-                                        new BufferInputStream(uploadPart.getCosNByteBuffer()),
-                                        this.localKey,
-                                        this.localUploadId,
-                                        uploadPart.getPartNumber(),
-                                        uploadPart.getPartSize(), uploadPart.getMd5Hash(), uploadPart.isLast());
-                                partsUploaded.incrementAndGet();
-                                bytesUploaded.addAndGet(uploadPart.getPartSize());
-                                return partETag;
-                            } finally {
-                                if (!uploadPart.isLast()) {
-                                    BufferPool.getInstance().returnBuffer(uploadPart.getCosNByteBuffer());
-                                }
-                            }
+                            LOG.debug("Start to upload the part async: {}", uploadPart);
+                            PartETag partETag = (nativeStore).uploadPart(
+                                    new BufferInputStream(uploadPart.getCosNByteBuffer()),
+                                    this.localKey,
+                                    this.localUploadId,
+                                    uploadPart.getPartNumber(),
+                                    uploadPart.getPartSize(), uploadPart.getMd5Hash(), uploadPart.isLast());
+                            partsUploaded.incrementAndGet();
+                            bytesUploaded.addAndGet(uploadPart.getPartSize());
+                            return partETag;
                         }
                     });
             this.partETagFutures.put(uploadPart.getPartNumber(), partETagListenableFuture);
@@ -602,16 +600,12 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 partsUploaded.incrementAndGet();
                 bytesUploaded.addAndGet(uploadPart.getPartSize());
                 partETags.add(partETag);
-            }catch (CosServiceException e) {
+            } catch (CosServiceException e) {
                 LOG.error("Upload part sync upload falied: ", e);
                 throw e;
             } catch (CosClientException e) {
                 LOG.error("Upload part sync upload falied: ", e);
                 throw e;
-            } finally {
-                if (!uploadPart.isLast()) {
-                    BufferPool.getInstance().returnBuffer(uploadPart.getCosNByteBuffer());
-                }
             }
         }
 
@@ -642,10 +636,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                         + "It has been completed or aborted.", this));
             }
             final List<PartETag> PartETagList;
-            if(!clientEncryptionEnabled) {
+            if (!clientEncryptionEnabled) {
                 PartETagList = this.waitForFinishPartUploads();
-            }
-            else {
+            } else {
                 PartETagList = this.partETags;
             }
             if (null == PartETagList) {
