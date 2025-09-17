@@ -223,6 +223,39 @@ public class CosNFSInputStream extends FSInputStream {
         tryFreeBuffer(readyFree);
     }
 
+    private void setCurrentBufferAfterReady(ReadBuffer readBuffer) throws IOException {
+        IOException innerException = null;
+        readBuffer.lock();
+        try {
+            readBuffer.await(ReadBuffer.INIT);
+            if (readBuffer.getStatus() == ReadBuffer.ERROR) {
+                innerException = readBuffer.getException();
+                setCurrentReadBuffer(null);
+                this.bufferStart = -1;
+                this.bufferEnd = -1;
+                if (readBuffer.getException().getCause() instanceof CosNOutOfMemoryException) {
+                    throw readBuffer.getException();
+                }
+                if (readBuffer.getException() instanceof AccessDeniedException) {
+                    throw readBuffer.getException();
+                }
+            } else {
+                setCurrentReadBuffer(readBuffer);
+                this.bufferStart = readBuffer.getStart();
+                this.bufferEnd = readBuffer.getEnd();
+            }
+        } catch (InterruptedException e) {
+            LOG.warn("interrupted exception occurs when wait a read buffer.");
+        } finally {
+            readBuffer.unLock();
+        }
+
+        if (null == this.currentReadBuffer) {
+            LOG.error(String.format("Null IO stream key:%s", this.key), innerException);
+            throw new IOException("Null IO stream.", innerException);
+        }
+    }
+
     private synchronized void reopen(long pos) throws IOException {
         if (pos < 0) {
             throw new EOFException(FSExceptionMessages.NEGATIVE_SEEK);
@@ -245,7 +278,7 @@ public class CosNFSInputStream extends FSInputStream {
                     && null != this.previousReadBuffer
                     && pos >= this.previousReadBuffer.getStart()
                     && pos <= this.previousReadBuffer.getEnd()) {
-                setCurrentReadBuffer(previousReadBuffer);
+                setCurrentBufferAfterReady(previousReadBuffer);
                 this.bufferStart = this.previousReadBuffer.getStart();
                 this.bufferEnd = this.previousReadBuffer.getEnd();
                 this.position = pos;
@@ -329,43 +362,15 @@ public class CosNFSInputStream extends FSInputStream {
         }
 
         ReadBuffer readBuffer = this.readBufferQueue.peek();
-        IOException innerException = null;
-        readBuffer.lock();
-        try {
-            readBuffer.await(ReadBuffer.INIT);
-            if (readBuffer.getStatus() == ReadBuffer.ERROR) {
-                innerException = readBuffer.getException();
-                setCurrentReadBuffer(null);
-                this.bufferStart = -1;
-                this.bufferEnd = -1;
-                if (readBuffer.getException().getCause() instanceof CosNOutOfMemoryException) {
-                    throw readBuffer.getException();
-                }
-                if (readBuffer.getException() instanceof AccessDeniedException) {
-                    throw readBuffer.getException();
-                }
-            } else {
-                setCurrentReadBuffer(readBuffer);
-                this.bufferStart = readBuffer.getStart();
-                this.bufferEnd = readBuffer.getEnd();
-            }
-        } catch (InterruptedException e) {
-            LOG.warn("interrupted exception occurs when wait a read buffer.");
-        } finally {
-            readBuffer.unLock();
-        }
-
-        if (null == this.currentReadBuffer) {
-            LOG.error(String.format("Null IO stream key:%s", this.key), innerException);
-            throw new IOException("Null IO stream.", innerException);
-        }
+	    assert readBuffer != null;
+	    setCurrentBufferAfterReady(readBuffer);
 
         this.position = pos;
         this.partRemaining = (this.bufferEnd - this.bufferStart + 1) - (pos - this.bufferStart);
     }
 
     @Override
-    public void seek(long pos) throws IOException {
+    public synchronized void seek(long pos) throws IOException {
         this.checkOpened();
 
         if (pos < 0) {
@@ -408,17 +413,17 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     @Override
-    public long getPos() throws IOException {
+    public synchronized long getPos() throws IOException {
         return this.position;
     }
 
     @Override
-    public boolean seekToNewSource(long targetPos) throws IOException {
+    public synchronized boolean seekToNewSource(long targetPos) throws IOException {
         return false;
     }
 
     @Override
-    public int read() throws IOException {
+    public synchronized int read() throws IOException {
         this.checkOpened();
 
         if (this.partRemaining <= 0 && this.position < this.fileStatus.getLen()) {
@@ -443,7 +448,7 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     @Override
-    public int read(byte[] b, int off, int len) throws IOException {
+    public synchronized int read(byte[] b, int off, int len) throws IOException {
         this.checkOpened();
 
         if (len == 0) {
@@ -489,7 +494,7 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     @Override
-    public int available() throws IOException {
+    public synchronized int available() throws IOException {
         this.checkOpened();
 
         long remaining = this.fileStatus.getLen() - this.position;
@@ -501,7 +506,7 @@ public class CosNFSInputStream extends FSInputStream {
     }
 
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         if (this.closed.get()) {
             return;
         }
