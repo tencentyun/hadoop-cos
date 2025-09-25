@@ -200,7 +200,7 @@ public class CosNFSInputStream extends FSInputStream {
                 && readBuffer != previousReadBuffer
                 && readBuffer != currentReadBuffer
                 && (readBufferQueue.isEmpty() || readBufferQueue.peek() != readBuffer)) {
-            if (null != this.pageCache && readBuffer.getBuffer() != null) {
+            if (null != this.pageCache && readBuffer.getBuffer() != null && readBuffer.getStatus() == ReadBuffer.SUCCESS) {
                 try {
                     this.pageCache.put(new PageCache.Page(this.fileStatus.getPath().toString(), readBuffer.getStart(), readBuffer.getBuffer()));
                 } catch (IOException e) {
