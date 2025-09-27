@@ -204,8 +204,8 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         // when close flush data to cos, each time data not upload,
         // at this time if we close stream, it is not dirty but also has data need to upload
         // so the dirty flag only useful when flush cos enabled.
-        if (!this.dirty && this.flushCOSEnabled) {
-            LOG.debug("The stream is up-to-date, no need to refresh.");
+        if ((!this.dirty && this.flushCOSEnabled) || this.committed) {
+            LOG.debug("The stream is up-to-date or committed, no need to refresh.");
             return;
         }
 
@@ -278,6 +278,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             nativeStore.storeFile(this.cosKey, currentPartBufferInputStream,
                     digestHash, this.currentPartBuffer.remaining());
         } else {
+            if (this.currentPartWriteBytes > 0) {
+                this.uploadCurrentPart(true);
+            }
             if (null != this.multipartUpload) {
                 this.multipartUpload.complete();
                 //if client encryption is enabled, remove the suffix of key
