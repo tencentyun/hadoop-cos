@@ -177,6 +177,7 @@ public class ITestCosNFileSystemAppend extends CosNFileSystemTestBase {
 				byte[] appendDataBuffer = getTestData(appendDataSize);
 				appendStream.write(appendDataBuffer);
 				System.arraycopy(appendDataBuffer, 0, testData, testDataIndex, appendDataSize);
+                appendStream.flush();
 				appendStream.close();
 				testDataIndex += appendDataSize;
 				appendCount++;
