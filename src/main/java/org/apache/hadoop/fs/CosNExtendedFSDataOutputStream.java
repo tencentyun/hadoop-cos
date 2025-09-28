@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
     private static final Logger LOG = LoggerFactory.getLogger(CosNExtendedFSDataOutputStream.class);
 
-    private final ListeningExecutorService copyExecutoService;
+    private final ListeningExecutorService copyExecutorService;
 
     public CosNExtendedFSDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
         String cosKey, ExecutorService ioExecutorService, ExecutorService copyExecutorService) throws IOException {
@@ -34,7 +34,7 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
     public CosNExtendedFSDataOutputStream(Configuration conf, NativeFileSystemStore nativeStore,
         String cosKey, ExecutorService ioExecutorService, ExecutorService copyExecutorService, boolean appendFlag) throws IOException {
         super(conf, nativeStore, cosKey, ioExecutorService);
-        this.copyExecutoService = MoreExecutors.listeningDecorator(copyExecutorService);
+        this.copyExecutorService = MoreExecutors.listeningDecorator(copyExecutorService);
         if (appendFlag) {
             this.resumeForWrite();
         }
@@ -145,7 +145,7 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
             partsSubmitted.incrementAndGet();
             bytesSubmitted.addAndGet(uploadPartCopy.getLastByte() - uploadPartCopy.getFirstByte() + 1);
             ListenableFuture<PartETag> partETagListenableFuture =
-                    CosNExtendedFSDataOutputStream.this.copyExecutoService.submit(new Callable<PartETag>() {
+                    CosNExtendedFSDataOutputStream.this.copyExecutorService.submit(new Callable<PartETag>() {
                 @Override
                 public PartETag call() throws Exception {
                     LOG.debug("Start to copy the part: {}.", uploadPartCopy);
