@@ -128,18 +128,23 @@ public class CosNFileReadTask implements Runnable {
         byte[] dataBuf = readBuffer.getBuffer();
         checkStreamClosed();
         Objects.requireNonNull(dataBuf);
-        InputStream inputStream;
-        inputStream = this.store.retrieveBlock(
-                    this.key, this.readBuffer.getStart(), this.readBuffer.getEnd());
-        IOUtils.readFully(
-            inputStream, dataBuf, 0,
-            dataBuf.length);
-        int readEof = inputStream.read();
-        if (readEof != -1) {
-            LOG.error("Expect to read the eof, but the return is not -1. key: {}.", this.key);
+        InputStream inputStream = null;
+        try {
+            inputStream = this.store.retrieveBlock(
+                        this.key, this.readBuffer.getStart(), this.readBuffer.getEnd());
+            IOUtils.readFully(
+                inputStream, dataBuf, 0,
+                dataBuf.length);
+            int readEof = inputStream.read();
+            if (readEof != -1) {
+                LOG.error("Expect to read the eof, but the return is not -1. key: {}.", this.key);
+            }
+            this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.SUCCESS);
+        } finally {
+            if (inputStream != null) {
+                inputStream.close();
+            }
         }
-        inputStream.close();
-        this.readBuffer.setStatus(CosNFSInputStream.ReadBuffer.SUCCESS);
     }
 
     private void checkStreamClosed() throws CancelledException {

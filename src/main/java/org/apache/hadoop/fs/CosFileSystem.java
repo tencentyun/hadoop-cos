@@ -7,6 +7,8 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
+import org.apache.hadoop.fs.permission.AclEntry;
+import org.apache.hadoop.fs.permission.AclStatus;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -482,6 +484,54 @@ public class CosFileSystem extends FileSystem {
         checkInitialized();
         checkPermission(p, RangerAccessType.WRITE);
         this.actualImplFS.setTimes(p, mtime, atime);
+    }
+
+    @Override
+    public void setAcl(Path path, List<AclEntry> aclSpec) throws IOException {
+        LOG.debug("set acl, path: {}, aclSpec: {}", path, aclSpec);
+        checkInitialized();
+        checkPermission(path, RangerAccessType.WRITE);
+        this.actualImplFS.setAcl(path, aclSpec);
+    }
+
+    @Override
+    public AclStatus getAclStatus(Path path) throws IOException {
+        LOG.debug("getAclStatus, path: {}", path);
+        checkInitialized();
+        checkPermission(path, RangerAccessType.READ);
+        return this.actualImplFS.getAclStatus(path);
+    }
+
+    @Override
+    public void modifyAclEntries(Path path, List<AclEntry> aclSpec) throws IOException {
+        LOG.debug("modifyAclEntries, path: {}, aclSpec: {}", path, aclSpec);
+        checkInitialized();
+        checkPermission(path, RangerAccessType.WRITE);
+        this.actualImplFS.modifyAclEntries(path, aclSpec);
+    }
+
+    @Override
+    public void removeAclEntries(Path path, List<AclEntry> aclSpec) throws IOException {
+        LOG.debug("removeAclEntries, path: {}, aclSpec: {}", path, aclSpec);
+        checkInitialized();
+        checkPermission(path, RangerAccessType.WRITE);
+        this.actualImplFS.removeAclEntries(path, aclSpec);
+    }
+
+    @Override
+    public void removeDefaultAcl(Path path) throws IOException {
+        LOG.debug("removeDefaultAcl, path: {}", path);
+        checkInitialized();
+        checkPermission(path, RangerAccessType.WRITE);
+        this.actualImplFS.removeDefaultAcl(path);
+    }
+
+    @Override
+    public void removeAcl(Path path) throws IOException {
+        LOG.debug("removeAcl, path: {}", path);
+        checkInitialized();
+        checkPermission(path, RangerAccessType.WRITE);
+        this.actualImplFS.removeAcl(path);
     }
 
     public NativeFileSystemStore getStore() {
