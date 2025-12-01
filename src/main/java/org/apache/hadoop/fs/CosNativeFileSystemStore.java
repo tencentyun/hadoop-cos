@@ -2045,7 +2045,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
                             // mpu might occur 503 access time out but already completed,
                             // if direct retry may occur 403 not found the upload id.
-                            if (request instanceof CompleteMultipartUploadRequest && statusCode == 503) {
+                            if (request instanceof CompleteMultipartUploadRequest && isServiceError(statusCode)) {
                                 String key = ((CompleteMultipartUploadRequest) request).getKey();
                                 FileMetadata fileMetadata = this.queryObjectMetadata(key);
                                 if (null != fileMetadata) {
@@ -2114,6 +2114,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
     private boolean hasErrorCode(int statusCode, String errCode) {
         return statusCode / 100 == 2 && errCode != null && !errCode.isEmpty();
+    }
+
+    private boolean isServiceError(int statusCode) {
+        return statusCode / 100 == 5;
     }
 
     public COSClient getCOSClient() {
