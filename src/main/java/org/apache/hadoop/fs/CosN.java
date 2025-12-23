@@ -16,4 +16,22 @@ public class CosN extends DelegateToFileSystem {
     public int getUriDefaultPort() {
         return -1;
     }
+
+    @Override
+    public String toString() {
+        final StringBuilder sb = new StringBuilder("CosN{");
+        sb.append("URI =").append(fsImpl.getUri());
+        sb.append("; fsImpl=").append(fsImpl);
+        sb.append('}');
+        return sb.toString();
+    }
+
+    /**
+     * Close the file system; the FileContext API doesn't have an explicit close.
+     */
+    @Override
+    protected void finalize() throws Throwable {
+        fsImpl.close();
+        super.finalize();
+    }
 }
