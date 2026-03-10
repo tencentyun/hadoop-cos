@@ -49,7 +49,7 @@ public class RangerCredentialsClient {
             return;
         }
 
-        AccessType accessType = null;
+        AccessType accessType;
         switch (rangerAccessType) {
             case LIST:
                 accessType = AccessType.LIST;

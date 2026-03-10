@@ -247,7 +247,7 @@ public class LocalPageCache implements PageCache {
         FileCacheEntry fileCacheEntry = this.fileCacheMap.computeIfAbsent(page.getFilePath(),
             new Function<String, FileCacheEntry>() {
             @Override
-            public @Nullable FileCacheEntry apply(@Nullable String key) {
+            public FileCacheEntry apply(@Nullable String key) {
                 try {
                     return new FileCacheEntry();
                 } catch (IOException e) {

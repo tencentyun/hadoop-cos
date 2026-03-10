@@ -36,7 +36,7 @@ public class OIDCRoleArnCredentialsProvider extends AbstractCOSCredentialProvide
 		if (!initialized) {
 			return null;
 		}
-		COSCredentials cosCredentials = null;
+		COSCredentials cosCredentials;
 		try {
 			Credential cred;
 			// TODO: 这里下游有个bug，provider.getCredentials()调用两次，第二次返回的是null

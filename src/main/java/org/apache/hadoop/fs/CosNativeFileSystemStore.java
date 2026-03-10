@@ -431,7 +431,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             LOG.info("client side encryption enabled");
             // 为防止请求头部被篡改导致的数据无法解密，强烈建议只使用 https 协议发起请求
             config.setHttpProtocol(HttpProtocol.https);
-            KeyPair asymKeyPair = null;
+            KeyPair asymKeyPair;
 
             try {
                 // 加载保存在文件中的秘钥, 如果不存在，请先使用buildAndSaveAsymKeyPair生成秘钥
@@ -525,8 +525,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     public HeadBucketResult headBucket(String bucketName) throws IOException {
         HeadBucketRequest headBucketRequest = new HeadBucketRequest(bucketName);
         try {
-            HeadBucketResult result = (HeadBucketResult) callCOSClientWithRetry(headBucketRequest);
-            return result;
+            return (HeadBucketResult) callCOSClientWithRetry(headBucketRequest);
         } catch (Exception e) {
             String errMsg = String.format("head bucket [%s] occurs an exception: %s.",
                     bucketName, e);
@@ -791,7 +790,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      * @throws IOException when fail to get the MultipartManager Upload ID.
      */
     public String getUploadId(String key) throws IOException {
-        if (null == key || key.length() == 0) {
+        if (null == key || key.isEmpty()) {
             return "";
         }
 
@@ -1452,22 +1451,18 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
 
         // 如果truncated为false, 则表明已经遍历完
+        CosNPartialListing ret;
         if (!objectListing.isTruncated()) {
-            CosNPartialListing ret = new CosNPartialListing(null, fileMetadata, commonPrefixMetaData);
-            if (info != null) {
-                info.setRequestID(objectListing.getRequestId());
-                info.setKeySameToPrefix(isKeySamePrefix);
-            }
-            return ret;
+            ret = new CosNPartialListing(null, fileMetadata, commonPrefixMetaData);
         } else {
-            CosNPartialListing ret = new CosNPartialListing(objectListing.getNextMarker(),
+            ret = new CosNPartialListing(objectListing.getNextMarker(),
                     fileMetadata, commonPrefixMetaData);
-            if (info != null) {
-                info.setRequestID(objectListing.getRequestId());
-                info.setKeySameToPrefix(isKeySamePrefix);
-            }
-            return ret;
         }
+        if (info != null) {
+            info.setRequestID(objectListing.getRequestId());
+            info.setKeySameToPrefix(isKeySamePrefix);
+        }
+        return ret;
     }
 
     @Override
@@ -1704,7 +1699,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     public CosNPartListing listParts(String key, String uploadId) throws IOException {
         LOG.debug("List parts key: {}, uploadId: {}", key, uploadId);
         ListPartsRequest listPartsRequest = new ListPartsRequest(bucketName, key, uploadId);
-        PartListing partListing = null;
+        PartListing partListing;
         List<PartSummary> partSummaries = new LinkedList<>();
         do {
            try {

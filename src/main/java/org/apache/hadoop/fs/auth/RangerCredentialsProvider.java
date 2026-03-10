@@ -96,7 +96,7 @@ public class RangerCredentialsProvider extends AbstractCOSCredentialProvider imp
                 if (!stsResp.isCheckAuthPass()) {
                     return null;
                 }
-                COSCredentials cosCredentials = null;
+                COSCredentials cosCredentials;
                 if (appId != null) {
                     cosCredentials = new BasicSessionCredentials(appId, stsResp.getTempAK(), stsResp.getTempSK(),
                             stsResp.getTempToken());

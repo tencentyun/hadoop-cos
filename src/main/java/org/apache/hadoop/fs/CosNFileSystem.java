@@ -862,7 +862,7 @@ public class CosNFileSystem extends FileSystem {
             }
         } while (priorLastKey != null && !Thread.currentThread().isInterrupted());
 
-        return status.toArray(new FileStatus[status.size()]);
+        return status.toArray(new FileStatus[0]);
     }
 
     private FileStatus newFile(FileMetadata meta, Path path) {
@@ -1049,7 +1049,7 @@ public class CosNFileSystem extends FileSystem {
         }
 
         // Hadoop FileSystem Specification: if not exists(FS, src) : raise FileNotFoundException
-        CosNFileStatus srcFileStatus = null;
+        CosNFileStatus srcFileStatus;
         try {
             srcFileStatus = (CosNFileStatus) this.getFileStatus(src);
         } catch (FileNotFoundException e) {
@@ -1150,7 +1150,7 @@ public class CosNFileSystem extends FileSystem {
         //Considering the renaming operation is a non-atomic operation,
         // it is not allowed to delete the data of the original path to
         // ensure data security if failed.
-        return result ? this.delete(srcPath, true) : false;
+        return result && this.delete(srcPath, true);
     }
 
     private boolean internalRename(Path srcPath, Path dstPath) throws IOException {
