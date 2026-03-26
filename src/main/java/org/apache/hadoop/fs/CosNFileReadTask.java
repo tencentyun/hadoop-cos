@@ -5,6 +5,8 @@ import org.apache.hadoop.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.qcloud.cos.thirdparty.org.apache.http.ConnectionClosedException;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.SocketException;
@@ -65,7 +67,7 @@ public class CosNFileReadTask implements Runnable {
                 try {
                     this.retrieveBlock();
                     needRetry = false;
-                } catch (SocketException | SocketTimeoutException socketException) {
+                } catch (SocketException | SocketTimeoutException | EOFException | ConnectionClosedException socketException) {
                     // if we get stream success, but exceptions occurs when read cos input stream
                     String errMsg = String.format("retrieve block sdk socket failed, " +
                                     "retryIndex: [%d / %d], key: %s, range: [%d , %d], exception: %s",
