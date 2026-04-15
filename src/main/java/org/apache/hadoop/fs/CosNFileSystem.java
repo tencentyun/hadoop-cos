@@ -39,6 +39,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
@@ -865,7 +866,7 @@ public class CosNFileSystem extends FileSystem {
         return status.toArray(new FileStatus[0]);
     }
 
-    private FileStatus newFile(FileMetadata meta, Path path) {
+    FileStatus newFile(FileMetadata meta, Path path) {
         return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
                 meta.getLastModified(), 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()),
@@ -873,19 +874,19 @@ public class CosNFileSystem extends FileSystem {
                 meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
     }
 
-    private FileStatus newSymlink(CosNSymlinkMetadata metadata, Path path) {
+    FileStatus newSymlink(CosNSymlinkMetadata metadata, Path path) {
         FileStatus symlinkStatus = newFile(metadata, path);
         Path targetPath = keyToPath(metadata.getTarget());
         symlinkStatus.setSymlink(makeAbsolute(targetPath).makeQualified(this.getUri(), this.getWorkingDirectory()));
         return symlinkStatus;
     }
 
-    private FileStatus newDirectory(Path path) {
+    FileStatus newDirectory(Path path) {
         return new CosNFileStatus(0, true, 1, 0, 0, 0, null, this.owner, this.group,
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()));
     }
 
-    private FileStatus newDirectory(FileMetadata meta, Path path) {
+    FileStatus newDirectory(FileMetadata meta, Path path) {
         if (meta == null) {
             return newDirectory(path);
         }
@@ -894,6 +895,53 @@ public class CosNFileSystem extends FileSystem {
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()),
                 meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
                 meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
+    }
+
+    public boolean isPosixBucket() {
+        return isPosixBucket;
+    }
+
+    public NativeFileSystemStore getNativeStore() {
+        return nativeStore;
+    }
+
+    public int getSymbolicLinkSizeThreshold() {
+        return symbolicLinkSizeThreshold;
+    }
+
+    public boolean isDirectoryFirstEnabled() {
+        return directoryFirstEnabled;
+    }
+
+    public OperationCancellingStatusProvider getOperationCancellingStatusProvider() {
+        return operationCancellingStatusProviderThreadLocal.get();
+    }
+
+    @Override
+    public RemoteIterator<FileStatus> listStatusIterator(Path f) throws IOException {
+        Path absolutePath = makeAbsolute(f);
+        String key = pathToKey(absolutePath);
+
+        if (!key.isEmpty()) {
+            FileStatus fileStatus = this.getFileStatus(f);
+            if (fileStatus.isFile() || fileStatus.isSymlink()) {
+                // 路径指向文件或软链接，返回仅包含自身的单元素迭代器
+                final FileStatus[] single = new FileStatus[]{fileStatus};
+                return new RemoteIterator<FileStatus>() {
+                    private int index = 0;
+                    @Override
+                    public boolean hasNext() { return index < single.length; }
+                    @Override
+                    public FileStatus next() {
+                        if (!hasNext()) throw new NoSuchElementException();
+                        return single[index++];
+                    }
+                };
+            }
+        }
+
+        // 路径指向目录，返回懒加载分页迭代器
+        return new CosNListingIterator(this, absolutePath);
     }
 
     /**

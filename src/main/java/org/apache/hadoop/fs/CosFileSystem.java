@@ -265,6 +265,31 @@ public class CosFileSystem extends FileSystem {
     }
 
     @Override
+    public RemoteIterator<FileStatus> listStatusIterator(Path f) throws FileNotFoundException, IOException {
+        LOG.debug("list status iterator: {}", f);
+        checkInitialized();
+        checkPermission(f, RangerAccessType.LIST);
+        if (this.isPosixImpl) {
+            FileStatus[] statuses = this.actualImplFS.listStatus(f);
+            return new RemoteIterator<FileStatus>() {
+                private int index = 0;
+                @Override
+                public boolean hasNext() {
+                    return index < statuses.length;
+                }
+                @Override
+                public FileStatus next() throws IOException {
+                    if (!hasNext()) {
+                        throw new java.util.NoSuchElementException();
+                    }
+                    return statuses[index++];
+                }
+            };
+        }
+        return this.actualImplFS.listStatusIterator(f);
+    }
+
+    @Override
     public boolean mkdirs(Path f, FsPermission permission)
             throws IOException {
         LOG.debug("mkdirs path: {}.", f);
