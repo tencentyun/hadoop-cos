@@ -42,3 +42,6 @@ hs_err_pid*
 dep
 
 .codebuddy
+CODEBUDDY.md
+.claude
+CLAUDE.md
