@@ -916,21 +916,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 userMetadata = new HashMap<>();
                 for (Map.Entry<String, String> userMetadataEntry : objectMetadata.getUserMetadata().entrySet()) {
                     if (userMetadataEntry.getKey().startsWith(ensureValidAttributeName(XATTR_PREFIX))) {
-                        String xAttrJsonStr = new String(Base64.decode(userMetadataEntry.getValue()),
-                                StandardCharsets.UTF_8);
-                        CosNXAttr cosNXAttr;
-                        try {
-                            cosNXAttr = Jackson.fromJsonString(xAttrJsonStr, CosNXAttr.class);
-                        } catch (CosClientException e) {
-                            LOG.warn("Parse the xAttr failed. name: {}, XAttJsonStr: {}.",
-                                    userMetadataEntry.getKey(), xAttrJsonStr);
-                            continue;               // Skip
-                        }
-
-                        if (null != cosNXAttr) {
-                            userMetadata.put(cosNXAttr.getName(),
-                                    cosNXAttr.getValue().getBytes(CosNFileSystem.METADATA_ENCODING));
-                        }
+                        // key 格式为 cosn-xattr-{name}，去掉前缀还原原始 name
+                        String xAttrName = userMetadataEntry.getKey()
+                                .substring(ensureValidAttributeName(XATTR_PREFIX).length());
+                        byte[] xAttrValue = Base64.decode(userMetadataEntry.getValue());
+                        userMetadata.put(xAttrName, xAttrValue);
                     }
                     //metadata of client side encryption
                     if(userMetadataEntry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX)
@@ -1112,7 +1102,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             Map<String, String> userMetadata = objectMetadata.getUserMetadata();
             if (deleted) {
                 if (null != userMetadata) {
-                    userMetadata.remove(ensureValidAttributeName(attribute));
+                    userMetadata.remove(ensureValidAttributeName(XATTR_PREFIX + attribute));
                 } else {
                     return;
                 }
@@ -1120,12 +1110,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 if (null == userMetadata) {
                     userMetadata = new HashMap<>();
                 }
-                CosNXAttr cosNXAttr = new CosNXAttr();
-                cosNXAttr.setName(attribute);
-                cosNXAttr.setValue(new String(value, CosNFileSystem.METADATA_ENCODING));
-                String xAttrJsonStr = Jackson.toJsonString(cosNXAttr);
                 userMetadata.put(ensureValidAttributeName(XATTR_PREFIX + attribute),
-                        Base64.encodeAsString(xAttrJsonStr.getBytes(StandardCharsets.UTF_8)));
+                        Base64.encodeAsString(value));
             }
             objectMetadata.setUserMetadata(userMetadata);
 
