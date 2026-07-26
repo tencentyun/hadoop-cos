@@ -94,7 +94,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     public static final Logger LOG =
             LoggerFactory.getLogger(CosNativeFileSystemStore.class);
 
-    private static final String XATTR_PREFIX = "cosn-xattr-";
+
     private static  final String CLIENT_SIDE_ENCRYPTION_PREFIX = "client-side-encryption";
     private static  final String COS_TAG_LEN_PREFIX = "x-cos-tag-len";
     private static  final String CSE_SINGLE_UPLOAD_FILE_SIZE = "client-side-encryption-unencrypted-content-length";
@@ -915,17 +915,14 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (objectMetadata.getUserMetadata() != null) {
                 userMetadata = new HashMap<>();
                 for (Map.Entry<String, String> userMetadataEntry : objectMetadata.getUserMetadata().entrySet()) {
-                    if (userMetadataEntry.getKey().startsWith(ensureValidAttributeName(XATTR_PREFIX))) {
-                        // key 格式为 cosn-xattr-{name}，去掉前缀还原原始 name
-                        String xAttrName = userMetadataEntry.getKey()
-                                .substring(ensureValidAttributeName(XATTR_PREFIX).length());
-                        byte[] xAttrValue = Base64.decode(userMetadataEntry.getValue());
-                        userMetadata.put(xAttrName, xAttrValue);
-                    }
                     //metadata of client side encryption
                     if(userMetadataEntry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX)
                             || userMetadataEntry.getKey().startsWith(COS_TAG_LEN_PREFIX)) {
                         userMetadata.put(userMetadataEntry.getKey(), userMetadataEntry.getValue().getBytes(CosNFileSystem.METADATA_ENCODING));
+                    } else {
+                        // 其余 user metadata 均为 xattr
+                        byte[] xAttrValue = Base64.decode(userMetadataEntry.getValue());
+                        userMetadata.put(userMetadataEntry.getKey(), xAttrValue);
                     }
                 }
             }
@@ -1102,7 +1099,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             Map<String, String> userMetadata = objectMetadata.getUserMetadata();
             if (deleted) {
                 if (null != userMetadata) {
-                    userMetadata.remove(ensureValidAttributeName(XATTR_PREFIX + attribute));
+                    userMetadata.remove(ensureValidAttributeName(attribute));
                 } else {
                     return;
                 }
@@ -1110,7 +1107,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 if (null == userMetadata) {
                     userMetadata = new HashMap<>();
                 }
-                userMetadata.put(ensureValidAttributeName(XATTR_PREFIX + attribute),
+                userMetadata.put(ensureValidAttributeName(attribute),
                         Base64.encodeAsString(value));
             }
             objectMetadata.setUserMetadata(userMetadata);
