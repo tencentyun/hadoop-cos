@@ -465,22 +465,16 @@ public class CosNFSInputStream extends FSInputStream {
                 reopen(position);
             }
 
-            int bytes = 0;
             byte[] buffer = currentReadBuffer.getBuffer();
             Objects.requireNonNull(buffer);
-            for (int i = buffer.length - (int) partRemaining;
-                 i < buffer.length; i++) {
-                b[off + bytesRead] = buffer[i];
-                bytes++;
-                bytesRead++;
-                if (off + bytesRead >= len) {
-                    break;
-                }
-            }
+            int bytes = Math.min((int) this.partRemaining, len - bytesRead);
+            int bufferOffset = buffer.length - (int) this.partRemaining;
+            System.arraycopy(buffer, bufferOffset, b, off + bytesRead, bytes);
 
             if (bytes > 0) {
                 this.position += bytes;
                 this.partRemaining -= bytes;
+                bytesRead += bytes;
             } else if (this.partRemaining != 0) {
                 throw new IOException("Failed to read from stream. Remaining:" +
                         " " + this.partRemaining);
