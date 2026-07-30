@@ -1495,6 +1495,23 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 srcFileMetadata = this.retrieveMetadata(srcKey);
             }
             ObjectMetadata objectMetadata = getClientSideEncryptionHeader(srcFileMetadata);
+            // 将源文件的所有 userAttributes 携带到目标文件，避免 xattr 在 copy 后丢失
+            if (srcFileMetadata.getUserAttributes() != null) {
+                Map<String, String> userMetadata = objectMetadata.getUserMetadata();
+                if (userMetadata == null) {
+                    userMetadata = new HashMap<>();
+                }
+                for (Map.Entry<String, byte[]> entry : srcFileMetadata.getUserAttributes().entrySet()) {
+                    // CSE 相关的 metadata 已由 getClientSideEncryptionHeader 处理，此处补充其余 xattr
+                    if (!entry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX)
+                            && !entry.getKey().startsWith(COS_TAG_LEN_PREFIX)) {
+                        userMetadata.put(entry.getKey(), Base64.encodeAsString(entry.getValue()));
+                    }
+                }
+                if (!userMetadata.isEmpty()) {
+                    objectMetadata.setUserMetadata(userMetadata);
+                }
+            }
             if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
@@ -1579,6 +1596,23 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         try {
             FileMetadata sourceFileMetadata = this.retrieveMetadata(srcKey);
             ObjectMetadata objectMetadata = getClientSideEncryptionHeader(sourceFileMetadata);
+            // 将源文件的所有 userAttributes 携带到目标文件，避免 xattr 在 rename 后丢失
+            if (sourceFileMetadata.getUserAttributes() != null) {
+                Map<String, String> userMetadata = objectMetadata.getUserMetadata();
+                if (userMetadata == null) {
+                    userMetadata = new HashMap<>();
+                }
+                for (Map.Entry<String, byte[]> entry : sourceFileMetadata.getUserAttributes().entrySet()) {
+                    // CSE 相关的 metadata 已由 getClientSideEncryptionHeader 处理，此处补充其余 xattr
+                    if (!entry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX)
+                            && !entry.getKey().startsWith(COS_TAG_LEN_PREFIX)) {
+                        userMetadata.put(entry.getKey(), Base64.encodeAsString(entry.getValue()));
+                    }
+                }
+                if (!userMetadata.isEmpty()) {
+                    objectMetadata.setUserMetadata(userMetadata);
+                }
+            }
             if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
