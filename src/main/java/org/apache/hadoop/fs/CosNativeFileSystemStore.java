@@ -1099,7 +1099,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             Map<String, String> userMetadata = objectMetadata.getUserMetadata();
             if (deleted) {
                 if (null != userMetadata) {
-                    userMetadata.remove(ensureValidAttributeName(attribute));
+                    userMetadata.remove(attribute);
                 } else {
                     return;
                 }
@@ -1107,7 +1107,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                 if (null == userMetadata) {
                     userMetadata = new HashMap<>();
                 }
-                userMetadata.put(ensureValidAttributeName(attribute),
+                userMetadata.put(attribute,
                         Base64.encodeAsString(value));
             }
             objectMetadata.setUserMetadata(userMetadata);
@@ -2118,10 +2118,6 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         } finally {
             Thread.currentThread().setContextClassLoader(originalClassLoader);
         }
-    }
-
-    private static String ensureValidAttributeName(String attributeName) {
-        return attributeName.replace('.', '-').toLowerCase();
     }
 
     private boolean hasErrorCode(int statusCode, String errCode) {
