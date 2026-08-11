@@ -195,6 +195,7 @@
                     <target>8</target>
                     <excludes>
                         <exclude>**/CosNFileSystemExt.java</exclude>
+                        <exclude>**/CosFileSystemExt.java</exclude>
                         <exclude>**/cosn/cache/LRURangeCache.java</exclude>
                     </excludes>
                 </configuration>

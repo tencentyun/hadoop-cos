@@ -57,7 +57,8 @@ public class CosFileSystem extends FileSystem {
     private volatile boolean initialized = false;
     private boolean isPosixUseOFSRanger;
     private boolean isPosixImpl = false;
-    private FileSystem actualImplFS = null;
+
+    protected FileSystem actualImplFS = null;
 
     private URI uri;
     private Path workingDir;
