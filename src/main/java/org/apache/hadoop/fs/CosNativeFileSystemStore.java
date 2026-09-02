@@ -70,6 +70,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
@@ -1134,6 +1135,72 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         "cos key: %s, attribute: %s, exception: %s.", key, attribute, e);
                 handleException(new Exception(errMsg), key);
             }
+        }
+    }
+
+    @Override
+    public void storeOwnerAttribute(String key, String owner, String group) throws IOException {
+        if (null == owner && null == group) {
+            LOG.debug("Both the owner and the group are null, nothing to do. cos key: {}.", key);
+            return;
+        }
+
+        LOG.debug("Store the owner and the group. cos key: {}, owner: {}, group: {}.", key, owner, group);
+
+        GetObjectMetadataRequest getObjectMetadataRequest = new GetObjectMetadataRequest(bucketName, key);
+        this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
+        ObjectMetadata objectMetadata = null;
+        try {
+            objectMetadata = (ObjectMetadata) callCOSClientWithRetry(getObjectMetadataRequest);
+        } catch (CosServiceException e) {
+            if (e.getStatusCode() != 404) {
+                String errorMessage = String.format("Retrieve the file metadata failed. " +
+                        "cos key: %s, exception: %s.", key, e);
+                handleException(new Exception(errorMessage), key);
+            }
+        }
+
+        if (null == objectMetadata) {
+            throw new FileNotFoundException(
+                    String.format("The cos key [%s] does not exist, can not store the owner or the group.", key));
+        }
+
+        Map<String, String> userMetadata = objectMetadata.getUserMetadata();
+        if (null == userMetadata) {
+            userMetadata = new HashMap<>();
+        }
+        // 与 xattr 通道保持一致，用户自定义元数据的值统一以 base64 编码存储。
+        if (null != owner) {
+            userMetadata.put(Constants.HADOOP_OWNER_USER_METADATA,
+                    Base64.encodeAsString(owner.getBytes(CosNFileSystem.METADATA_ENCODING)));
+        }
+        if (null != group) {
+            userMetadata.put(Constants.HADOOP_GROUP_USER_METADATA,
+                    Base64.encodeAsString(group.getBytes(CosNFileSystem.METADATA_ENCODING)));
+        }
+        objectMetadata.setUserMetadata(userMetadata);
+
+        // 构造原地copy请求来设置属主信息
+        if (crc32cEnabled) {
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
+        }
+
+        CopyObjectRequest copyObjectRequest = new CopyObjectRequest(bucketName, key, bucketName, key);
+        if (null != objectMetadata.getStorageClass()) {
+            copyObjectRequest.setStorageClass(objectMetadata.getStorageClass());
+        }
+        copyObjectRequest.setNewObjectMetadata(objectMetadata);
+        copyObjectRequest.setRedirectLocation("Replaced");
+        this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
+        copyObjectRequest.setSourceEndpointBuilder(
+                this.cosClient.getClientConfig().getEndpointBuilder());
+
+        try {
+            callCOSClientWithRetry(copyObjectRequest);
+        } catch (Exception e) {
+            String errMsg = String.format("Failed to modify the owner or the group. " +
+                    "cos key: %s, owner: %s, group: %s, exception: %s.", key, owner, group, e);
+            handleException(new Exception(errMsg), key);
         }
     }
 

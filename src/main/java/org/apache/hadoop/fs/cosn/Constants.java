@@ -61,6 +61,12 @@ public final class Constants {
     public static final String COSN_SSE_MODE_C = "SSE-C";
     public static final String COSN_SSE_MODE_KMS = "SSE-KMS";
 
+    // The user-defined metadata keys used to persist the owner and the group of a file or a directory.
+    // The COS SDK appends the "x-cos-meta-" prefix to these keys automatically.
+    // The values are encoded in base64, which keeps them consistent with the xattr metadata channel.
+    public static final String HADOOP_OWNER_USER_METADATA = "hadoop.owner";
+    public static final String HADOOP_GROUP_USER_METADATA = "hadoop.group";
+
     // Prefix for all cosn properties: {@value}.
     public static final String FS_COSN_PREFIX = "fs.cosn.";
     // Prefix for cosn bucket-specific properties: {@value}.

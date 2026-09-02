@@ -10,6 +10,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.BufferPool;
 import org.apache.hadoop.fs.cosn.CRC32CCheckSum;
 import org.apache.hadoop.fs.cosn.CRC64Checksum;
+import org.apache.hadoop.fs.cosn.Constants;
 import org.apache.hadoop.fs.cosn.FileStatusProbeEnum;
 import org.apache.hadoop.fs.cosn.LocalRandomAccessMappedBufferPool;
 import org.apache.hadoop.fs.cosn.OperationCancellingStatusProvider;
@@ -867,11 +868,15 @@ public class CosNFileSystem extends FileSystem {
     }
 
     FileStatus newFile(FileMetadata meta, Path path) {
+        // 优先返回对象上持久化的属主信息，没有设置过属主的对象回退到当前进程的用户 / 用户组。
+        Map<String, byte[]> userAttributes = meta.getUserAttributes();
         return new CosNFileStatus(meta.getLength(), false, 1, getDefaultBlockSize(),
-                meta.getLastModified(), 0, null, this.owner, this.group,
+                meta.getLastModified(), 0, null,
+                resolveOwnerAttribute(userAttributes, Constants.HADOOP_OWNER_USER_METADATA, this.owner),
+                resolveOwnerAttribute(userAttributes, Constants.HADOOP_GROUP_USER_METADATA, this.group),
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()),
                 meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
-                meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
+                meta.getVersionId(), meta.getStorageClass(), userAttributes);
     }
 
     FileStatus newSymlink(CosNSymlinkMetadata metadata, Path path) {
@@ -890,11 +895,35 @@ public class CosNFileSystem extends FileSystem {
         if (meta == null) {
             return newDirectory(path);
         }
+        // 与 newFile 保持一致，优先返回目录对象上持久化的属主信息。
+        Map<String, byte[]> userAttributes = meta.getUserAttributes();
         return new CosNFileStatus(0, true, 1, 0,
-                meta.getLastModified(), 0, null, this.owner, this.group,
+                meta.getLastModified(), 0, null,
+                resolveOwnerAttribute(userAttributes, Constants.HADOOP_OWNER_USER_METADATA, this.owner),
+                resolveOwnerAttribute(userAttributes, Constants.HADOOP_GROUP_USER_METADATA, this.group),
                 path.makeQualified(this.getUri(), this.getWorkingDirectory()),
                 meta.getETag(), meta.getCrc64ecm(), meta.getCrc32cm(),
-                meta.getVersionId(), meta.getStorageClass(), meta.getUserAttributes());
+                meta.getVersionId(), meta.getStorageClass(), userAttributes);
+    }
+
+    /**
+     * 从对象的用户自定义元数据中解析出持久化的属主信息。
+     * 元数据不存在时回退到 defaultValue（一般是当前进程的用户 / 用户组）。
+     *
+     * @param userAttributes 对象上携带的用户自定义元数据
+     * @param metadataKey    属主信息对应的元数据 key
+     * @param defaultValue   元数据缺失时的回退值
+     * @return 解析出的属主信息
+     */
+    private String resolveOwnerAttribute(Map<String, byte[]> userAttributes, String metadataKey, String defaultValue) {
+        if (null == userAttributes) {
+            return defaultValue;
+        }
+        byte[] value = userAttributes.get(metadataKey);
+        if (null == value || value.length == 0) {
+            return defaultValue;
+        }
+        return new String(value, METADATA_ENCODING);
     }
 
     public boolean isPosixBucket() {
@@ -1521,6 +1550,63 @@ public class CosNFileSystem extends FileSystem {
         }
 
         return new ArrayList<>(fileMetadata.getUserAttributes().keySet());
+    }
+
+    @Override
+    public void setOwner(Path path, String userName, String groupName) throws IOException {
+        if (null == userName && null == groupName) {
+            LOG.debug("Both the user name and the group name are null, nothing to do. path: {}.", path);
+            return;
+        }
+
+        if (this.isPosixBucket) {
+            // POSIX 桶的属主由后端的 POSIX 语义管理，不通过 COS 对象的元数据承载。
+            LOG.warn("The posix bucket does not support the setOwner operation through the COS gateway. path: {}.",
+                    path);
+            return;
+        }
+
+        Path absolutePath = makeAbsolute(path);
+        String key = pathToKey(absolutePath);
+        if (key.isEmpty() || key.equals(PATH_DELIMITER)) {
+            // 根目录没有对应的对象，属主信息无处存放。
+            LOG.warn("The root directory does not support the setOwner operation. path: {}.", path);
+            return;
+        }
+
+        // 与 setXAttr 保持一致，符号连接跟随到它指向的目的对象。
+        FileStatus fileStatus = this.getFileStatus(absolutePath);
+        if (fileStatus.isSymlink()) {
+            absolutePath = makeAbsolute(this.getLinkTarget(absolutePath));
+            key = pathToKey(absolutePath);
+            fileStatus = this.getFileStatus(absolutePath);
+        }
+
+        if (fileStatus.isDirectory()) {
+            if (!key.endsWith(PATH_DELIMITER)) {
+                key += PATH_DELIMITER;
+            }
+            // 普通桶的目录可能只是对象 key 的前缀，并不存在目录对象，补建之后再写入属主信息。
+            if (null == this.nativeStore.queryObjectMetadata(key)) {
+                LOG.debug("The directory object [{}] does not exist, create it before storing the owner.", key);
+                this.nativeStore.storeEmptyFile(key);
+            }
+        }
+
+        Map<String, byte[]> userAttributes = null;
+        if (fileStatus instanceof CosNFileStatus) {
+            userAttributes = ((CosNFileStatus) fileStatus).getUserAttributes();
+        }
+        // 入参为 null 表示不修改对应的字段，这里复用 getFileStatus 已经取回的元数据补齐。
+        if (null == userName) {
+            userName = resolveOwnerAttribute(userAttributes, Constants.HADOOP_OWNER_USER_METADATA, null);
+        }
+        if (null == groupName) {
+            groupName = resolveOwnerAttribute(userAttributes, Constants.HADOOP_GROUP_USER_METADATA, null);
+        }
+
+        this.nativeStore.storeOwnerAttribute(key, userName, groupName);
+        LOG.debug("Set the owner completed. path: {}, owner: {}, group: {}.", absolutePath, userName, groupName);
     }
 
     @Override

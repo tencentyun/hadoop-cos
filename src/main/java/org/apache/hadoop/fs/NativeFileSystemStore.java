@@ -84,6 +84,21 @@ public interface NativeFileSystemStore {
 
     void removeFileAttribute(String key, String attribute) throws IOException;
 
+    /**
+     * Persist the owner and the group to the user-defined metadata of the specified key.
+     * The key of a directory must end with the path delimiter.
+     * A null value means that the corresponding field keeps its original value.
+     *
+     * @param key   the cos key
+     * @param owner the owner to be set, null means keeping the original value
+     * @param group the group to be set, null means keeping the original value
+     * @throws IOException if the user-defined metadata can not be modified
+     */
+    default void storeOwnerAttribute(String key, String owner, String group) throws IOException {
+        throw new UnsupportedOperationException(getClass().getSimpleName()
+                + " doesn't support storeOwnerAttribute");
+    }
+
     InputStream retrieve(String key) throws IOException;
 
     InputStream retrieve(String key, FileMetadata fileMetadata) throws IOException;
