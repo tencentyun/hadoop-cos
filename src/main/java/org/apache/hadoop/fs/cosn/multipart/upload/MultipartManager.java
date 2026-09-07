@@ -55,6 +55,8 @@ public class MultipartManager {
     private volatile boolean committed;
     private volatile boolean aborted;
     private volatile boolean closed;
+    // 随机写会整体重写对象，这里保留原对象的自定义元数据（xattr、owner/group 等），避免提交后丢失。
+    private volatile Map<String, byte[]> preservedUserMetadata;
 
     public MultipartManager(NativeFileSystemStore nativeStore,
                             String cosKey, long partSize, ExecutorService executorService, ExecutorService copyExecutor) {
@@ -66,6 +68,7 @@ public class MultipartManager {
         this.committed = true;
         this.aborted = false;
         this.closed = false;
+        this.preservedUserMetadata = null;
 
         this.listeningExecutorService = MoreExecutors.listeningDecorator(executorService);
         this.listeningCopyExecutorService = MoreExecutors.listeningDecorator(copyExecutor);
@@ -110,6 +113,8 @@ public class MultipartManager {
 
         // 拆块需要进行重置
         this.reset();
+        // reset 会清掉 uploadId 等状态，这里在重置之后再记录要保留的元数据。
+        this.preservedUserMetadata = fileMetadata.getUserAttributes();
         this.splitPartProcess = true;
         long copyRemaining = Math.min(newLen, fileMetadata.getLength());
         if (copyRemaining > 0) {
@@ -273,7 +278,7 @@ public class MultipartManager {
             }
             this.nativeStore.storeFile(
                     this.cosKey, new BufferInputStream(lastPart.getBuffer()), md5Hash,
-                    lastPart.getBuffer().flipRead().remaining());
+                    lastPart.getBuffer().flipRead().remaining(), this.preservedUserMetadata);
             lastPart.setDirty(false);
         } else {
             // 块数大于 1，使用 MPU 上传
@@ -587,7 +592,7 @@ public class MultipartManager {
 
         if (null == this.uploadId) {
             LOG.info("Initialize a multipart upload for the cos key [{}].", cosKey);
-            this.uploadId = nativeStore.getUploadId(cosKey);
+            this.uploadId = nativeStore.getUploadId(cosKey, this.preservedUserMetadata);
             this.aborted = false;
             this.committed = false;
         }

@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
@@ -63,6 +64,17 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
         super.commit();
     }
 
+    /**
+     * Keep the user-defined metadata of the original object when it is rewritten.
+     * The truncate operation does not resume the original content through {@link #resumeForWrite()},
+     * so it has to declare the metadata to be preserved explicitly.
+     *
+     * @param userMetadata the user-defined metadata of the original object
+     */
+    public synchronized void preserveUserMetadata(Map<String, byte[]> userMetadata) {
+        super.preservedUserMetadata = userMetadata;
+    }
+
     private void resumeForWrite() throws IOException {
         FileMetadata fileMetadata = super.nativeStore.retrieveMetadata(super.cosKey);
         if (null == fileMetadata) {
@@ -74,6 +86,9 @@ public class CosNExtendedFSDataOutputStream extends CosNFSDataOutputStream {
 
         super.resetContext();
         super.initNewCurrentPartResource();
+        // The append operation rewrites the whole object, so the original user-defined metadata
+        // (xattr, owner/group, etc.) has to be carried to the new object explicitly.
+        super.preservedUserMetadata = fileMetadata.getUserAttributes();
 
         // resume for write operation.
         try {

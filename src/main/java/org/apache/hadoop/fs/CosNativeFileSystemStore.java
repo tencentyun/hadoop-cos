@@ -539,6 +539,12 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     private PutObjectResult storeFileWithRetry(String key, InputStream inputStream,
                                     byte[] md5Hash, long length)
             throws IOException {
+        return storeFileWithRetry(key, inputStream, md5Hash, length, null);
+    }
+
+    private PutObjectResult storeFileWithRetry(String key, InputStream inputStream,
+                                    byte[] md5Hash, long length, Map<String, byte[]> userMetadata)
+            throws IOException {
         try {
             ObjectMetadata objectMetadata = new ObjectMetadata();
             if (null != md5Hash) {
@@ -548,6 +554,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (crc32cEnabled) {
                 objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
             }
+            applyUserMetadata(objectMetadata, userMetadata);
 
             PutObjectRequest putObjectRequest =
                     new PutObjectRequest(bucketName, key, inputStream, objectMetadata);
@@ -600,12 +607,51 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     @Override
     public PutObjectResult storeFile(String key, InputStream inputStream,
                           byte[] md5Hash, long contentLength) throws IOException {
+        return storeFile(key, inputStream, md5Hash, contentLength, null);
+    }
+
+    @Override
+    public PutObjectResult storeFile(String key, InputStream inputStream, byte[] md5Hash,
+                          long contentLength, Map<String, byte[]> userMetadata) throws IOException {
         if (null != md5Hash) {
             LOG.debug("Store the file to the cos key: {}, input stream md5 hash: {}, content length: {}.", key,
                     Hex.encodeHexString(md5Hash),
                     contentLength);
         }
-        return storeFileWithRetry(key, inputStream, md5Hash, contentLength);
+        return storeFileWithRetry(key, inputStream, md5Hash, contentLength, userMetadata);
+    }
+
+    /**
+     * Fill the user-defined metadata into the object metadata of a write request.
+     * The values are encoded in base64 to keep them symmetrical with the decoding
+     * performed by {@link #queryObjectMetadata(String, CosNResultInfo)}.
+     *
+     * @param objectMetadata the object metadata of the write request
+     * @param userMetadata   the user-defined metadata to be persisted
+     */
+    private void applyUserMetadata(ObjectMetadata objectMetadata, Map<String, byte[]> userMetadata) {
+        if (null == userMetadata || userMetadata.isEmpty()) {
+            return;
+        }
+
+        Map<String, String> targetUserMetadata = objectMetadata.getUserMetadata();
+        if (null == targetUserMetadata) {
+            targetUserMetadata = new HashMap<>();
+        }
+        for (Map.Entry<String, byte[]> entry : userMetadata.entrySet()) {
+            if (null == entry.getKey() || null == entry.getValue()) {
+                continue;
+            }
+            // The client-side-encryption related metadata is maintained by the SDK, so skip it here.
+            if (entry.getKey().startsWith(CLIENT_SIDE_ENCRYPTION_PREFIX)
+                    || entry.getKey().startsWith(COS_TAG_LEN_PREFIX)) {
+                continue;
+            }
+            targetUserMetadata.put(entry.getKey(), Base64.encodeAsString(entry.getValue()));
+        }
+        if (!targetUserMetadata.isEmpty()) {
+            objectMetadata.setUserMetadata(targetUserMetadata);
+        }
     }
 
     // for cos, storeEmptyFile means create a directory
@@ -791,6 +837,11 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      * @throws IOException when fail to get the MultipartManager Upload ID.
      */
     public String getUploadId(String key) throws IOException {
+        return getUploadId(key, null);
+    }
+
+    @Override
+    public String getUploadId(String key, Map<String, byte[]> userMetadata) throws IOException {
         if (null == key || key.isEmpty()) {
             return "";
         }
@@ -799,6 +850,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         if (crc32cEnabled) {
             objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
         }
+        applyUserMetadata(objectMetadata, userMetadata);
 
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
                 new InitiateMultipartUploadRequest(bucketName, key);

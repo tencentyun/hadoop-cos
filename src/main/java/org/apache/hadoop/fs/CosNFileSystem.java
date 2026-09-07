@@ -444,9 +444,15 @@ public class CosNFileSystem extends FileSystem {
         String cosKey = pathToKey(absolutePath);
 
         // Use the single thread to truncate.
-        try (OutputStream outputStream = new FSDataOutputStream(
-                new CosNExtendedFSDataOutputStream(this.getConf(), this.nativeStore, cosKey,
-                        this.boundedIOThreadPool, this.boundedCopyThreadPool), statistics)) {
+        CosNExtendedFSDataOutputStream cosNOutputStream = new CosNExtendedFSDataOutputStream(
+                this.getConf(), this.nativeStore, cosKey,
+                this.boundedIOThreadPool, this.boundedCopyThreadPool);
+        // The truncate operation rewrites the whole object, so the original user-defined metadata
+        // (xattr, owner/group, etc.) has to be carried to the new object explicitly.
+        if (fileStatus instanceof CosNFileStatus) {
+            cosNOutputStream.preserveUserMetadata(((CosNFileStatus) fileStatus).getUserAttributes());
+        }
+        try (OutputStream outputStream = new FSDataOutputStream(cosNOutputStream, statistics)) {
             // If the newLength is equal to 0, just wait for 'try finally' to close.
             if (newLength > 0) {
                 try (InputStream inputStream =

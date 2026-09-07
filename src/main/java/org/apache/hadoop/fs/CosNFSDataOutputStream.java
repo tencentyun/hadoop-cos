@@ -61,6 +61,11 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
     protected ConsistencyChecker consistencyChecker;
     protected boolean needUploadCurrentPart;
     protected boolean clientEncryptionEnabled;
+    /**
+     * The user-defined metadata of the original object that must be kept when the object is rewritten
+     * by the append/truncate operations. A null value means that there is nothing to preserve.
+     */
+    protected Map<String, byte[]> preservedUserMetadata;
     public static  final String CSE_MPU_KEY_SUFFIX = "._CSE_";
 
     /**
@@ -111,6 +116,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         this.fileSize = 0;
 
         this.needUploadCurrentPart = false;
+        this.preservedUserMetadata = null;
 
         this.clientEncryptionEnabled = conf.getBoolean(CosNConfigKeys.COSN_CLIENT_SIDE_ENCRYPTION_ENABLED,
                 CosNConfigKeys.DEFAULT_COSN_CLIENT_SIDE_ENCRYPTION_ENABLED);
@@ -276,7 +282,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                 }
             }
             nativeStore.storeFile(this.cosKey, currentPartBufferInputStream,
-                    digestHash, this.currentPartBuffer.remaining());
+                    digestHash, this.currentPartBuffer.remaining(), this.preservedUserMetadata);
         } else {
             if (this.currentPartWriteBytes > 0) {
                 this.uploadCurrentPart(true);
@@ -482,7 +488,7 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
         protected MultipartUpload(String cosKey, String uploadId, Map<Integer, ListenableFuture<PartETag>> partETagFutures,
                                   List<PartETag> partETags, int partsSubmitted, int partsUploaded, long bytesSubmitted, long bytesUploaded) throws IOException {
             if (null == uploadId) {
-                uploadId = nativeStore.getUploadId(cosKey);
+                uploadId = nativeStore.getUploadId(cosKey, preservedUserMetadata);
             }
             this.uploadId = uploadId;
             LOG.debug("Initial multi-part upload for the cos key [{}] with the upload id [{}].",

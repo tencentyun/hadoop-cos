@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 /**
  * <p>
@@ -35,6 +36,24 @@ public interface NativeFileSystemStore {
     PutObjectResult storeFile(String key, InputStream inputStream, byte[] md5Hash,
                    long contentLength) throws IOException;
 
+    /**
+     * Store the file and persist the specified user-defined metadata at the same time.
+     * It is used by the operations that rewrite an existing object, such as append and truncate,
+     * to keep the original metadata (xattr, owner/group, etc.) from being lost.
+     *
+     * @param key           the cos key
+     * @param inputStream   the content of the object
+     * @param md5Hash       the md5 hash of the content, null means no verification
+     * @param contentLength the length of the content
+     * @param userMetadata  the user-defined metadata to be persisted, null or empty means nothing to preserve
+     * @return the result of the put object operation
+     * @throws IOException if the object can not be stored
+     */
+    default PutObjectResult storeFile(String key, InputStream inputStream, byte[] md5Hash,
+                                      long contentLength, Map<String, byte[]> userMetadata) throws IOException {
+        return storeFile(key, inputStream, md5Hash, contentLength);
+    }
+
     void storeEmptyFile(String key) throws IOException;
 
     // must notice some mpu chunk error might have double head check.
@@ -46,6 +65,20 @@ public interface NativeFileSystemStore {
     void abortMultipartUpload(String key, String uploadId) throws IOException;
 
     String getUploadId(String key) throws IOException;
+
+    /**
+     * Initiate a multipart upload and persist the specified user-defined metadata at the same time.
+     * It is used by the operations that rewrite an existing object, such as append and truncate,
+     * to keep the original metadata (xattr, owner/group, etc.) from being lost.
+     *
+     * @param key          the cos key
+     * @param userMetadata the user-defined metadata to be persisted, null or empty means nothing to preserve
+     * @return the upload id of the multipart upload
+     * @throws IOException if the multipart upload can not be initiated
+     */
+    default String getUploadId(String key, Map<String, byte[]> userMetadata) throws IOException {
+        return getUploadId(key);
+    }
 
     PartETag uploadPart(File file, String key, String uploadId,
                         int partNum, byte[] md5hash, Boolean isLastPart) throws IOException;
