@@ -654,6 +654,59 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         }
     }
 
+    /**
+     * Decode the value of a user-defined metadata (xattr, owner/group, etc.).
+     * <p>
+     * This store persists the value in base64, but an object may also carry user metadata
+     * written by other tools (or by an older version) which keeps the value in plain text.
+     * To be compatible with both of them, the value is treated as base64 only when it is a
+     * canonical base64 string, otherwise it is taken as plain text.
+     *
+     * @param value the raw value carried by the user-defined metadata
+     * @return the decoded value, null only when the given value is null
+     */
+    private static byte[] decodeUserMetadataValue(String value) {
+        if (null == value) {
+            return null;
+        }
+        if (value.isEmpty()) {
+            return new byte[0];
+        }
+
+        byte[] decoded = decodeCanonicalBase64(value);
+        if (null != decoded) {
+            return decoded;
+        }
+        LOG.debug("The user-defined metadata value is not base64 encoded, " +
+                "take it as plain text. value: {}.", value);
+        return value.getBytes(CosNFileSystem.METADATA_ENCODING);
+    }
+
+    /**
+     * Decode the given value with the strict base64 decoder, and make sure the value is exactly
+     * the canonical base64 form of the decoded bytes. It filters out most of the plain text
+     * values, since a plain text value is rarely a canonical base64 string at the same time.
+     * <p>
+     * Note that the {@link Base64#decode(String)} of the cos sdk is lenient: it simply drops
+     * the characters out of the base64 alphabet instead of reporting an error, so it can not be
+     * used to tell the two kinds of values apart.
+     *
+     * @param value the value to be decoded
+     * @return the decoded bytes, null if the value is not a canonical base64 string
+     */
+    private static byte[] decodeCanonicalBase64(String value) {
+        try {
+            byte[] decoded = java.util.Base64.getDecoder().decode(value);
+            if (java.util.Base64.getEncoder().encodeToString(decoded).equals(value)) {
+                return decoded;
+            }
+        } catch (IllegalArgumentException e) {
+            // The value is not a legal base64 string, fall back to the plain text.
+            LOG.debug("Failed to decode the value as base64. value: {}, exception: {}.", value, e.toString());
+        }
+        return null;
+    }
+
     // for cos, storeEmptyFile means create a directory
     @Override
     public void storeEmptyFile(String key) throws IOException {
@@ -974,8 +1027,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
                         userMetadata.put(userMetadataEntry.getKey(), userMetadataEntry.getValue().getBytes(CosNFileSystem.METADATA_ENCODING));
                     } else {
                         // 其余 user metadata 均为 xattr
-                        byte[] xAttrValue = Base64.decode(userMetadataEntry.getValue());
-                        userMetadata.put(userMetadataEntry.getKey(), xAttrValue);
+                        userMetadata.put(userMetadataEntry.getKey(),
+                                decodeUserMetadataValue(userMetadataEntry.getValue()));
                     }
                 }
             }
