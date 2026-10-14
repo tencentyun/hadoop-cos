@@ -89,6 +89,8 @@
                         <configuration>
                             <excludes combine.self="override">
                             </excludes>
+                            <testExcludes combine.self="override">
+                            </testExcludes>
                         </configuration>
                     </plugin>
                 </plugins>
@@ -198,6 +200,12 @@
                         <exclude>**/CosFileSystemExt.java</exclude>
                         <exclude>**/cosn/cache/LRURangeCache.java</exclude>
                     </excludes>
+                    <!-- CosNFileSystemExt 上面被排除了，引用它的测试也要一起排除，
+                         否则默认构建会编译失败；hadoop-3-3 profile 会覆盖掉这些排除项。 -->
+                    <testExcludes>
+                        <exclude>**/CosNFileSystemExtTest.java</exclude>
+                        <exclude>**/ITestCosNFileSystemSetXAttrs.java</exclude>
+                    </testExcludes>
                 </configuration>
             </plugin>
             <plugin>

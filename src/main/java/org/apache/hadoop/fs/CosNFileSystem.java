@@ -1402,14 +1402,26 @@ public class CosNFileSystem extends FileSystem {
      * @param flag  The mode in which to set the attribute
      * @throws IOException If there was an issue setting the attributing on COS
      */
-    @Override
-    public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
-        // First, determine whether the length of the name and value exceeds the limit.
+    /**
+     * Determine whether the combined size of the name and the value of an extended attribute
+     * exceeds the limit.
+     *
+     * @param name  the name of the extended attribute
+     * @param value the value of the extended attribute
+     * @throws HadoopIllegalArgumentException if the combined size exceeds the limit
+     */
+    protected static void checkXAttrSize(String name, byte[] value) {
         if (name.getBytes(METADATA_ENCODING).length + value.length > MAX_XATTR_SIZE) {
             throw new HadoopIllegalArgumentException(String.format("The maximum combined size of " +
                             "the name and value of an extended attribute in bytes should be less than or equal to %d",
                     MAX_XATTR_SIZE));
         }
+    }
+
+    @Override
+    public void setXAttr(Path f, String name, byte[] value, EnumSet<XAttrSetFlag> flag) throws IOException {
+        // First, determine whether the length of the name and value exceeds the limit.
+        checkXAttrSize(name, value);
 
         if (this.getFileStatus(f).isSymlink()) {
             f = this.getLinkTarget(f);
@@ -1873,7 +1885,7 @@ public class CosNFileSystem extends FileSystem {
         this.rangerCredentialsClient.doCheckPermission(f, rangerAccessType, getOwnerId(), getWorkingDirectory());
     }
 
-    private Path makeAbsolute(Path path) {
+    protected Path makeAbsolute(Path path) {
         if (path.isAbsolute()) {
             return path;
         }

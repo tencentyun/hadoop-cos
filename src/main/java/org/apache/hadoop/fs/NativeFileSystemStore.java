@@ -118,6 +118,25 @@ public interface NativeFileSystemStore {
     void removeFileAttribute(String key, String attribute) throws IOException;
 
     /**
+     * Persist the given extended attributes (xattr) of the specified key at one time.
+     * <p>
+     * All the attributes are modified by a single in-place copy request, so they are set
+     * atomically: either all of them take effect, or none of them does. It avoids the repeated
+     * copy requests of {@link #storeFileAttribute(String, String, byte[])} and
+     * {@link #storeDirAttribute(String, String, byte[])} when a batch of attributes is set.
+     * The key of a directory must end with the path delimiter.
+     *
+     * @param key        the cos key
+     * @param attributes the extended attributes to be set, a null value means removing the
+     *                   corresponding attribute, null or empty means nothing to do
+     * @throws IOException if the user-defined metadata can not be modified
+     */
+    default void storeAttributes(String key, Map<String, byte[]> attributes) throws IOException {
+        throw new UnsupportedOperationException(getClass().getSimpleName()
+                + " doesn't support storeAttributes");
+    }
+
+    /**
      * Persist the owner and the group to the user-defined metadata of the specified key.
      * The key of a directory must end with the path delimiter.
      * A null value means that the corresponding field keeps its original value.

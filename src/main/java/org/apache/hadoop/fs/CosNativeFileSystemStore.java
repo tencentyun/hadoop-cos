@@ -665,7 +665,8 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
      * @param value the raw value carried by the user-defined metadata
      * @return the decoded value, null only when the given value is null
      */
-    private static byte[] decodeUserMetadataValue(String value) {
+    // 包内可见，方便单元测试直接覆盖。
+    static byte[] decodeUserMetadataValue(String value) {
         if (null == value) {
             return null;
         }
@@ -1174,6 +1175,46 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         storeAttribute(key, attribute, null, true);
     }
 
+    @Override
+    public void storeAttributes(String key, Map<String, byte[]> attributes) throws IOException {
+        if (null == attributes || attributes.isEmpty()) {
+            LOG.debug("No extended attribute to be stored. cos key: {}.", key);
+            return;
+        }
+        LOG.debug("Store the extended attributes. cos key: {}, attributes: {}.", key, attributes.keySet());
+
+        ObjectMetadata objectMetadata = headObjectMetadata(key);
+        if (null == objectMetadata) {
+            throw new FileNotFoundException(String.format(
+                    "The cos key [%s] does not exist, can not store the extended attributes.", key));
+        }
+
+        Map<String, String> userMetadata = objectMetadata.getUserMetadata();
+        if (null == userMetadata) {
+            userMetadata = new HashMap<>();
+        }
+        boolean modified = false;
+        for (Map.Entry<String, byte[]> attribute : attributes.entrySet()) {
+            if (null == attribute.getKey() || attribute.getKey().isEmpty()) {
+                continue;
+            }
+            if (null == attribute.getValue()) {
+                // 值为 null 表示删除这个属性
+                modified |= null != userMetadata.remove(attribute.getKey());
+            } else {
+                userMetadata.put(attribute.getKey(), Base64.encodeAsString(attribute.getValue()));
+                modified = true;
+            }
+        }
+        if (!modified) {
+            LOG.debug("No extended attribute is modified. cos key: {}.", key);
+            return;
+        }
+        objectMetadata.setUserMetadata(userMetadata);
+        // 所有的属性在同一次原地 copy 请求中生效，保证批量设置的原子性。
+        replaceObjectMetadata(key, objectMetadata);
+    }
+
     private void storeAttribute(String key, String attribute, byte[] value, boolean deleted) throws IOException {
         if (deleted) {
             LOG.debug("Delete the extended attribute. cos key: {}, attribute: {}.", key, attribute);
@@ -1188,19 +1229,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             throw new IOException("The attribute value to be set can not be null.");
         }
 
-        GetObjectMetadataRequest getObjectMetadataRequest = new GetObjectMetadataRequest(bucketName, key);
-        this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
-        ObjectMetadata objectMetadata = null;
-        try {
-            objectMetadata = (ObjectMetadata) callCOSClientWithRetry(getObjectMetadataRequest);
-        } catch (CosServiceException e) {
-            if (e.getStatusCode() != 404) {
-                String errorMessage = String.format("Retrieve the file metadata failed. " +
-                        "cos key: %s, exception: %s.", key, e);
-                handleException(new Exception(errorMessage), key);
-            }
-        }
-
+        ObjectMetadata objectMetadata = headObjectMetadata(key);
         if (null != objectMetadata) {
             Map<String, String> userMetadata = objectMetadata.getUserMetadata();
             if (deleted) {
@@ -1218,28 +1247,60 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             }
             objectMetadata.setUserMetadata(userMetadata);
 
-            // 构造原地copy请求来设置用户自定义属性
-            if (crc32cEnabled) {
-                objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
-            }
+            replaceObjectMetadata(key, objectMetadata);
+        }
+    }
 
-            CopyObjectRequest copyObjectRequest = new CopyObjectRequest(bucketName, key, bucketName, key);
-            if (null != objectMetadata.getStorageClass()) {
-                copyObjectRequest.setStorageClass(objectMetadata.getStorageClass());
+    /**
+     * Head the metadata of the specified key, null is returned if the object does not exist.
+     *
+     * @param key the cos key
+     * @return the metadata of the object, null if the object does not exist
+     * @throws IOException if the metadata can not be retrieved
+     */
+    private ObjectMetadata headObjectMetadata(String key) throws IOException {
+        GetObjectMetadataRequest getObjectMetadataRequest = new GetObjectMetadataRequest(bucketName, key);
+        this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
+        try {
+            return (ObjectMetadata) callCOSClientWithRetry(getObjectMetadataRequest);
+        } catch (CosServiceException e) {
+            if (e.getStatusCode() != 404) {
+                String errorMessage = String.format("Retrieve the file metadata failed. " +
+                        "cos key: %s, exception: %s.", key, e);
+                handleException(new Exception(errorMessage), key);
             }
-            copyObjectRequest.setNewObjectMetadata(objectMetadata);
-            copyObjectRequest.setRedirectLocation("Replaced");
-            this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
-            copyObjectRequest.setSourceEndpointBuilder(
-                    this.cosClient.getClientConfig().getEndpointBuilder());
+            return null;
+        }
+    }
 
-            try {
-                callCOSClientWithRetry(copyObjectRequest);
-            } catch (Exception e) {
-                String errMsg = String.format("Failed to modify the user-defined attributes. " +
-                        "cos key: %s, attribute: %s, exception: %s.", key, attribute, e);
-                handleException(new Exception(errMsg), key);
-            }
+    /**
+     * Replace the metadata of the specified key by an in-place copy request.
+     *
+     * @param key            the cos key
+     * @param objectMetadata the new metadata of the object
+     * @throws IOException if the metadata can not be replaced
+     */
+    private void replaceObjectMetadata(String key, ObjectMetadata objectMetadata) throws IOException {
+        if (crc32cEnabled) {
+            objectMetadata.setHeader(Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
+        }
+
+        CopyObjectRequest copyObjectRequest = new CopyObjectRequest(bucketName, key, bucketName, key);
+        if (null != objectMetadata.getStorageClass()) {
+            copyObjectRequest.setStorageClass(objectMetadata.getStorageClass());
+        }
+        copyObjectRequest.setNewObjectMetadata(objectMetadata);
+        copyObjectRequest.setRedirectLocation("Replaced");
+        this.setEncryptionMetadata(copyObjectRequest, objectMetadata);
+        copyObjectRequest.setSourceEndpointBuilder(
+                this.cosClient.getClientConfig().getEndpointBuilder());
+
+        try {
+            callCOSClientWithRetry(copyObjectRequest);
+        } catch (Exception e) {
+            String errMsg = String.format("Failed to modify the user-defined attributes. " +
+                    "cos key: %s, exception: %s.", key, e);
+            handleException(new Exception(errMsg), key);
         }
     }
 
@@ -1252,19 +1313,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         LOG.debug("Store the owner and the group. cos key: {}, owner: {}, group: {}.", key, owner, group);
 
-        GetObjectMetadataRequest getObjectMetadataRequest = new GetObjectMetadataRequest(bucketName, key);
-        this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
-        ObjectMetadata objectMetadata = null;
-        try {
-            objectMetadata = (ObjectMetadata) callCOSClientWithRetry(getObjectMetadataRequest);
-        } catch (CosServiceException e) {
-            if (e.getStatusCode() != 404) {
-                String errorMessage = String.format("Retrieve the file metadata failed. " +
-                        "cos key: %s, exception: %s.", key, e);
-                handleException(new Exception(errorMessage), key);
-            }
-        }
-
+        ObjectMetadata objectMetadata = headObjectMetadata(key);
         if (null == objectMetadata) {
             throw new FileNotFoundException(
                     String.format("The cos key [%s] does not exist, can not store the owner or the group.", key));
