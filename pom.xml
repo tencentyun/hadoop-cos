@@ -6,7 +6,7 @@
 
     <groupId>com.qcloud.cos</groupId>
     <artifactId>hadoop-cos</artifactId>
-    <version>8.3.34</version>
+    <version>8.3.35</version>
     <packaging>jar</packaging>
 
     <name>Apache Hadoop Tencent Cloud COS Support</name>
@@ -205,6 +205,7 @@
                     <testExcludes>
                         <exclude>**/CosNFileSystemExtTest.java</exclude>
                         <exclude>**/ITestCosNFileSystemSetXAttrs.java</exclude>
+                        <exclude>**/ITestCosNFileSystemCreateWithXAttrs.java</exclude>
                     </testExcludes>
                 </configuration>
             </plugin>

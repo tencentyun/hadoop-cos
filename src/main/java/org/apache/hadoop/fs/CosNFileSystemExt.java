@@ -1,6 +1,8 @@
 package org.apache.hadoop.fs;
 
 import org.apache.hadoop.HadoopIllegalArgumentException;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.cosn.Abortable;
 import org.apache.hadoop.fs.impl.AbstractFSBuilderImpl;
 import org.apache.hadoop.fs.impl.OpenFileParameters;
 import org.apache.hadoop.util.LambdaUtils;
@@ -8,7 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -19,6 +23,143 @@ import java.util.concurrent.CompletableFuture;
  */
 public class CosNFileSystemExt extends CosNFileSystem {
     private static final Logger LOG = LoggerFactory.getLogger(CosNFileSystemExt.class);
+
+    /**
+     * The path capability which tells that {@link #createFile(Path)} supports the create-time xattr.
+     */
+    public static final String CAPABILITY_CREATE_XATTR = "fs.cosn.capability.create.xattr";
+
+    @Override
+    public boolean hasPathCapability(Path path, String capability) throws IOException {
+        if (CAPABILITY_CREATE_XATTR.equals(capability)) {
+            return true;
+        }
+        return super.hasPathCapability(path, capability);
+    }
+
+    /**
+     * Create a builder of a new file, which supports declaring the extended attributes of the file
+     * at the creation time through the options. Every option is one extended attribute: its key is
+     * the name of the attribute, and its value is the UTF-8 text of the attribute value.
+     * <pre>
+     *   fs.createFile(path)
+     *       .recursive()
+     *       .must("owner-tag", "abc")
+     *       .opt("checksum", "123")
+     *       .build();
+     * </pre>
+     * The attributes are sent together with the data, by the PutObject request for a small file or by
+     * the InitiateMultipartUpload request for a large one, so they take effect atomically with the data
+     * when the stream is closed. Nothing is left if the stream is aborted before that.
+     * <p>
+     * Because the options are flat text pairs, the values are always interpreted as UTF-8 text. Use
+     * {@link CosNFSDataOutputStream#setUserMetadata(Map)} or {@link #setXAttrs(Path, Map)} to persist
+     * binary values.
+     * <p>
+     * Except for the extended attributes, it behaves the same as the default builder of the
+     * {@link FileSystem}: the file is overwritten by default, and the non-recursive creation goes to
+     * {@link #createNonRecursive(Path, org.apache.hadoop.fs.permission.FsPermission, java.util.EnumSet,
+     * int, short, long, org.apache.hadoop.util.Progressable)}.
+     */
+    @Override
+    public CosNCreateFileBuilder createFile(Path path) {
+        return new CosNCreateFileBuilder(this, path).create().overwrite(true);
+    }
+
+    /**
+     * Extract the extended attributes from the options of a builder.
+     * <p>
+     * The options are a Configuration which only holds the keys set by {@code opt()} and
+     * {@code must()}: the buffer size, the replication, the flags and so on are kept in the fields of
+     * the builder, so they never show up here. That is why every option is taken as one extended
+     * attribute, without any namespace prefix: the key is the name, and the value is the UTF-8 text.
+     * <p>
+     * Package-visible for the unit tests.
+     *
+     * @param options the options of the builder
+     * @return the extended attributes
+     * @throws HadoopIllegalArgumentException if a name is empty
+     */
+    static Map<String, byte[]> xattrsFromOptions(Configuration options) {
+        Map<String, byte[]> xattrs = new HashMap<>();
+        if (null == options) {
+            return xattrs;
+        }
+        for (Map.Entry<String, String> option : options) {
+            String name = option.getKey();
+            if (null == name || name.isEmpty()) {
+                throw new HadoopIllegalArgumentException("The name of an extended attribute can not be empty.");
+            }
+            // getRaw 避免值里出现的 ${...} 被当成变量替换掉。
+            String value = options.getRaw(name);
+            xattrs.put(name, (null == value ? "" : value).getBytes(CosNFileSystem.METADATA_ENCODING));
+        }
+        return xattrs;
+    }
+
+    /**
+     * The builder returned by {@link #createFile(Path)}.
+     */
+    public static final class CosNCreateFileBuilder
+            extends FSDataOutputStreamBuilder<FSDataOutputStream, CosNCreateFileBuilder> {
+
+        private CosNCreateFileBuilder(FileSystem fileSystem, Path path) {
+            super(fileSystem, path);
+        }
+
+        @Override
+        public CosNCreateFileBuilder getThisBuilder() {
+            return this;
+        }
+
+        @Override
+        public FSDataOutputStream build() throws IOException {
+            // 先解析属性，有问题直接失败，不会创建出输出流。
+            Map<String, byte[]> xattrs = xattrsFromOptions(getOptions());
+            if (!getFlags().contains(CreateFlag.CREATE) && !getFlags().contains(CreateFlag.OVERWRITE)) {
+                throw new PathIOException(getPath().toString(),
+                        "Only the create or overwrite flag is supported, the append is not supported");
+            }
+
+            FSDataOutputStream out;
+            if (isRecursive()) {
+                out = getFS().create(getPath(), getPermission(), getFlags(), getBufferSize(), getReplication(),
+                        getBlockSize(), getProgress(), getChecksumOpt());
+            } else {
+                out = getFS().createNonRecursive(getPath(), getPermission(), getFlags(), getBufferSize(),
+                        getReplication(), getBlockSize(), getProgress());
+            }
+            if (xattrs.isEmpty()) {
+                return out;
+            }
+
+            OutputStream wrapped = out.getWrappedStream();
+            if (!(wrapped instanceof CosNFSDataOutputStream)) {
+                abortQuietly(wrapped);
+                throw new UnsupportedOperationException(
+                        "The output stream of " + getPath() + " does not support the create-time extended attributes.");
+            }
+            try {
+                ((CosNFSDataOutputStream) wrapped).setUserMetadata(xattrs);
+            } catch (IOException | RuntimeException e) {
+                // 还没有写入任何数据，中止掉就不会留下任何东西。
+                abortQuietly(wrapped);
+                throw e;
+            }
+            return out;
+        }
+
+        private static void abortQuietly(OutputStream stream) {
+            if (!(stream instanceof Abortable)) {
+                return;
+            }
+            try {
+                ((Abortable) stream).doAbort();
+            } catch (IOException e) {
+                LOG.warn("Failed to abort the output stream.", e);
+            }
+        }
+    }
 
     @Override
     protected CompletableFuture<FSDataInputStream> openFileWithOptions(Path path, OpenFileParameters parameters)

@@ -9,6 +9,7 @@ import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.CompleteMultipartUploadResult;
 import com.qcloud.cos.model.PartETag;
 import org.apache.commons.io.output.NullOutputStream;
+import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.Abortable;
 import org.apache.hadoop.fs.cosn.BufferInputStream;
@@ -66,6 +67,10 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
      * by the append/truncate operations. A null value means that there is nothing to preserve.
      */
     protected Map<String, byte[]> preservedUserMetadata;
+    /**
+     * COS limits the total size of all the x-cos-meta-* headers of an object to 4KB.
+     */
+    public static final int MAX_USER_METADATA_TOTAL_SIZE = 4 * 1024;
     public static  final String CSE_MPU_KEY_SUFFIX = "._CSE_";
 
     /**
@@ -259,6 +264,52 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             this.releaseCurrentPartResource();
             this.resetContext();
         }
+    }
+
+    /**
+     * Declare the extended attributes (user-defined metadata) of the object created by this stream.
+     * <p>
+     * The attributes are sent together with the data: by the PutObject request for a small file, or by
+     * the InitiateMultipartUpload request for a large one. So they take effect atomically with the data
+     * when the stream is committed, and nothing is left if the stream is aborted. Because the metadata
+     * of a multipart upload can only be declared when it is initiated, they must be set before the
+     * first part is uploaded.
+     *
+     * @param userMetadata the extended attributes, replacing the ones declared previously;
+     *                     the entries with a null value are ignored
+     * @throws IOException                    if the stream has been closed
+     * @throws IllegalStateException          if the metadata has been sent to the cos or committed
+     * @throws HadoopIllegalArgumentException if a name is empty or the size exceeds the limit
+     */
+    public synchronized void setUserMetadata(Map<String, byte[]> userMetadata) throws IOException {
+        this.checkOpened();
+        if (null != this.multipartUpload || this.committed) {
+            throw new IllegalStateException(String.format("The extended attributes of the cos key [%s] can not " +
+                    "be changed any more, because they have been sent to the cos or committed.", this.cosKey));
+        }
+
+        Map<String, byte[]> checked = new HashMap<>();
+        long totalSize = 0;
+        if (null != userMetadata) {
+            for (Map.Entry<String, byte[]> entry : userMetadata.entrySet()) {
+                if (null == entry.getKey() || entry.getKey().isEmpty()) {
+                    throw new HadoopIllegalArgumentException("The name of an extended attribute can not be empty.");
+                }
+                if (null == entry.getValue()) {
+                    continue;
+                }
+                CosNFileSystem.checkXAttrSize(entry.getKey(), entry.getValue());
+                // 值以 base64 编码后写入 x-cos-meta-*，体积膨胀约 4/3，总量要按编码后的大小计算。
+                totalSize += entry.getKey().getBytes(CosNFileSystem.METADATA_ENCODING).length
+                        + ((entry.getValue().length + 2) / 3) * 4L;
+                checked.put(entry.getKey(), entry.getValue());
+            }
+        }
+        if (totalSize > MAX_USER_METADATA_TOTAL_SIZE) {
+            throw new HadoopIllegalArgumentException(String.format("The total size [%d] of the extended attributes " +
+                    "after encoding exceeds the limit [%d] of the cos.", totalSize, MAX_USER_METADATA_TOTAL_SIZE));
+        }
+        this.preservedUserMetadata = checked.isEmpty() ? null : checked;
     }
 
     /**
