@@ -741,7 +741,7 @@ public class CosFileSystem extends FileSystem {
         return this.rangerCredentialsClient.doGetCanonicalServiceName();
     }
 
-    private void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
+    protected void checkPermission(Path f, RangerAccessType rangerAccessType) throws IOException {
         if (useOFSRanger()) {
             return;
         }
@@ -785,7 +785,7 @@ public class CosFileSystem extends FileSystem {
         return shortUserName;
     }
 
-    private void checkInitialized() throws IOException {
+    protected void checkInitialized() throws IOException {
         if (!this.initialized) {
             throw new IOException("The FileSystem has been closed or not initialized.");
         }

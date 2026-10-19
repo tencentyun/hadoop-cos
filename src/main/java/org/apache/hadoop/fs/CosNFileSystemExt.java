@@ -103,7 +103,12 @@ public class CosNFileSystemExt extends CosNFileSystem {
     public static final class CosNCreateFileBuilder
             extends FSDataOutputStreamBuilder<FSDataOutputStream, CosNCreateFileBuilder> {
 
-        private CosNCreateFileBuilder(FileSystem fileSystem, Path path) {
+        /**
+         * Package-visible so that {@link CosFileSystemExt} can return it as well: the outer file system
+         * delegates the creation to this one, so the builder works whichever of them is returned to the
+         * caller.
+         */
+        CosNCreateFileBuilder(FileSystem fileSystem, Path path) {
             super(fileSystem, path);
         }
 

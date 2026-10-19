@@ -203,6 +203,7 @@
                     <!-- CosNFileSystemExt 上面被排除了，引用它的测试也要一起排除，
                          否则默认构建会编译失败；hadoop-3-3 profile 会覆盖掉这些排除项。 -->
                     <testExcludes>
+                        <exclude>**/CosFileSystemExtTest.java</exclude>
                         <exclude>**/CosNFileSystemExtTest.java</exclude>
                         <exclude>**/ITestCosNFileSystemSetXAttrs.java</exclude>
                         <exclude>**/ITestCosNFileSystemCreateWithXAttrs.java</exclude>
