@@ -36,7 +36,7 @@
 base_dir=$(cd `dirname $0`;pwd)
 cd ${base_dir}
 
-hadoop_version_array=("2.8.5" "2.9.2" "3.1.0" "3.2.2" "3.3.0" "3.4.0")
+hadoop_version_array=("2.8.5" "2.9.2" "3.1.0" "3.2.2" "3.3.0" "3.4.0" "3.4.1")
 
 origin_artifact_version=$(mvn -q -Dexec.executable="echo" -Dexec.args='${project.version}' --non-recursive exec:exec)
 
