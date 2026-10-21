@@ -274,6 +274,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
      * when the stream is committed, and nothing is left if the stream is aborted. Because the metadata
      * of a multipart upload can only be declared when it is initiated, they must be set before the
      * first part is uploaded.
+     * <p>
+     * The owner and the group declared by {@link #setOwner(String, String)} are kept, unless the given
+     * attributes contain their own {@code hadoop.owner} / {@code hadoop.group}.
      *
      * @param userMetadata the extended attributes, replacing the ones declared previously;
      *                     the entries with a null value are ignored
@@ -283,13 +286,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
      */
     public synchronized void setUserMetadata(Map<String, byte[]> userMetadata) throws IOException {
         this.checkOpened();
-        if (null != this.multipartUpload || this.committed) {
-            throw new IllegalStateException(String.format("The extended attributes of the cos key [%s] can not " +
-                    "be changed any more, because they have been sent to the cos or committed.", this.cosKey));
-        }
+        this.checkMetadataMutable();
 
         Map<String, byte[]> checked = new HashMap<>();
-        long totalSize = 0;
         if (null != userMetadata) {
             for (Map.Entry<String, byte[]> entry : userMetadata.entrySet()) {
                 if (null == entry.getKey() || entry.getKey().isEmpty()) {
@@ -299,17 +298,101 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
                     continue;
                 }
                 CosNFileSystem.checkXAttrSize(entry.getKey(), entry.getValue());
-                // 值以 base64 编码后写入 x-cos-meta-*，体积膨胀约 4/3，总量要按编码后的大小计算。
-                totalSize += entry.getKey().getBytes(CosNFileSystem.METADATA_ENCODING).length
-                        + ((entry.getValue().length + 2) / 3) * 4L;
                 checked.put(entry.getKey(), entry.getValue());
             }
         }
-        if (totalSize > MAX_USER_METADATA_TOTAL_SIZE) {
-            throw new HadoopIllegalArgumentException(String.format("The total size [%d] of the extended attributes " +
-                    "after encoding exceeds the limit [%d] of the cos.", totalSize, MAX_USER_METADATA_TOTAL_SIZE));
-        }
+        // 属主信息是通过 setOwner 单独声明的，整体替换属性时不能把它丢掉；
+        // 但是调用方在属性里显式给出的 hadoop.owner / hadoop.group 仍然以调用方为准。
+        keepOwnerMetadata(checked);
+        checkUserMetadataTotalSize(checked);
         this.preservedUserMetadata = checked.isEmpty() ? null : checked;
+    }
+
+    /**
+     * Declare the owner and the group of the object created by this stream.
+     * <p>
+     * They are persisted as the user-defined metadata of the object, in the same way as
+     * {@link #setUserMetadata(Map)}: they are sent together with the data by the PutObject request for
+     * a small file, or by the InitiateMultipartUpload request for a large one. So they take effect
+     * atomically with the data when the stream is committed, and nothing is left if the stream is
+     * aborted. Because the metadata of a multipart upload can only be declared when it is initiated,
+     * it must be set before the first part is uploaded.
+     * <p>
+     * It can be used together with {@link #setUserMetadata(Map)} in any order: the attributes set
+     * there do not replace the owner and the group declared here.
+     *
+     * @param user  the owner of the file, null means not to declare it
+     * @param group the group of the file, null means not to declare it
+     * @throws IOException                    if the stream has been closed
+     * @throws IllegalStateException          if the metadata has been sent to the cos or committed
+     * @throws HadoopIllegalArgumentException if the user or the group is empty, or the size exceeds the limit
+     */
+    public synchronized void setOwner(String user, String group) throws IOException {
+        this.checkOpened();
+        this.checkMetadataMutable();
+        if (null == user && null == group) {
+            // 与 FileSystem#setOwner 一致：两个都为空什么也不做。
+            return;
+        }
+        if ((null != user && user.isEmpty()) || (null != group && group.isEmpty())) {
+            // 空串写进去读回来时会被当成未设置，没有意义，也容易掩盖调用方的错误。
+            throw new HadoopIllegalArgumentException("The user and the group can not be empty.");
+        }
+
+        Map<String, byte[]> merged = new HashMap<>();
+        if (null != this.preservedUserMetadata) {
+            merged.putAll(this.preservedUserMetadata);
+        }
+        // null 表示不修改对应的字段，保留之前已经声明的值。
+        if (null != user) {
+            merged.put(Constants.HADOOP_OWNER_USER_METADATA, user.getBytes(CosNFileSystem.METADATA_ENCODING));
+        }
+        if (null != group) {
+            merged.put(Constants.HADOOP_GROUP_USER_METADATA, group.getBytes(CosNFileSystem.METADATA_ENCODING));
+        }
+        this.checkUserMetadataTotalSize(merged);
+        this.preservedUserMetadata = merged;
+    }
+
+    /**
+     * The extended attributes can only be declared before they are sent to the cos.
+     */
+    private void checkMetadataMutable() {
+        if (null != this.multipartUpload || this.committed) {
+            throw new IllegalStateException(String.format("The user-defined metadata of the cos key [%s] can not " +
+                    "be changed any more, because it has been sent to the cos or committed.", this.cosKey));
+        }
+    }
+
+    /**
+     * Carry the owner and the group declared by {@link #setOwner(String, String)} over to the metadata
+     * which is going to replace the current one, unless the new metadata gives its own.
+     */
+    private void keepOwnerMetadata(Map<String, byte[]> target) {
+        if (null == this.preservedUserMetadata) {
+            return;
+        }
+        for (String ownerKey : new String[]{Constants.HADOOP_OWNER_USER_METADATA,
+                Constants.HADOOP_GROUP_USER_METADATA}) {
+            byte[] value = this.preservedUserMetadata.get(ownerKey);
+            if (null != value && !target.containsKey(ownerKey)) {
+                target.put(ownerKey, value);
+            }
+        }
+    }
+
+    private void checkUserMetadataTotalSize(Map<String, byte[]> userMetadata) {
+        long totalSize = 0;
+        for (Map.Entry<String, byte[]> entry : userMetadata.entrySet()) {
+            // 值以 base64 编码后写入 x-cos-meta-*，体积膨胀约 4/3，总量要按编码后的大小计算。
+            totalSize += entry.getKey().getBytes(CosNFileSystem.METADATA_ENCODING).length
+                    + ((entry.getValue().length + 2) / 3) * 4L;
+        }
+        if (totalSize > MAX_USER_METADATA_TOTAL_SIZE) {
+            throw new HadoopIllegalArgumentException(String.format("The total size [%d] of the user-defined " +
+                    "metadata after encoding exceeds the limit [%d] of the cos.", totalSize,
+                    MAX_USER_METADATA_TOTAL_SIZE));
+        }
     }
 
     /**

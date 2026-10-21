@@ -54,7 +54,8 @@ public class CosNFileSystemExt extends CosNFileSystem {
      * <p>
      * Because the options are flat text pairs, the values are always interpreted as UTF-8 text. Use
      * {@link CosNFSDataOutputStream#setUserMetadata(Map)} or {@link #setXAttrs(Path, Map)} to persist
-     * binary values.
+     * binary values. The owner and the group are declared by
+     * {@link CosNCreateFileBuilder#setOwner(String, String)}.
      * <p>
      * Except for the extended attributes, it behaves the same as the default builder of the
      * {@link FileSystem}: the file is overwritten by default, and the non-recursive creation goes to
@@ -112,6 +113,44 @@ public class CosNFileSystemExt extends CosNFileSystem {
             super(fileSystem, path);
         }
 
+        private String owner;
+        private String group;
+
+        /**
+         * Declare the owner and the group of the file to be created.
+         * <pre>
+         *   fs.createFile(path)
+         *       .recursive()
+         *       .setOwner("alice", "staff")
+         *       .build();
+         * </pre>
+         * They are persisted together with the data in the same way as the extended attributes, see
+         * {@link CosNFSDataOutputStream#setOwner(String, String)}, so they take effect atomically
+         * when the stream is closed, and nothing is left if the stream is aborted.
+         * <p>
+         * Same as {@link FileSystem#setOwner(Path, String, String)}, a null argument means not to
+         * declare the corresponding field, and keeps the value given by the previous call. The owner
+         * and the group given here take precedence over the options named {@code hadoop.owner} and
+         * {@code hadoop.group}, which are taken as extended attributes.
+         *
+         * @param user  the owner of the file, null means not to declare it
+         * @param group the group of the file, null means not to declare it
+         * @return the builder itself
+         * @throws HadoopIllegalArgumentException if the user or the group is empty
+         */
+        public CosNCreateFileBuilder setOwner(String user, String group) {
+            if ((null != user && user.isEmpty()) || (null != group && group.isEmpty())) {
+                throw new HadoopIllegalArgumentException("The user and the group can not be empty.");
+            }
+            if (null != user) {
+                this.owner = user;
+            }
+            if (null != group) {
+                this.group = group;
+            }
+            return this;
+        }
+
         @Override
         public CosNCreateFileBuilder getThisBuilder() {
             return this;
@@ -134,18 +173,25 @@ public class CosNFileSystemExt extends CosNFileSystem {
                 out = getFS().createNonRecursive(getPath(), getPermission(), getFlags(), getBufferSize(),
                         getReplication(), getBlockSize(), getProgress());
             }
-            if (xattrs.isEmpty()) {
+            if (xattrs.isEmpty() && null == this.owner && null == this.group) {
                 return out;
             }
 
             OutputStream wrapped = out.getWrappedStream();
             if (!(wrapped instanceof CosNFSDataOutputStream)) {
                 abortQuietly(wrapped);
-                throw new UnsupportedOperationException(
-                        "The output stream of " + getPath() + " does not support the create-time extended attributes.");
+                throw new UnsupportedOperationException("The output stream of " + getPath()
+                        + " does not support the create-time extended attributes or owner.");
             }
             try {
-                ((CosNFSDataOutputStream) wrapped).setUserMetadata(xattrs);
+                CosNFSDataOutputStream cosOut = (CosNFSDataOutputStream) wrapped;
+                if (!xattrs.isEmpty()) {
+                    cosOut.setUserMetadata(xattrs);
+                }
+                // 最后设置属主：setOwner 显式给出的值优先于选项里同名（hadoop.owner / hadoop.group）的属性。
+                if (null != this.owner || null != this.group) {
+                    cosOut.setOwner(this.owner, this.group);
+                }
             } catch (IOException | RuntimeException e) {
                 // 还没有写入任何数据，中止掉就不会留下任何东西。
                 abortQuietly(wrapped);

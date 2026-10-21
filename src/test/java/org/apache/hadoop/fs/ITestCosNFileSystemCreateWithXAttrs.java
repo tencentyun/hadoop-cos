@@ -139,11 +139,72 @@ public class ITestCosNFileSystemCreateWithXAttrs extends CosNFileSystemTestBase 
 		assertFalse(fs.exists(testPath));
 	}
 
+	@Test
+	public void testCreateSmallFileWithOwner() throws Throwable {
+		byte[] data = getTestData(10);
+		try (FSDataOutputStream out = extFs.createFile(testPath).recursive().setOwner("alice", "staff").build()) {
+			out.write(data);
+		}
+
+		assertTrue(verifyFile(data, testPath));
+		assertOwner("alice", "staff");
+	}
+
+	@Test
+	public void testCreateLargeFileWithOwnerAndXAttrs() throws Throwable {
+		// 走分块上传：属主和属性都在 InitiateMultipartUpload 时声明，互不覆盖。
+		byte[] data = getTestData((int) (2.5 * Constants.MIN_PART_SIZE));
+		try (FSDataOutputStream out = newBuilderWithXAttrs().setOwner("alice", "staff").build()) {
+			out.write(data);
+			assertFalse(fs.exists(testPath));
+		}
+
+		assertTrue(verifyFile(data, testPath));
+		assertOwner("alice", "staff");
+		assertXAttrs();
+	}
+
+	@Test
+	public void testCreateWithOwnerOnly() throws Throwable {
+		// 只声明 owner：group 没有声明，读回来是文件系统的默认值，而不是 alice 的组。
+		try (FSDataOutputStream out = extFs.createFile(testPath).recursive().setOwner("alice", null).build()) {
+			out.write(getTestData(10));
+		}
+
+		assertEquals("alice", fs.getFileStatus(testPath).getOwner());
+	}
+
+	@Test
+	public void testAbortWithOwnerLeavesNothing() throws Throwable {
+		FSDataOutputStream out = extFs.createFile(testPath).recursive().setOwner("alice", "staff").build();
+		out.write(getTestData(10));
+		((Abortable) out.getWrappedStream()).doAbort();
+
+		assertFalse(fs.exists(testPath));
+	}
+
+	@Test
+	public void testEmptyOwnerIsRejectedBeforeCreating() throws Throwable {
+		try {
+			extFs.createFile(testPath).recursive().setOwner("", "staff");
+			fail("An empty user is expected to be rejected.");
+		} catch (HadoopIllegalArgumentException expected) {
+			// expected
+		}
+		assertFalse(fs.exists(testPath));
+	}
+
 	private CosNFileSystemExt.CosNCreateFileBuilder newBuilderWithXAttrs() {
 		return extFs.createFile(testPath)
 				.recursive()
 				.must(TEXT_ATTR, "hello")
 				.opt(UTF8_ATTR, UTF8_VALUE);
+	}
+
+	private void assertOwner(String owner, String group) throws IOException {
+		FileStatus status = fs.getFileStatus(testPath);
+		assertEquals(owner, status.getOwner());
+		assertEquals(group, status.getGroup());
 	}
 
 	private void assertXAttrs() throws IOException {

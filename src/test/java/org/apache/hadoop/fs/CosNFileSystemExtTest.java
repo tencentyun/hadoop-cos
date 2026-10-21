@@ -11,6 +11,7 @@ import java.util.Map;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -65,6 +66,26 @@ public class CosNFileSystemExtTest {
     @Test
     public void testCreateFileReturnsTheCosBuilder() {
         assertNotNull(this.fs.createFile(this.testPath));
+    }
+
+    @Test
+    public void testWithOwnerReturnsTheSameBuilder() {
+        CosNFileSystemExt.CosNCreateFileBuilder builder = this.fs.createFile(this.testPath);
+        assertSame(builder, builder.setOwner("alice", "staff"));
+        // 允许只给其中一个，也允许链式地分多次给。
+        assertSame(builder, builder.setOwner("alice", null));
+        assertSame(builder, builder.setOwner(null, "staff"));
+        assertSame(builder, builder.setOwner(null, null));
+    }
+
+    @Test(expected = HadoopIllegalArgumentException.class)
+    public void testWithOwnerRejectsEmptyUser() {
+        this.fs.createFile(this.testPath).setOwner("", "staff");
+    }
+
+    @Test(expected = HadoopIllegalArgumentException.class)
+    public void testWithOwnerRejectsEmptyGroup() {
+        this.fs.createFile(this.testPath).setOwner("alice", "");
     }
 
     @Test(expected = HadoopIllegalArgumentException.class)
