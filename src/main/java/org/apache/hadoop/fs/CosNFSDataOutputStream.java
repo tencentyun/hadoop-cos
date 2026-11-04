@@ -508,6 +508,9 @@ public class CosNFSDataOutputStream extends OutputStream implements Abortable {
             if (this.currentPartNumber > 1 && null != this.multipartUpload) {
                 if (this.currentPartWriteBytes > 0) {
                     this.uploadCurrentPart(true);
+                    if (closeStream) {
+                        this.currentPartWriteBytes = 0;
+                    }
                 }
                 if(!this.clientEncryptionEnabled) {
                     this.multipartUpload.waitForFinishPartUploads();

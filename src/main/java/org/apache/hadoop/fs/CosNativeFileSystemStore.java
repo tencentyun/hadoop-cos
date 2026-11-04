@@ -107,7 +107,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
     // default is normal bucket.
     private boolean isPosixBucket = false;
 
-    private StorageClass storageClass;
+    private String storageClass;
     private int maxRetryTimes;
     private int trafficLimit;
     private boolean crc32cEnabled;
@@ -493,26 +493,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
             if (null == this.bucketName) {
                 this.bucketName = uri.getHost();
             }
-            String storageClass = conf.get(CosNConfigKeys.COSN_STORAGE_CLASS_KEY);
-            if (null != storageClass && !storageClass.isEmpty()) {
-                try {
-                    this.storageClass = StorageClass.fromValue(storageClass);
-                } catch (IllegalArgumentException e) {
-                    // 使用 StringBuilder 来构造字符串
-                    StringBuilder supportedClasses = new StringBuilder();
-                    for (StorageClass sc : StorageClass.values()) {
-                        if (supportedClasses.length() > 0) {
-                            supportedClasses.append(", ");
-                        }
-                        supportedClasses.append(sc.name());
-                    }
-                    String exceptionMessage = String.format("The specified storage class [%s] is invalid. " +
-                                    "The supported storage classes are: %s.", storageClass, supportedClasses);
-
-                    throw new IllegalArgumentException(exceptionMessage);
-                }
-            }
-            if (null != this.storageClass && StorageClass.Archive == this.storageClass) {
+            String configuredStorageClass = conf.get(CosNConfigKeys.COSN_STORAGE_CLASS_KEY);
+            this.storageClass = CosNStorageClass.resolve(configuredStorageClass);
+            if (null != this.storageClass && CosNStorageClass.ARCHIVE.equals(this.storageClass)) {
                 LOG.warn("The storage class of the CosN FileSystem is set to {}. Some file operations may not be " +
                         "supported.", this.storageClass);
             }
@@ -909,7 +892,7 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         InitiateMultipartUploadRequest initiateMultipartUploadRequest =
                 new InitiateMultipartUploadRequest(bucketName, key);
         if (null != this.storageClass) {
-            initiateMultipartUploadRequest.setStorageClass(this.storageClass);
+            objectMetadata.setHeader(Constants.X_COS_STORAGE_CLASS, this.storageClass);
         }
         initiateMultipartUploadRequest.setObjectMetadata(objectMetadata);
         this.setEncryptionMetadata(initiateMultipartUploadRequest, objectMetadata);

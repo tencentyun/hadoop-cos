@@ -20,6 +20,8 @@ public final class Constants {
     // Crc32c agent request header value
     public static final String CRC32C_REQ_HEADER_VAL = "cosn";
 
+    public static final String X_COS_STORAGE_CLASS = "x-cos-storage-class";
+
     // Maximum number of blocks uploaded in trunks.
     public static final int MAX_PART_NUM = 10000;
     // The maximum size of a single block.
