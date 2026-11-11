@@ -791,6 +791,26 @@ public class CosFileSystem extends FileSystem {
         }
     }
 
+    public boolean isFileClosed(Path path) throws IOException {
+        checkInitialized();
+        try {
+            java.lang.reflect.Method method = this.actualImplFS.getClass()
+                    .getMethod("isFileClosed", Path.class);
+            return (Boolean) method.invoke(this.actualImplFS, path);
+        } catch (java.lang.NoSuchMethodException e) {
+            throw new UnsupportedOperationException(
+                    "isFileClosed is not supported by the actual filesystem", e);
+        } catch (IllegalAccessException e) {
+            throw new IOException("failed to invoke isFileClosed", e);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            }
+            throw new IOException("failed to invoke isFileClosed", cause);
+        }
+    }
+
     @Override
     public void close() throws IOException {
         LOG.info("begin to close cos file system");
