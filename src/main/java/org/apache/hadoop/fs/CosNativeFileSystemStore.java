@@ -300,6 +300,9 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
 
         this.crc32cEnabled = conf.getBoolean(CosNConfigKeys.CRC32C_CHECKSUM_ENABLED,
                 CosNConfigKeys.DEFAULT_CRC32C_CHECKSUM_ENABLED);
+        if (this.crc32cEnabled) {
+            System.setProperty(SkipMd5CheckStrategy.DISABLE_PUT_OBJECT_MD5_VALIDATION_PROPERTY, "true");
+        }
         this.completeMPUCheckEnabled = conf.getBoolean(CosNConfigKeys.COSN_COMPLETE_MPU_CHECK,
                 CosNConfigKeys.DEFAULT_COSN_COMPLETE_MPU_CHECK_ENABLE);
         this.clientEncryptionEnabled = conf.getBoolean(CosNConfigKeys.COSN_CLIENT_SIDE_ENCRYPTION_ENABLED,
@@ -977,6 +980,10 @@ public class CosNativeFileSystemStore implements NativeFileSystemStore {
         LOG.debug("Query Object metadata. cos key: {}.", key);
         GetObjectMetadataRequest getObjectMetadataRequest =
                 new GetObjectMetadataRequest(bucketName, key);
+        if (crc32cEnabled) {
+            getObjectMetadataRequest.putCustomRequestHeader(
+                    Constants.CRC32C_REQ_HEADER, Constants.CRC32C_REQ_HEADER_VAL);
+        }
 
         this.setEncryptionMetadata(getObjectMetadataRequest, new ObjectMetadata());
         try {
